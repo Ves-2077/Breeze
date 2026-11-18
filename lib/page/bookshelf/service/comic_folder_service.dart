@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:uuid/uuid.dart';
+import 'package:zephyr/database/database.dart';
 import 'package:zephyr/i18n/strings.g.dart';
 import 'package:zephyr/network/sync/sync_device_id.dart';
 import 'package:zephyr/object_box/model.dart';
@@ -21,10 +22,12 @@ class ComicFolderService {
     String? path,
     ComicFolderType type, {
     bool includeDeleted = false,
+    Database? db,
   }) async {
     if (path == null || path.isEmpty) return null;
-    final folder = await database.folders.getByUniqueKey(
-      await _uniqueKey(path, type),
+    final target = db ?? database;
+    final folder = await target.folders.getByUniqueKey(
+      await _uniqueKey(path, type, db: target),
     );
     if (folder == null) return null;
     if (!includeDeleted && folder.deletedAt != null) return null;
@@ -57,21 +60,26 @@ class ComicFolderService {
     return '$parentPath/$safeName';
   }
 
-  static Future<String> _uniqueKey(String path, ComicFolderType type) async {
+  static Future<String> _uniqueKey(
+    String path,
+    ComicFolderType type, {
+    Database? db,
+  }) async {
     final parentPath = _parentPath(path);
     final parentSyncId = parentPath == kComicFolderRootPath
         ? ''
-        : (await folderSyncIdByPath(parentPath, type) ?? '');
+        : (await folderSyncIdByPath(parentPath, type, db: db) ?? '');
     final name = path == kComicFolderRootPath ? '' : path.split('/').last;
     return '$parentSyncId|$name|${type.name}';
   }
 
   static Future<String?> _parentSyncIdByPath(
     String? parentPath,
-    ComicFolderType type,
-  ) async {
+    ComicFolderType type, {
+    Database? db,
+  }) async {
     if (parentPath == null || parentPath.isEmpty) return null;
-    return folderSyncIdByPath(parentPath, type);
+    return folderSyncIdByPath(parentPath, type, db: db);
   }
 
   static String _parentPath(String path) {
@@ -113,9 +121,10 @@ class ComicFolderService {
     String parentPath,
     ComicFolderType type, {
     bool sortAscending = false,
+    Database? db,
   }) async {
-    final parentSyncId = await _parentSyncIdByPath(parentPath, type);
-    return database.folders.listActiveChildren(
+    final parentSyncId = await _parentSyncIdByPath(parentPath, type, db: db);
+    return (db ?? database).folders.listActiveChildren(
       parentSyncId,
       type.name,
       ascending: sortAscending,

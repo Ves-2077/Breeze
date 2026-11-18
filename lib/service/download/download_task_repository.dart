@@ -24,6 +24,10 @@ class DownloadTaskRepository {
   static final Map<String, Future<void>> _pendingTaskWrites =
       <String, Future<void>>{};
 
+  /// taskKey -> 尚未落库的最新字段合并结果（同一任务的高频写会合并）。
+  static final Map<String, Map<String, dynamic>> _pendingTaskWriteArgs =
+      <String, Map<String, dynamic>>{};
+
   Future<List<DownloadTask>> getAll({bool incompleteOnly = false}) {
     return incompleteOnly
         ? database.downloadTasks.listIncomplete()
@@ -209,27 +213,52 @@ class DownloadTaskRepository {
     String? payloadJson,
   }) {
     final normalizedKey = taskKey.trim();
-    final args = <String, dynamic>{'id': taskId};
-    if (status != null) args['status'] = status;
-    if (isDownloading != null) args['isDownloading'] = isDownloading;
-    if (isCompleted != null) args['isCompleted'] = isCompleted;
-    if (payloadJson != null) args['payloadJson'] = payloadJson;
-    final prev = _pendingTaskWrites[normalizedKey] ?? Future.value();
-    late final Future<void> next;
-    next = prev.then((_) => _applyDownloadTaskWrite(args));
-    _pendingTaskWrites[normalizedKey] = next;
-    next.whenComplete(() {
-      if (identical(_pendingTaskWrites[normalizedKey], next)) {
-        _pendingTaskWrites.remove(normalizedKey);
+    final pending = _pendingTaskWriteArgs.putIfAbsent(
+      normalizedKey,
+      () => <String, dynamic>{'id': taskId},
+    );
+    pending['id'] = taskId;
+    if (status != null) pending['status'] = status;
+    if (isDownloading != null) pending['isDownloading'] = isDownloading;
+    if (isCompleted != null) pending['isCompleted'] = isCompleted;
+    if (payloadJson != null) pending['payloadJson'] = payloadJson;
+    return _pendingTaskWrites[normalizedKey] ??
+        _scheduleTaskWrite(normalizedKey);
+  }
+
+  Future<void> _scheduleTaskWrite(String key) {
+    final future = () async {
+      while (true) {
+        final args = _pendingTaskWriteArgs.remove(key);
+        if (args == null) break;
+        await _applyDownloadTaskWrite(args);
+      }
+    }();
+    _pendingTaskWrites[key] = future;
+    future.whenComplete(() {
+      if (identical(_pendingTaskWrites[key], future)) {
+        _pendingTaskWrites.remove(key);
+      }
+      if (_pendingTaskWriteArgs.containsKey(key)) {
+        _scheduleTaskWrite(key);
       }
     });
-    return next;
+    return future;
   }
 
   /// 排空指定任务的后台写。状态迁移（完成/失败/取消/重试/删除）前必须调，
   /// 否则在途的旧写可能覆盖新状态。
-  Future<void> flushTaskWrites(String taskKey) {
-    return _pendingTaskWrites[taskKey.trim()] ?? Future.value();
+  Future<void> flushTaskWrites(String taskKey) async {
+    final key = taskKey.trim();
+    while (true) {
+      final pending = _pendingTaskWrites[key];
+      if (pending != null) {
+        await pending;
+        continue;
+      }
+      if (!_pendingTaskWriteArgs.containsKey(key)) return;
+      await _scheduleTaskWrite(key);
+    }
   }
 
   Future<void> resetInterruptedTasks() async {

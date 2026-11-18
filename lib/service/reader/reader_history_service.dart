@@ -44,6 +44,16 @@ class ReaderHistoryService {
   HistorySnapshot Function()? _snapshotProvider;
   String? _markedChapterId;
 
+  String _cachedCoverJson = '';
+  String _cachedCreatorJson = '';
+  String _cachedTitleMetaJson = '';
+  String _cachedMetadataJson = '';
+  String _downloadTitle = '';
+  String _downloadCover = '';
+  bool _hasTitleOverride = false;
+  bool _hasCoverOverride = false;
+  DateTime? _lastOverrideRefresh;
+
   /// 加载指定漫画的历史记录，并解析 comicInfo 供后续写入使用。
   Future<void> loadHistory({
     required String source,
@@ -57,6 +67,30 @@ class ReaderHistoryService {
     _markedChapterId = null;
 
     _history = await database.histories.getByKey('$source:$comicId');
+
+    final info = _comicInfo;
+    if (info != null) {
+      _cachedCoverJson = _normalizeWorkerFlexMapString(info.cover);
+      _cachedCreatorJson = _normalizeWorkerFlexMapString(info.creator);
+      _cachedTitleMetaJson = _normalizeWorkerFlexListString(info.titleMeta);
+      _cachedMetadataJson = _normalizeWorkerMetadataString(info.metadata);
+    }
+    await _refreshDownloadOverrides();
+    _lastOverrideRefresh = DateTime.now();
+  }
+
+  Future<void> _refreshDownloadOverrides() async {
+    final source = _source;
+    final comicId = _comicId;
+    if (source == null || comicId == null) return;
+    final download = await database.downloads.getByKey('$source:$comicId');
+    final active = download != null && !download.deleted;
+    final titleOverride = active ? (download.titleOverride?.trim() ?? '') : '';
+    final coverOverride = active ? (download.coverOverride?.trim() ?? '') : '';
+    _hasTitleOverride = titleOverride.isNotEmpty;
+    _hasCoverOverride = coverOverride.isNotEmpty;
+    _downloadTitle = _hasTitleOverride ? download!.title : '';
+    _downloadCover = _hasCoverOverride ? download!.cover : '';
   }
 
   /// 上次加载到的历史页码，未加载或为 null 时返回 0。
@@ -133,19 +167,65 @@ class ReaderHistoryService {
 
     _isInserting = true;
     try {
-      final timestamp = DateTime.now().toUtc();
-      final payload = <String, dynamic>{
-        'source': _source,
-        'comicId': _comicId,
-        'normalInfo': _serializeComicInfo(_comicInfo!),
-        'chapterId': snapshot.epInfo.epId,
-        'chapterTitle': snapshot.epInfo.epName,
-        'chapterOrder': snapshot.chapterOrder,
-        'pageIndex': snapshot.pageIndex,
-        'timestamp': timestamp.toIso8601String(),
-      };
-      final historyJson = await _upsertUnifiedHistory(payload);
-      _history = UnifiedComicHistory.fromJson(historyJson);
+      final now = DateTime.now();
+      if (_lastOverrideRefresh == null ||
+          now.difference(_lastOverrideRefresh!).inSeconds >= 10) {
+        await _refreshDownloadOverrides();
+        _lastOverrideRefresh = now;
+      }
+
+      final timestamp = now.toUtc();
+      final source = _source!;
+      final comicId = _comicId!;
+      final info = _comicInfo!;
+      final existing = _history;
+      final title = _hasTitleOverride ? _downloadTitle : info.title;
+      final effectiveCover = _hasCoverOverride
+          ? _downloadCover
+          : _cachedCoverJson;
+      final nextCover = existing != null && _isLocalCover(existing.cover)
+          ? existing.cover
+          : effectiveCover;
+      final entity =
+          existing ??
+          UnifiedComicHistory(
+            uniqueKey: '$source:$comicId',
+            source: source,
+            comicId: comicId,
+            title: title,
+            description: info.description,
+            cover: nextCover,
+            creator: _cachedCreatorJson,
+            titleMeta: _cachedTitleMetaJson,
+            metadata: _cachedMetadataJson,
+            chapterId: snapshot.epInfo.epId,
+            chapterTitle: snapshot.epInfo.epName,
+            chapterOrder: snapshot.chapterOrder,
+            pageIndex: snapshot.pageIndex,
+            createdAt: timestamp,
+            lastReadAt: timestamp,
+            updatedAt: timestamp,
+            deleted: false,
+            schemaVersion: 2,
+          );
+
+      entity
+        ..title = title
+        ..description = info.description
+        ..cover = nextCover
+        ..creator = _cachedCreatorJson
+        ..titleMeta = _cachedTitleMetaJson
+        ..metadata = _cachedMetadataJson
+        ..chapterId = snapshot.epInfo.epId
+        ..chapterTitle = snapshot.epInfo.epName
+        ..chapterOrder = snapshot.chapterOrder
+        ..pageIndex = snapshot.pageIndex
+        ..lastReadAt = timestamp
+        ..updatedAt = timestamp
+        ..deleted = false;
+
+      await database.histories.put(entity);
+      _history = entity;
     } catch (e, s) {
       logger.w('后台写入历史记录失败', error: e);
       logger.d(s);
@@ -198,91 +278,6 @@ class ReaderHistoryService {
         map['cover'] is Map &&
         map['creator'] is Map;
   }
-
-  Map<String, dynamic> _serializeComicInfo(normal.ComicInfo info) {
-    final normalized = jsonDecode(jsonEncode(info.toJson()));
-    if (normalized is Map) {
-      return Map<String, dynamic>.from(normalized);
-    }
-    throw StateError('Failed to serialize ComicInfo');
-  }
-}
-
-Future<Map<String, dynamic>> _upsertUnifiedHistory(
-  Map<String, dynamic> payload,
-) async {
-  final source = payload['source']?.toString() ?? '';
-  final comicId = payload['comicId']?.toString() ?? '';
-  final normalInfo = normal.ComicInfo.fromJson(
-    _toWorkerMap(payload['normalInfo']),
-  );
-  final chapterId = payload['chapterId']?.toString() ?? '';
-  final chapterTitle = payload['chapterTitle']?.toString() ?? '';
-  final chapterOrder = (payload['chapterOrder'] as num?)?.toInt() ?? 0;
-  final pageIndex = (payload['pageIndex'] as num?)?.toInt() ?? 0;
-  final timestamp = DateTime.parse(
-    payload['timestamp']?.toString() ??
-        DateTime.now().toUtc().toIso8601String(),
-  ).toUtc();
-
-  final key = '$source:$comicId';
-  final download = await database.downloads.getByKey(key);
-  final titleOverride = download != null && !download.deleted
-      ? download.titleOverride?.trim() ?? ''
-      : '';
-  final coverOverride = download != null && !download.deleted
-      ? download.coverOverride?.trim() ?? ''
-      : '';
-  final effectiveTitle = titleOverride.isNotEmpty
-      ? download!.title
-      : normalInfo.title;
-  final effectiveCover = coverOverride.isNotEmpty
-      ? download!.cover
-      : _normalizeWorkerFlexMapString(normalInfo.cover);
-  final existing = await database.histories.getByKey(key);
-  final nextCover = existing != null && _isLocalCover(existing.cover)
-      ? existing.cover
-      : effectiveCover;
-  final entity =
-      existing ??
-      UnifiedComicHistory(
-        uniqueKey: key,
-        source: source,
-        comicId: comicId,
-        title: effectiveTitle,
-        description: normalInfo.description,
-        cover: nextCover,
-        creator: _normalizeWorkerFlexMapString(normalInfo.creator),
-        titleMeta: _normalizeWorkerFlexListString(normalInfo.titleMeta),
-        metadata: _normalizeWorkerMetadataString(normalInfo.metadata),
-        chapterId: chapterId,
-        chapterTitle: chapterTitle,
-        chapterOrder: chapterOrder,
-        pageIndex: pageIndex,
-        createdAt: timestamp,
-        lastReadAt: timestamp,
-        updatedAt: timestamp,
-        deleted: false,
-        schemaVersion: 2,
-      );
-
-  entity
-    ..title = effectiveTitle
-    ..description = normalInfo.description
-    ..cover = nextCover
-    ..creator = _normalizeWorkerFlexMapString(normalInfo.creator)
-    ..titleMeta = _normalizeWorkerFlexListString(normalInfo.titleMeta)
-    ..metadata = _normalizeWorkerMetadataString(normalInfo.metadata)
-    ..chapterId = chapterId
-    ..chapterTitle = chapterTitle
-    ..chapterOrder = chapterOrder
-    ..pageIndex = pageIndex
-    ..lastReadAt = timestamp
-    ..updatedAt = timestamp
-    ..deleted = false;
-
-  await database.histories.put(entity);
-  return entity.toJson();
 }
 
 bool _isLocalCover(String raw) {
@@ -294,16 +289,6 @@ bool _isLocalCover(String raw) {
     }
   } catch (_) {}
   return false;
-}
-
-Map<String, dynamic> _toWorkerMap(dynamic value) {
-  if (value is Map<String, dynamic>) {
-    return value;
-  }
-  if (value is Map) {
-    return Map<String, dynamic>.from(value);
-  }
-  return const <String, dynamic>{};
 }
 
 Map<String, dynamic> _normalizeWorkerFlexMap(dynamic value) {

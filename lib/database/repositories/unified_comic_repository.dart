@@ -207,12 +207,14 @@ class UnifiedComicHistoryRepository {
     return rows.map(_decode).toList();
   }
 
-  Future<List<UnifiedComicHistory>> listActive({bool ascending = false}) async {
+  static String listActiveSql({bool ascending = false}) {
     final direction = ascending ? 'ASC' : 'DESC';
-    final rows = await db.query(
-      'SELECT * FROM "UnifiedComicHistory" WHERE "deleted" = 0 '
-      'ORDER BY "updatedAt" $direction, "id" $direction',
-    );
+    return 'SELECT * FROM "UnifiedComicHistory" WHERE "deleted" = 0 '
+        'ORDER BY "updatedAt" $direction, "id" $direction';
+  }
+
+  Future<List<UnifiedComicHistory>> listActive({bool ascending = false}) async {
+    final rows = await db.query(listActiveSql(ascending: ascending));
     return rows.map(_decode).toList();
   }
 

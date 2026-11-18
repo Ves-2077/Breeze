@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:zephyr/database/database.dart';
 import 'package:zephyr/main.dart';
 import 'package:zephyr/network/http/picture/picture.dart';
 import 'package:zephyr/network/sync/sync_device_id.dart';
@@ -44,18 +45,23 @@ class ComicLinkService {
 
   static Future<String?> _folderSyncIdByPath(
     String? folderPath,
-    ComicFolderType type,
-  ) async {
+    ComicFolderType type, {
+    Database? db,
+  }) async {
     if (folderPath == null || folderPath.isEmpty) return null;
-    return ComicFolderService.folderSyncIdByPath(folderPath, type);
+    return ComicFolderService.folderSyncIdByPath(folderPath, type, db: db);
   }
 
   /// 列出该类型下全部未删除的漫画链接，按 createdAt 排序（新的在前）
   static Future<List<ComicLink>> listAllLinks(
     ComicFolderType type, {
     bool sortAscending = false,
+    Database? db,
   }) {
-    return database.links.listActiveByType(type.name, ascending: sortAscending);
+    return (db ?? database).links.listActiveByType(
+      type.name,
+      ascending: sortAscending,
+    );
   }
 
   /// 列出某路径下未删除的漫画链接，按 createdAt 排序（新的在前）
@@ -63,9 +69,10 @@ class ComicLinkService {
     String? folderPath,
     ComicFolderType type, {
     bool sortAscending = false,
+    Database? db,
   }) async {
-    final folderSyncId = await _folderSyncIdByPath(folderPath, type);
-    return database.links.listActiveByFolder(
+    final folderSyncId = await _folderSyncIdByPath(folderPath, type, db: db);
+    return (db ?? database).links.listActiveByFolder(
       folderSyncId,
       type.name,
       ascending: sortAscending,

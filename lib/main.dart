@@ -333,11 +333,13 @@ Future<(GlobalSettingCubit, PluginRegistryCubit)> _initServices() async {
     legacyObjectBoxDir: '$dbRoot/breeze_db',
     archiveLegacyData: true,
   );
-  final setting = await database.userSettings.get();
+  final settingFuture = database.userSettings.get();
+  final pluginConfigsFuture = preloadPluginConfigs();
+  final setting = await settingFuture;
   if (setting == null) {
     await database.userSettings.put(UserSetting());
   }
-  await preloadPluginConfigs();
+  await pluginConfigsFuture;
 
   final globalSettingCubit = GlobalSettingCubit();
   await globalSettingCubit.initBox();
@@ -395,8 +397,14 @@ Future<(GlobalSettingCubit, PluginRegistryCubit)> _initServices() async {
 
   await applyEinkAutoDetection(globalSettingCubit);
 
-  // Rust 已在本函数开头初始化；快照查询和 Brotli 压缩均在后台执行。
-  unawaited(saveStartupDatabaseSnapshot());
+  // Rust 已在本函数开头初始化；快照查询和 Brotli 压缩都在后台 isolate 执行，
+  // 再延后到首帧之后，避免启动阶段和 UI 争抢 CPU/磁盘。
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    Future<void>.delayed(
+      const Duration(seconds: 2),
+      saveStartupDatabaseSnapshot,
+    ).ignore();
+  });
 
   return (globalSettingCubit, pluginRegistryCubit);
 }

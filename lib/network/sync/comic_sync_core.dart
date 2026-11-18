@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:collection/collection.dart';
 import 'package:crypto/crypto.dart';
 import 'package:encrypter_plus/encrypter_plus.dart';
+import 'package:flutter/foundation.dart' show compute;
 import 'package:uuid/uuid.dart';
 import 'package:zephyr/config/global/global.dart';
 import 'package:zephyr/database/database.dart';
@@ -12,6 +13,7 @@ import 'package:zephyr/main.dart';
 import 'package:zephyr/network/sync/sync_device_id.dart';
 import 'package:zephyr/object_box/model.dart';
 import 'package:zephyr/src/rust/api/simple.dart';
+import 'package:zephyr/util/rust_loader.dart';
 
 const String syncDataVersion = 'v1';
 
@@ -122,27 +124,31 @@ class ComicSyncCore {
     return md5.convert(data).toString();
   }
 
-  static Future<List<int>> buildCompressedPayload() async {
-    final favorites = await database.favorites.getAll();
+  static Future<List<int>> buildCompressedPayload() {
+    return compute(_buildCompressedPayloadInIsolate, database.db.handle);
+  }
+
+  static Future<List<int>> _buildCompressedPayload(Database db) async {
+    final favorites = await db.favorites.getAll();
     favorites.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
 
-    final histories = await database.histories.getAll();
+    final histories = await db.histories.getAll();
     histories.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
 
-    final follows = await database.follows.getAll();
+    final follows = await db.follows.getAll();
     follows.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
 
-    final readPreferences = await database.readPreferences.getAll();
+    final readPreferences = await db.readPreferences.getAll();
     readPreferences.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
 
-    final folders = (await database.folders.getAll())
+    final folders = (await db.folders.getAll())
         .where(
           (f) =>
               f.type == ComicFolderType.favorite ||
               f.type == ComicFolderType.history,
         )
         .toList();
-    final links = (await database.links.getAll())
+    final links = (await db.links.getAll())
         .where(
           (l) =>
               l.type == ComicFolderType.favorite ||
@@ -167,6 +173,12 @@ class ComicSyncCore {
   }
 
   static Future<Map<String, dynamic>> decodeCompressedPayload(
+    List<int> encryptedCompressedBytes,
+  ) {
+    return compute(_decodeCompressedPayloadInIsolate, encryptedCompressedBytes);
+  }
+
+  static Future<Map<String, dynamic>> _decodeCompressedPayload(
     List<int> encryptedCompressedBytes,
   ) async {
     final raw = await decodeEncryptedPayload(encryptedCompressedBytes);
@@ -193,6 +205,16 @@ class ComicSyncCore {
   /// 每个表由仓库自身的写入事务保证原子性；这里不额外包外层事务，因为
   /// SQLite 事务连接与主连接互斥，嵌套的写事务会互相等待。
   static Future<int> mergeUnifiedData(
+    Database database,
+    Map<String, dynamic> data,
+  ) {
+    return compute(
+      _mergeUnifiedDataInIsolate,
+      _SyncMergeTask(handle: database.db.handle, data: data),
+    );
+  }
+
+  static Future<int> _mergeUnifiedData(
     Database database,
     Map<String, dynamic> data,
   ) async {
@@ -1317,4 +1339,31 @@ class _RemoteFileData {
 
   final String path;
   final List<int> bytes;
+}
+
+class _SyncMergeTask {
+  const _SyncMergeTask({required this.handle, required this.data});
+
+  final int handle;
+  final Map<String, dynamic> data;
+}
+
+Future<List<int>> _buildCompressedPayloadInIsolate(int handle) async {
+  await initRustLib();
+  return ComicSyncCore._buildCompressedPayload(Database.fromHandle(handle));
+}
+
+Future<int> _mergeUnifiedDataInIsolate(_SyncMergeTask task) async {
+  await initRustLib();
+  return ComicSyncCore._mergeUnifiedData(
+    Database.fromHandle(task.handle),
+    task.data,
+  );
+}
+
+Future<Map<String, dynamic>> _decodeCompressedPayloadInIsolate(
+  List<int> bytes,
+) async {
+  await initRustLib();
+  return ComicSyncCore._decodeCompressedPayload(bytes);
 }

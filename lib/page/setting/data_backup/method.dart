@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -14,6 +15,12 @@ import 'package:zephyr/plugin/bridge/plugin_config_bridge.dart';
 import 'package:zephyr/src/rust/api/data_backup.dart';
 import 'package:zephyr/util/get_path.dart';
 import 'package:zephyr/widgets/toast.dart';
+
+/// 在 compute isolate 内读取并解析 objectbox.json，避免大备份阻塞 UI。
+Map<String, dynamic> _readBackupJsonFile(String path) {
+  final raw = File(path).readAsStringSync();
+  return Map<String, dynamic>.from(jsonDecode(raw) as Map);
+}
 
 /// 备份包配置信息。
 class BackupConfig {
@@ -66,8 +73,10 @@ Future<String> exportBreezeBackup({
         .writeAsString(jsonEncode(config));
 
     // 2. 写入 objectbox.json（文件名保持与旧版备份兼容）
-    await File(p.join(tempDir.path, 'objectbox.json'))
-        .writeAsString(await database.collectAllDataJsonAsync(removeIds: true));
+    await database.writeAllDataJsonFileAsync(
+      p.join(tempDir.path, 'objectbox.json'),
+      removeIds: true,
+    );
 
     // 3. 调用 Rust 流式打包
     await createDataBackupZip(
@@ -207,9 +216,7 @@ Future<void> applyBreezeBackupImport(BackupConfig config) async {
     Map<String, dynamic>? objectBoxJson;
     GlobalSettingState? restoredGlobal;
     if (await objectBoxFile.exists()) {
-      objectBoxJson = jsonDecode(
-        await objectBoxFile.readAsString(),
-      ) as Map<String, dynamic>;
+      objectBoxJson = await compute(_readBackupJsonFile, objectBoxFile.path);
     }
 
     await database.transaction((_) async {

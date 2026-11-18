@@ -28,6 +28,9 @@ class BreezeDatabase {
 
   BreezeDatabase._(this.handle);
 
+  /// 用已打开的 Rust 侧 handle 构造包装（供 worker isolate 复用同一连接）。
+  BreezeDatabase.fromHandle(this.handle);
+
   static Future<BreezeDatabase> open(String path) async {
     await initRustLib();
     final handle = await rust.dbOpen(path: path);

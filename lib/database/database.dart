@@ -1,5 +1,7 @@
 import 'dart:convert';
+import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:zephyr/database/app_database.dart';
 import 'package:zephyr/database/db.dart';
 import 'package:zephyr/database/repositories/comic_folder_repository.dart';
@@ -11,6 +13,7 @@ import 'package:zephyr/database/repositories/reader_repository.dart';
 import 'package:zephyr/database/repositories/search_bookmark_repository.dart';
 import 'package:zephyr/database/repositories/unified_comic_repository.dart';
 import 'package:zephyr/database/repositories/user_setting_repository.dart';
+import 'package:zephyr/util/rust_loader.dart';
 
 /// 应用数据库门面：第一层 SQL 执行 + 各领域仓库。
 class Database {
@@ -36,6 +39,10 @@ class Database {
   late final LegacyComicRepository legacy = LegacyComicRepository(db);
 
   Database._(this.db);
+
+  /// 在 worker isolate 中基于已打开的 handle 构造数据库门面。
+  factory Database.fromHandle(int handle) =>
+      Database._(BreezeDatabase.fromHandle(handle));
 
   static Future<Database> open({
     required String path,
@@ -146,8 +153,41 @@ class Database {
     }, write: false);
   }
 
-  Future<String> collectAllDataJsonAsync({bool removeIds = false}) =>
-      collectAllDataJson(removeIds: removeIds);
+  Future<void> writeAllDataJsonFileAsync(
+    String path, {
+    bool removeIds = false,
+  }) {
+    return compute(
+      _writeAllDataJsonFileInIsolate,
+      _DatabaseBackupFileTask(
+        handle: db.handle,
+        path: path,
+        removeIds: removeIds,
+      ),
+    );
+  }
 
   Future<void> close() => db.close();
+}
+
+class _DatabaseBackupFileTask {
+  const _DatabaseBackupFileTask({
+    required this.handle,
+    required this.path,
+    required this.removeIds,
+  });
+
+  final int handle;
+  final String path;
+  final bool removeIds;
+}
+
+/// 在 compute isolate 内读取全库 JSON 并写文件，避免主 isolate 序列化/编码卡顿。
+Future<void> _writeAllDataJsonFileInIsolate(
+  _DatabaseBackupFileTask task,
+) async {
+  await initRustLib();
+  final json = await Database.fromHandle(task.handle)
+      .collectAllDataJson(removeIds: task.removeIds);
+  await File(task.path).writeAsString(json);
 }

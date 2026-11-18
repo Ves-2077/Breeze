@@ -1,20 +1,15 @@
-import 'dart:convert';
-
 import 'package:bloc/bloc.dart';
 import 'package:bloc_concurrency/bloc_concurrency.dart';
+import 'package:flutter/foundation.dart';
 import 'package:zephyr/i18n/strings.g.dart';
 import 'package:zephyr/main.dart';
-import 'package:zephyr/widgets/comic_entry/models/models.dart';
 import 'package:zephyr/object_box/model.dart';
-import 'package:zephyr/page/bookshelf/cubit/search_status.dart';
+import 'package:zephyr/page/bookshelf/method/shelf_load_isolate.dart';
 import 'package:zephyr/page/bookshelf/models/shelf_page_mode.dart';
 import 'package:zephyr/page/bookshelf/service/comic_folder_service.dart';
 import 'package:zephyr/page/bookshelf/service/comic_link_service.dart';
-import 'package:zephyr/util/rust_loader.dart';
-import 'package:zephyr/util/text/chinese_convert.dart';
 import 'package:zephyr/page/bookshelf/bloc/folder_shelf_event.dart';
 import 'package:zephyr/page/bookshelf/bloc/folder_shelf_state.dart';
-import 'package:zephyr/widgets/comic_simplify_entry/comic_simplify_entry_info.dart';
 export 'package:zephyr/page/bookshelf/bloc/folder_shelf_event.dart';
 export 'package:zephyr/page/bookshelf/bloc/folder_shelf_state.dart';
 
@@ -57,36 +52,23 @@ class FolderShelfBloc extends Bloc<FolderShelfEvent, FolderShelfState> {
     emit(state.copyWith(isLoading: true, error: null));
     try {
       final search = event.search ?? state.search;
-      final currentMode = state.mode;
-      final currentPath = state.currentPath;
-      final payload = {
-        'mode': currentMode.name,
-        'currentPath': currentPath,
-        'keyword': search?.keyword ?? '',
-        'sort': search?.sort ?? 'dd',
-        'sources': search?.sources ?? const <String>[],
-      };
-      // 查询频率低；SQLite 调用本身是异步的，直接在 bloc 所在 isolate 执行。
-      await initRustLib(silent: true);
-      final result = await _runFolderShelfLoadTask(payload);
-
-      final error = result['error']?.toString() ?? '';
-      if (error.isNotEmpty) {
-        throw Exception(error);
-      }
-
-      final comics = result['comics'] as List<ComicSimplifyEntryInfo>;
-
+      final result = await compute(
+        loadShelfInIsolate,
+        ShelfLoadTask(
+          handle: database.db.handle,
+          mode: state.mode.name,
+          currentPath: state.currentPath,
+          keyword: search?.keyword ?? '',
+          sort: search?.sort ?? 'dd',
+          sources: search?.sources ?? const <String>[],
+        ),
+      );
       emit(
         state.copyWith(
-          folders: result['folders'] as List<ComicFolder>,
-          folderComicCounts:
-              (result['folderComicCounts'] as Map?)?.cast<String, int>() ??
-              const <String, int>{},
-          comics: comics,
-          comicSearchTexts:
-              (result['comicSearchTexts'] as Map?)?.cast<String, String>() ??
-              const <String, String>{},
+          folders: result.folders,
+          folderComicCounts: result.folderComicCounts,
+          comics: result.comics,
+          comicSearchTexts: result.searchTexts,
           search: search,
           sortAscending: search?.sort == 'da',
           isLoading: false,
@@ -391,282 +373,4 @@ class FolderShelfBloc extends Bloc<FolderShelfEvent, FolderShelfState> {
   }
 }
 
-Future<Map<String, dynamic>> _runFolderShelfLoadTask(
-  Map<String, dynamic> payload,
-) async {
-  try {
-    final mode = ShelfPageMode.values.byName(payload['mode'] as String);
-    final folderType = FolderShelfBloc._toFolderType(mode);
-    final currentPath = payload['currentPath'] as String;
-    final keyword = payload['keyword']?.toString() ?? '';
-    final sort = payload['sort']?.toString() ?? 'dd';
-    final sources =
-        (payload['sources'] as List?)?.cast<String>() ?? const <String>[];
-    final search = SearchStatusState(
-      keyword: keyword,
-      sort: sort,
-      sources: sources,
-    );
-
-    final sortAscending = sort == 'da';
-    final sortByViewTime =
-        (mode == ShelfPageMode.favorite || mode == ShelfPageMode.download) &&
-        (sort == 'vd' || sort == 'va');
-    final viewTimes = <String, DateTime>{};
-    if (sortByViewTime) {
-      for (final history in await database.histories.listActive()) {
-        viewTimes[history.uniqueKey] = history.lastReadAt;
-      }
-    }
-    final itemTimes = <String, DateTime>{};
-    if (sortByViewTime) {
-      if (mode == ShelfPageMode.favorite) {
-        for (final favorite in await database.favorites.listActive()) {
-          itemTimes[favorite.uniqueKey] = favorite.createdAt;
-        }
-      } else {
-        for (final download in await database.downloads.listActive()) {
-          itemTimes[download.uniqueKey] = download.downloadedAt;
-        }
-      }
-    }
-    final sourceFilter = _sourceFilterFromSearch(search);
-
-    // 历史无文件夹体系：直读历史表，按更新时间排序。
-    if (mode == ShelfPageMode.history) {
-      return await _loadHistoryShelf(
-        sortAscending: sortAscending,
-        keyword: keyword,
-        sourceFilter: sourceFilter,
-      );
-    }
-
-    // 搜索时不应被“当前所在文件夹”限制，而是全局搜索该类型下的全部漫画。
-    final isSearching = keyword.trim().isNotEmpty;
-    final normalizedKeyword = isSearching ? _normalizeSearchText(keyword) : '';
-    final folders = isSearching
-        ? <ComicFolder>[]
-        : await ComicFolderService.listChildFolders(
-            currentPath,
-            folderType,
-            sortAscending: sortAscending,
-          );
-    final links = isSearching
-        ? await ComicLinkService.listAllLinks(
-            folderType,
-            sortAscending: sortAscending,
-          )
-        : await ComicLinkService.listLinks(
-            currentPath.isEmpty ? null : currentPath,
-            folderType,
-            sortAscending: sortAscending,
-          );
-    final comics = <ComicSimplifyEntryInfo>[];
-    final comicSearchTexts = <String, String>{};
-    final seenKeys = <String>{};
-    for (final link in links) {
-      final resolved = await _resolveComic(link.comicUniqueKey, folderType);
-      if (resolved == null) continue;
-      if (sourceFilter != null &&
-          !sourceFilter.contains(resolved.info.source)) {
-        continue;
-      }
-      final key = '${resolved.info.from.trim()}:${resolved.info.id}';
-      if (!seenKeys.add(key)) continue;
-      if (isSearching && !resolved.searchText.contains(normalizedKeyword)) {
-        continue;
-      }
-      comics.add(resolved.info);
-      comicSearchTexts[key] = resolved.searchText;
-    }
-    // 文件夹直属漫画数：详情行副标题用。key 是显示路径（与 page 侧 folderPathOf 一致）。
-    final folderComicCounts = <String, int>{};
-    if (!isSearching) {
-      final bySyncId = <String, ComicFolder>{
-        for (final folder in folders) folder.syncId: folder,
-      };
-      String folderPathOf(ComicFolder folder) {
-        final parts = <String>[];
-        final visited = <String>{};
-        ComicFolder? current = folder;
-        while (current != null) {
-          if (current.syncId.isNotEmpty && !visited.add(current.syncId)) {
-            break;
-          }
-          parts.add(current.name);
-          final parentId = current.parentSyncId;
-          if (parentId == null || parentId.isEmpty) break;
-          current = bySyncId[parentId];
-        }
-        return '/${parts.reversed.join('/')}';
-      }
-
-      final pathBySyncId = <String, String>{
-        for (final folder in folders) folder.syncId: folderPathOf(folder),
-      };
-      for (final link in links) {
-        final folderSyncId = link.folderSyncId;
-        if (folderSyncId == null || folderSyncId.isEmpty) continue;
-        final path = pathBySyncId[folderSyncId];
-        if (path == null) continue;
-        folderComicCounts[path] = (folderComicCounts[path] ?? 0) + 1;
-      }
-    }
-    if (sortByViewTime) {
-      _sortShelfItemsByViewTime(
-        comics,
-        viewTimes: viewTimes,
-        itemTimes: itemTimes,
-        ascending: sort == 'va',
-      );
-    }
-
-    return {
-      'folders': folders,
-      'comics': comics,
-      'comicSearchTexts': comicSearchTexts,
-      'folderComicCounts': folderComicCounts,
-    };
-  } catch (e) {
-    return {
-      'error': e.toString(),
-      'folders': <ComicFolder>[],
-      'comics': <ComicSimplifyEntryInfo>[],
-      'comicSearchTexts': <String, String>{},
-      'folderComicCounts': <String, int>{},
-    };
-  }
-}
-
-/// 历史无文件夹体系：直接查询历史表，按 updatedAt 排序（与旧 LocalShelfPage 一致）。
-Future<Map<String, dynamic>> _loadHistoryShelf({
-  required bool sortAscending,
-  required String keyword,
-  required Set<String>? sourceFilter,
-}) async {
-  final isSearching = keyword.trim().isNotEmpty;
-  final normalizedKeyword = isSearching ? _normalizeSearchText(keyword) : '';
-  final comics = <ComicSimplifyEntryInfo>[];
-  final comicSearchTexts = <String, String>{};
-  // sourceFilter 为 null/空集视为不过滤，与收藏/下载一致。
-  final filterSources = sourceFilter != null && sourceFilter.isNotEmpty;
-  for (final history in await database.histories.listActive(
-    ascending: sortAscending,
-  )) {
-    if (filterSources && !sourceFilter.contains(history.source)) continue;
-    final info = unifiedComicFromUnifiedHistory(history).toSimplifyEntryInfo();
-    final key = '${info.from.trim()}:${info.id}';
-    final searchText = _buildComicSearchText(history);
-    if (isSearching && !searchText.contains(normalizedKeyword)) {
-      continue;
-    }
-    comics.add(info);
-    comicSearchTexts[key] = searchText;
-  }
-  return {
-    'folders': <ComicFolder>[],
-    'comics': comics,
-    'comicSearchTexts': comicSearchTexts,
-  };
-}
-
-void _sortShelfItemsByViewTime(
-  List<ComicSimplifyEntryInfo> items, {
-  required Map<String, DateTime> viewTimes,
-  required Map<String, DateTime> itemTimes,
-  required bool ascending,
-}) {
-  items.sort((left, right) {
-    final leftKey = '${left.from.trim()}:${left.id}';
-    final rightKey = '${right.from.trim()}:${right.id}';
-    final leftViewTime = viewTimes[leftKey];
-    final rightViewTime = viewTimes[rightKey];
-
-    // 未观看的条目没有可比较的观看时间，始终放在已观看项目之后。
-    if (leftViewTime == null && rightViewTime != null) return 1;
-    if (leftViewTime != null && rightViewTime == null) return -1;
-    if (leftViewTime != null && rightViewTime != null) {
-      final result = leftViewTime.compareTo(rightViewTime);
-      if (result != 0) return ascending ? result : -result;
-    }
-
-    final leftItemTime = itemTimes[leftKey];
-    final rightItemTime = itemTimes[rightKey];
-    if (leftItemTime != null && rightItemTime != null) {
-      final result = leftItemTime.compareTo(rightItemTime);
-      if (result != 0) return ascending ? result : -result;
-    }
-    return leftKey.compareTo(rightKey);
-  });
-}
-
-Set<String>? _sourceFilterFromSearch(SearchStatusState? search) {
-  if (search == null) return null;
-  final cleaned = search.sources
-      .map((e) => e.trim())
-      .where((e) => e.isNotEmpty)
-      .toSet();
-  if (cleaned.isEmpty) return null;
-  return cleaned;
-}
-
-Future<({ComicSimplifyEntryInfo info, String searchText})?> _resolveComic(
-  String uniqueKey,
-  ComicFolderType folderType,
-) async {
-  switch (folderType) {
-    case ComicFolderType.favorite:
-      final comic = await database.favorites.getByKey(uniqueKey);
-      if (comic == null || comic.deleted) return null;
-      return (
-        info: unifiedComicFromUnifiedFavorite(comic).toSimplifyEntryInfo(),
-        searchText: _buildComicSearchText(comic),
-      );
-    case ComicFolderType.download:
-      final comic = await database.downloads.getByKey(uniqueKey);
-      if (comic == null || comic.deleted) return null;
-      return (
-        info: unifiedComicFromUnifiedDownload(comic).toSimplifyEntryInfo(),
-        searchText: _buildComicSearchText(comic),
-      );
-    case ComicFolderType.history:
-      final comic = await database.histories.getByKey(uniqueKey);
-      if (comic == null || comic.deleted) return null;
-      return (
-        info: unifiedComicFromUnifiedHistory(comic).toSimplifyEntryInfo(),
-        searchText: _buildComicSearchText(comic),
-      );
-  }
-}
-
-String _buildComicSearchText(dynamic comic) {
-  final text = [
-    comic.comicId?.toString() ?? '',
-    comic.title?.toString() ?? '',
-    comic.description?.toString() ?? '',
-    _creatorName(comic.creator?.toString() ?? ''),
-    comic.titleMeta?.toString() ?? '',
-    comic.metadata?.toString() ?? '',
-    comic.source?.toString() ?? '',
-  ].join();
-  return _normalizeSearchText(text);
-}
-
-String _creatorName(String raw) {
-  if (raw.trim().isEmpty) return '';
-  try {
-    final decoded = jsonDecode(raw);
-    if (decoded is Map) return decoded['name']?.toString() ?? '';
-  } catch (_) {}
-  return '';
-}
-
-String _normalizeSearchText(String text) {
-  final lower = text.trim().toLowerCase();
-  if (lower.isEmpty) return '';
-  try {
-    return t2s(lower);
-  } catch (_) {
-    return lower;
-  }
-}
+/// 历史无文件夹体系：查询、解码、映射与搜索文本全部在 compute isolate 中完成。
