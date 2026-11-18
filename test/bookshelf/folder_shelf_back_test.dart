@@ -167,8 +167,10 @@ void main() {
     // 默认倒序，最晚建的 f39 在最前（懒加载只渲染可见行，等 f00 必超时）。
     await waitForText(tester, 'f39');
 
-    double offset() =>
-        tester.state<ScrollableState>(find.byType(Scrollable).first).position.pixels;
+    double offset() => tester
+        .state<ScrollableState>(find.byType(Scrollable).first)
+        .position
+        .pixels;
 
     // 向下滚一段：offset > 0。fling 有惯性，多推几帧等它停稳再点，
     // 否则 tap 会打偏（hitTestWarning）根本没进文件夹。
