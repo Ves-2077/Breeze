@@ -10,14 +10,35 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
 // These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `fmt`, `fmt`
 
-Future<void> qjsReplaceBundle({
+Future<QjsBundleInstallResult> qjsReplaceBundle({
   required String runtimeName,
   required String bundleName,
   required String bundleJs,
+  Uint8List? bundleBytecode,
 }) => RustLib.instance.api.crateApiQjsQjsReplaceBundle(
   runtimeName: runtimeName,
   bundleName: bundleName,
   bundleJs: bundleJs,
+  bundleBytecode: bundleBytecode,
+);
+
+/// 当前引擎的字节码格式版本（quickjs `BC_VERSION`）。
+///
+/// 用于给落盘字节码命名：版本变化时旧缓存自然不再命中，也便于清理。
+int qjsBytecodeVersion() =>
+    RustLib.instance.api.crateApiQjsQjsBytecodeVersion();
+
+/// 设置字节码缓存使用的应用版本号（应用升级后旧字节码作废）。
+void qjsSetBytecodeAppVersion({required String version}) =>
+    RustLib.instance.api.crateApiQjsQjsSetBytecodeAppVersion(version: version);
+
+/// 把插件源码编译成可落盘字节码（不执行）。失败时返回错误，调用方按源码运行。
+Future<Uint8List> qjsCompileBundleBytecode({
+  required String bundleName,
+  required String source,
+}) => RustLib.instance.api.crateApiQjsQjsCompileBundleBytecode(
+  bundleName: bundleName,
+  source: source,
 );
 
 /// 统一执行入口:调用插件 bundle 里的函数,返回原始字节。
@@ -149,8 +170,9 @@ String getJsBundle({required String name}) =>
 Future<bool> isQjsRuntimeInitialized({required String name}) =>
     RustLib.instance.api.crateApiQjsIsQjsRuntimeInitialized(name: name);
 
-Future<void> buildQjsRuntime({required QjsRuntimeBuildRequest request}) =>
-    RustLib.instance.api.crateApiQjsBuildQjsRuntime(request: request);
+Future<QjsBundleInstallResult> buildQjsRuntime({
+  required QjsRuntimeBuildRequest request,
+}) => RustLib.instance.api.crateApiQjsBuildQjsRuntime(request: request);
 
 void registerFunction({
   required String functionName,

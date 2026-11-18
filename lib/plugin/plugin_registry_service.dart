@@ -10,6 +10,7 @@ import 'package:zephyr/page/bookshelf/service/comic_link_service.dart';
 import 'package:zephyr/plugin/bridge/plugin_config_bridge.dart';
 import 'package:zephyr/plugin/local_comic_plugin.dart';
 import 'package:zephyr/plugin/models/plugin_runtime_state.dart';
+import 'package:zephyr/plugin/plugin_bytecode_cache.dart';
 import 'package:zephyr/src/rust/api/qjs.dart';
 import 'package:zephyr/src/rust/qjs.dart';
 import 'package:zephyr/util/get_path.dart';
@@ -575,6 +576,7 @@ class PluginRegistryService {
       // runtime 失败不阻断删除主流程
     }
 
+    await PluginBytecodeCache.instance.delete(runtimeName);
     await _deletePluginDownloadFolders(uuid);
     await _deletePluginConfigs(uuid);
     await _deletePluginRelatedData(uuid);
@@ -724,14 +726,28 @@ class PluginRegistryService {
     required String runtimeName,
   }) async {
     final bundleJs = await _resolveBundleJs(plugin);
-    await buildQjsRuntime(
+    final bytecode = await PluginBytecodeCache.instance.load(
+      pluginId: runtimeName,
+      pluginDebug: plugin.debug,
+    );
+    final installResult = await buildQjsRuntime(
       request: QjsRuntimeBuildRequest(
         runtimeName: runtimeName,
         injectFilesystem: false,
         bundle: QjsRuntimeBundleBuild(
           bundleName: runtimeName,
           bundleJs: bundleJs,
+          bytecode: bytecode,
         ),
+      ),
+    );
+    unawaited(
+      PluginBytecodeCache.instance.afterLoad(
+        pluginId: runtimeName,
+        bundleName: runtimeName,
+        source: bundleJs,
+        pluginDebug: plugin.debug,
+        result: installResult,
       ),
     );
     _pluginInitDone.remove(plugin.uuid);

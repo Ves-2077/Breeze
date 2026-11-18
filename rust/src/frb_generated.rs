@@ -41,7 +41,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.13.0";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 44567216;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 1977434014;
 
 // Section: executor
 
@@ -2142,6 +2142,35 @@ fn wire__crate__api__simple__pack_folder_zip_impl(
         },
     )
 }
+fn wire__crate__api__qjs__qjs_bytecode_version_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "qjs_bytecode_version",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            deserializer.end();
+            transform_result_sse::<_, ()>((move || {
+                let output_ok = Ok::<_, ()>(crate::api::qjs::qjs_bytecode_version())?;
+                std::result::Result::Ok(output_ok)
+            })())
+        },
+    )
+}
 fn wire__crate__api__qjs__qjs_cancel_tasks_by_group_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -2211,6 +2240,47 @@ fn wire__crate__api__qjs__qjs_clear_bundle_impl(
                 transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
                     (move || async move {
                         let output_ok = crate::api::qjs::qjs_clear_bundle(api_runtime_name).await?;
+                        std::result::Result::Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__qjs__qjs_compile_bundle_bytecode_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "qjs_compile_bundle_bytecode",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_bundle_name = <String>::sse_decode(&mut deserializer);
+            let api_source = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| async move {
+                transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || async move {
+                        let output_ok = crate::api::qjs::qjs_compile_bundle_bytecode(
+                            api_bundle_name,
+                            api_source,
+                        )
+                        .await?;
                         std::result::Result::Ok(output_ok)
                     })()
                     .await,
@@ -2407,6 +2477,7 @@ fn wire__crate__api__qjs__qjs_replace_bundle_impl(
             let api_runtime_name = <String>::sse_decode(&mut deserializer);
             let api_bundle_name = <String>::sse_decode(&mut deserializer);
             let api_bundle_js = <String>::sse_decode(&mut deserializer);
+            let api_bundle_bytecode = <Option<Vec<u8>>>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
                 transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
@@ -2415,6 +2486,7 @@ fn wire__crate__api__qjs__qjs_replace_bundle_impl(
                             api_runtime_name,
                             api_bundle_name,
                             api_bundle_js,
+                            api_bundle_bytecode,
                         )
                         .await?;
                         std::result::Result::Ok(output_ok)
@@ -2422,6 +2494,38 @@ fn wire__crate__api__qjs__qjs_replace_bundle_impl(
                     .await,
                 )
             }
+        },
+    )
+}
+fn wire__crate__api__qjs__qjs_set_bytecode_app_version_impl(
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "qjs_set_bytecode_app_version",
+            port: None,
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_version = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            transform_result_sse::<_, ()>((move || {
+                let output_ok = Ok::<_, ()>({
+                    crate::api::qjs::qjs_set_bytecode_app_version(api_version);
+                })?;
+                std::result::Result::Ok(output_ok)
+            })())
         },
     )
 }
@@ -3979,6 +4083,18 @@ impl SseDecode for crate::compressed::compressed::PackInfo {
     }
 }
 
+impl SseDecode for crate::qjs::QjsBundleInstallResult {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_usedBytecode = <bool>::sse_decode(deserializer);
+        let mut var_bytecodeError = <Option<String>>::sse_decode(deserializer);
+        return crate::qjs::QjsBundleInstallResult {
+            used_bytecode: var_usedBytecode,
+            bytecode_error: var_bytecodeError,
+        };
+    }
+}
+
 impl SseDecode for crate::api::qjs::QjsCallFailure {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -4036,9 +4152,11 @@ impl SseDecode for crate::qjs::QjsRuntimeBundleBuild {
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         let mut var_bundleName = <String>::sse_decode(deserializer);
         let mut var_bundleJs = <String>::sse_decode(deserializer);
+        let mut var_bytecode = <Option<Vec<u8>>>::sse_decode(deserializer);
         return crate::qjs::QjsRuntimeBundleBuild {
             bundle_name: var_bundleName,
             bundle_js: var_bundleJs,
+            bytecode: var_bytecode,
         };
     }
 }
@@ -4087,6 +4205,13 @@ impl SseDecode for u16 {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         deserializer.cursor.read_u16::<NativeEndian>().unwrap()
+    }
+}
+
+impl SseDecode for u32 {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        deserializer.cursor.read_u32::<NativeEndian>().unwrap()
     }
 }
 
@@ -4211,73 +4336,79 @@ fn pde_ffi_dispatcher_primary_impl(
         ),
         56 => wire__crate__api__simple__pack_folder_impl(port, ptr, rust_vec_len, data_len),
         57 => wire__crate__api__simple__pack_folder_zip_impl(port, ptr, rust_vec_len, data_len),
-        58 => {
+        59 => {
             wire__crate__api__qjs__qjs_cancel_tasks_by_group_impl(port, ptr, rust_vec_len, data_len)
         }
-        59 => wire__crate__api__qjs__qjs_clear_bundle_impl(port, ptr, rust_vec_len, data_len),
-        60 => wire__crate__api__qjs__qjs_current_bundle_impl(port, ptr, rust_vec_len, data_len),
-        61 => wire__crate__api__qjs__qjs_debug_snapshot_impl(port, ptr, rust_vec_len, data_len),
-        62 => wire__crate__api__qjs__qjs_drop_runtime_impl(port, ptr, rust_vec_len, data_len),
-        63 => wire__crate__api__qjs__qjs_fetch_image_impl(port, ptr, rust_vec_len, data_len),
-        64 => wire__crate__api__qjs__qjs_replace_bundle_impl(port, ptr, rust_vec_len, data_len),
-        65 => wire__crate__api__qjs__qjs_task_call_impl(port, ptr, rust_vec_len, data_len),
-        66 => wire__crate__api__data_backup__read_data_backup_config_impl(
+        60 => wire__crate__api__qjs__qjs_clear_bundle_impl(port, ptr, rust_vec_len, data_len),
+        61 => wire__crate__api__qjs__qjs_compile_bundle_bytecode_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        68 => wire__crate__api__memory__reset_rust_memory_stats_impl(
+        62 => wire__crate__api__qjs__qjs_current_bundle_impl(port, ptr, rust_vec_len, data_len),
+        63 => wire__crate__api__qjs__qjs_debug_snapshot_impl(port, ptr, rust_vec_len, data_len),
+        64 => wire__crate__api__qjs__qjs_drop_runtime_impl(port, ptr, rust_vec_len, data_len),
+        65 => wire__crate__api__qjs__qjs_fetch_image_impl(port, ptr, rust_vec_len, data_len),
+        66 => wire__crate__api__qjs__qjs_replace_bundle_impl(port, ptr, rust_vec_len, data_len),
+        68 => wire__crate__api__qjs__qjs_task_call_impl(port, ptr, rust_vec_len, data_len),
+        69 => wire__crate__api__data_backup__read_data_backup_config_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        79 => wire__crate__api__user_utils__setup_default_user_utils_impl(
+        71 => wire__crate__api__memory__reset_rust_memory_stats_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        80 => wire__crate__api__simple__sleep_test_impl(port, ptr, rust_vec_len, data_len),
-        81 => wire__crate__api__system__start_shutdown_listener_impl(
+        82 => wire__crate__api__user_utils__setup_default_user_utils_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        82 => wire__crate__api__simple__stream_test_impl(port, ptr, rust_vec_len, data_len),
-        83 => wire__crate__api__webdav__webdav_delete_remote_files_impl(
+        83 => wire__crate__api__simple__sleep_test_impl(port, ptr, rust_vec_len, data_len),
+        84 => wire__crate__api__system__start_shutdown_listener_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        84 => {
+        85 => wire__crate__api__simple__stream_test_impl(port, ptr, rust_vec_len, data_len),
+        86 => wire__crate__api__webdav__webdav_delete_remote_files_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        87 => {
             wire__crate__api__webdav__webdav_download_file_impl(port, ptr, rust_vec_len, data_len)
         }
-        85 => {
+        88 => {
             wire__crate__api__webdav__webdav_download_text_impl(port, ptr, rust_vec_len, data_len)
         }
-        86 => wire__crate__api__webdav__webdav_ensure_remote_ready_impl(
+        89 => wire__crate__api__webdav__webdav_ensure_remote_ready_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        87 => wire__crate__api__webdav__webdav_list_remote_data_files_impl(
+        90 => wire__crate__api__webdav__webdav_list_remote_data_files_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        88 => {
+        91 => {
             wire__crate__api__webdav__webdav_test_connection_impl(port, ptr, rust_vec_len, data_len)
         }
-        89 => wire__crate__api__webdav__webdav_upload_bytes_impl(port, ptr, rust_vec_len, data_len),
-        90 => wire__crate__api__webdav__webdav_upload_text_impl(port, ptr, rust_vec_len, data_len),
-        91 => wire__crate__api__simple__zstd_compress_bytes_impl(port, ptr, rust_vec_len, data_len),
-        92 => {
+        92 => wire__crate__api__webdav__webdav_upload_bytes_impl(port, ptr, rust_vec_len, data_len),
+        93 => wire__crate__api__webdav__webdav_upload_text_impl(port, ptr, rust_vec_len, data_len),
+        94 => wire__crate__api__simple__zstd_compress_bytes_impl(port, ptr, rust_vec_len, data_len),
+        95 => {
             wire__crate__api__simple__zstd_decompress_bytes_impl(port, ptr, rust_vec_len, data_len)
         }
         _ => unreachable!(),
@@ -4320,19 +4451,21 @@ fn pde_ffi_dispatcher_sync_impl(
         52 => wire__crate__api__qjs__is_host_cache_gc_enabled_impl(ptr, rust_vec_len, data_len),
         54 => wire__crate__api__qjs__is_tls_verify_enabled_impl(ptr, rust_vec_len, data_len),
         55 => wire__crate__api__qjs__opencc_convert_impl(ptr, rust_vec_len, data_len),
-        67 => wire__crate__api__qjs__register_function_impl(ptr, rust_vec_len, data_len),
-        69 => wire__crate__api__qjs__set_allow_private_network_impl(ptr, rust_vec_len, data_len),
-        70 => wire__crate__api__qjs__set_doh_config_impl(ptr, rust_vec_len, data_len),
-        71 => wire__crate__api__qjs__set_host_cache_gc_enabled_impl(ptr, rust_vec_len, data_len),
-        72 => wire__crate__api__qjs__set_http_proxy_impl(ptr, rust_vec_len, data_len),
-        73 => wire__crate__api__qjs__set_http_requests_blocked_impl(ptr, rust_vec_len, data_len),
-        74 => wire__crate__api__qjs__set_log_http_forward_impl(ptr, rust_vec_len, data_len),
-        75 => {
+        58 => wire__crate__api__qjs__qjs_bytecode_version_impl(ptr, rust_vec_len, data_len),
+        67 => wire__crate__api__qjs__qjs_set_bytecode_app_version_impl(ptr, rust_vec_len, data_len),
+        70 => wire__crate__api__qjs__register_function_impl(ptr, rust_vec_len, data_len),
+        72 => wire__crate__api__qjs__set_allow_private_network_impl(ptr, rust_vec_len, data_len),
+        73 => wire__crate__api__qjs__set_doh_config_impl(ptr, rust_vec_len, data_len),
+        74 => wire__crate__api__qjs__set_host_cache_gc_enabled_impl(ptr, rust_vec_len, data_len),
+        75 => wire__crate__api__qjs__set_http_proxy_impl(ptr, rust_vec_len, data_len),
+        76 => wire__crate__api__qjs__set_http_requests_blocked_impl(ptr, rust_vec_len, data_len),
+        77 => wire__crate__api__qjs__set_log_http_forward_impl(ptr, rust_vec_len, data_len),
+        78 => {
             wire__crate__api__qjs__set_qjs_error_message_language_impl(ptr, rust_vec_len, data_len)
         }
-        76 => wire__crate__api__qjs__set_qjs_error_stack_enabled_impl(ptr, rust_vec_len, data_len),
-        77 => wire__crate__api__qjs__set_socks5_proxy_impl(ptr, rust_vec_len, data_len),
-        78 => wire__crate__api__qjs__set_tls_verify_enabled_impl(ptr, rust_vec_len, data_len),
+        79 => wire__crate__api__qjs__set_qjs_error_stack_enabled_impl(ptr, rust_vec_len, data_len),
+        80 => wire__crate__api__qjs__set_socks5_proxy_impl(ptr, rust_vec_len, data_len),
+        81 => wire__crate__api__qjs__set_tls_verify_enabled_impl(ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -4517,6 +4650,27 @@ impl flutter_rust_bridge::IntoIntoDart<crate::compressed::compressed::PackInfo>
     }
 }
 // Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::qjs::QjsBundleInstallResult {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.used_bytecode.into_into_dart().into_dart(),
+            self.bytecode_error.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::qjs::QjsBundleInstallResult
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::qjs::QjsBundleInstallResult>
+    for crate::qjs::QjsBundleInstallResult
+{
+    fn into_into_dart(self) -> crate::qjs::QjsBundleInstallResult {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
 impl flutter_rust_bridge::IntoDart for crate::api::qjs::QjsCallFailure {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         [
@@ -4608,6 +4762,7 @@ impl flutter_rust_bridge::IntoDart for crate::qjs::QjsRuntimeBundleBuild {
         [
             self.bundle_name.into_into_dart().into_dart(),
             self.bundle_js.into_into_dart().into_dart(),
+            self.bytecode.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -5002,6 +5157,14 @@ impl SseEncode for crate::compressed::compressed::PackInfo {
     }
 }
 
+impl SseEncode for crate::qjs::QjsBundleInstallResult {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <bool>::sse_encode(self.used_bytecode, serializer);
+        <Option<String>>::sse_encode(self.bytecode_error, serializer);
+    }
+}
+
 impl SseEncode for crate::api::qjs::QjsCallFailure {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -5041,6 +5204,7 @@ impl SseEncode for crate::qjs::QjsRuntimeBundleBuild {
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         <String>::sse_encode(self.bundle_name, serializer);
         <String>::sse_encode(self.bundle_js, serializer);
+        <Option<Vec<u8>>>::sse_encode(self.bytecode, serializer);
     }
 }
 
@@ -5078,6 +5242,13 @@ impl SseEncode for u16 {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         serializer.cursor.write_u16::<NativeEndian>(self).unwrap();
+    }
+}
+
+impl SseEncode for u32 {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        serializer.cursor.write_u32::<NativeEndian>(self).unwrap();
     }
 }
 

@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:zephyr/main.dart';
 import 'package:zephyr/network/http/plugin/qjs_call_exception.dart';
+import 'package:zephyr/plugin/plugin_bytecode_cache.dart';
 import 'package:zephyr/plugin/plugin_registry_service.dart';
 import 'package:zephyr/service/download/download_cancel_signal.dart';
 import 'package:zephyr/src/rust/api/qjs.dart';
@@ -98,14 +99,30 @@ Future<void> ensureQjsRuntimeReady({required String pluginId}) async {
   try {
     Future<void> installBundle() async {
       final bundleJs = await loadQjsBundleJs(normalizedPluginId);
-      await buildQjsRuntime(
+      final pluginDebug =
+          PluginRegistryService.I.getByUuid(normalizedPluginId)?.debug == true;
+      final bytecode = await PluginBytecodeCache.instance.load(
+        pluginId: runtimeName,
+        pluginDebug: pluginDebug,
+      );
+      final installResult = await buildQjsRuntime(
         request: QjsRuntimeBuildRequest(
           runtimeName: runtimeName,
           injectFilesystem: false,
           bundle: QjsRuntimeBundleBuild(
             bundleName: bundleName,
             bundleJs: bundleJs,
+            bytecode: bytecode,
           ),
+        ),
+      );
+      unawaited(
+        PluginBytecodeCache.instance.afterLoad(
+          pluginId: runtimeName,
+          bundleName: bundleName,
+          source: bundleJs,
+          pluginDebug: pluginDebug,
+          result: installResult,
         ),
       );
       _runtimeInitDone.remove(runtimeName);

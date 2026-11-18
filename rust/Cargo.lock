@@ -3502,7 +3502,7 @@ dependencies = [
 [[package]]
 name = "rquickjs-sys"
 version = "0.12.2"
-source = "git+https://github.com/deretame/breeze-rquickjs-sys?rev=846889c482ee7511f558595384673f55c00c9f4a#846889c482ee7511f558595384673f55c00c9f4a"
+source = "git+https://github.com/deretame/breeze-rquickjs-sys?rev=e26cb76ba763f398cd3187c8bd1b508b23af3816#e26cb76ba763f398cd3187c8bd1b508b23af3816"
 dependencies = [
  "bindgen",
  "cc",
@@ -3554,6 +3554,7 @@ dependencies = [
  "webpki-roots",
  "windows-registry",
  "writeable",
+ "xxhash-rust",
 ]
 
 [[package]]

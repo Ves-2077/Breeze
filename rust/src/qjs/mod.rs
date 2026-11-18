@@ -233,10 +233,22 @@ pub struct QjsCancelTasksByGroupResult {
     pub failed_runtime_groups: Vec<String>,
 }
 
+/// bundle 安装结果。
+///
+/// `used_bytecode=true` 表示走了预编译字节码快速路径；否则是源码加载，
+/// `bytecode_error` 记录了字节码不可用的原因（None 表示本次本来就没有字节码）。
+#[derive(Debug, Clone)]
+pub struct QjsBundleInstallResult {
+    pub used_bytecode: bool,
+    pub bytecode_error: Option<String>,
+}
+
 #[derive(Debug, Clone)]
 pub struct QjsRuntimeBundleBuild {
     pub bundle_name: String,
     pub bundle_js: String,
+    /// 可选的预编译字节码（含宿主缓存头）。校验不过或加载失败会自动回退源码。
+    pub bytecode: Option<Vec<u8>>,
 }
 
 #[derive(Debug, Clone)]
@@ -271,6 +283,7 @@ impl QjsRuntimeBuilder {
         self.bundle = Some(QjsRuntimeBundleBuild {
             bundle_name: bundle_name.into(),
             bundle_js: bundle_js.into(),
+            bytecode: None,
         });
         self
     }
@@ -280,7 +293,7 @@ impl QjsRuntimeBuilder {
         self
     }
 
-    pub async fn build(self) -> Result<()> {
+    pub async fn build(self) -> Result<QjsBundleInstallResult> {
         let runtime_name = self.runtime_name.trim().to_string();
         if runtime_name.is_empty() {
             return Err(anyhow!(rquickjs_playground::tr!(
@@ -304,13 +317,17 @@ impl QjsRuntimeBuilder {
                 &runtime_name,
                 &bundle_name,
                 &bundle.bundle_js,
+                bundle.bytecode.as_deref(),
                 self.options,
             )
             .await;
         }
 
         let _runtime = qjs_runtime_with_options(&runtime_name, self.options).await?;
-        Ok(())
+        Ok(QjsBundleInstallResult {
+            used_bytecode: false,
+            bytecode_error: None,
+        })
     }
 }
 
@@ -328,6 +345,29 @@ fn qjs_tracked_task_map() -> &'static RwLock<QjsTrackedTaskMap> {
 
 fn qjs_runtime_init_lock() -> &'static AsyncMutex<()> {
     QJS_RUNTIME_INIT_LOCK.get_or_init(|| AsyncMutex::new(()))
+}
+
+/// 字节码缓存的应用版本号。
+///
+/// 落盘字节码头里记录它：应用升级后即便引擎 `BC_VERSION` 没变，旧字节码也
+/// 一律作废（我们的 quickjs 补丁可能在版本号不变时改变生成的指令序列）。
+/// 未设置时为空串，字节码校验必然失败 → 安全地回退源码。
+static QJS_BYTECODE_APP_VERSION: LazyLock<std::sync::RwLock<String>> =
+    LazyLock::new(|| std::sync::RwLock::new(String::new()));
+
+pub fn set_bytecode_app_version(version: String) {
+    let normalized = version.trim().to_string();
+    match QJS_BYTECODE_APP_VERSION.write() {
+        Ok(mut current) => *current = normalized,
+        Err(_) => tracing::warn!("[qjs-bytecode] 应用版本锁已损坏，忽略写入"),
+    }
+}
+
+fn bytecode_app_version() -> String {
+    QJS_BYTECODE_APP_VERSION
+        .read()
+        .map(|value| value.clone())
+        .unwrap_or_default()
 }
 
 fn host_cache_store_cell() -> &'static DashMap<String, HostCacheEntry> {
@@ -810,8 +850,9 @@ async fn create_qjs_runtime_with_bundle_and_options(
     runtime_name: &str,
     bundle_name: &str,
     bundle_js: &str,
+    bundle_bytecode: Option<&[u8]>,
     options: WebRuntimeOptions,
-) -> Result<()> {
+) -> Result<QjsBundleInstallResult> {
     if runtime_name.trim().is_empty() {
         return Err(anyhow!(rquickjs_playground::tr!(
             "runtime_name-cannot-be-empty"
@@ -834,7 +875,9 @@ async fn create_qjs_runtime_with_bundle_and_options(
         let map = qjs_runtime_map().read().await;
         if let Some(existing_runtime) = map.get(runtime_name) {
             ensure_runtime_options(runtime_name, existing_runtime, options)?;
-            replace_bundle_inner(existing_runtime, bundle_name, bundle_js).await?;
+            let install_result =
+                replace_bundle_inner(existing_runtime, bundle_name, bundle_js, bundle_bytecode)
+                    .await?;
             tracing::info!(
                 "{}",
                 rquickjs_playground::tr!(
@@ -843,12 +886,13 @@ async fn create_qjs_runtime_with_bundle_and_options(
                     bundle_name = bundle_name
                 )
             );
-            return Ok(());
+            return Ok(install_result);
         }
     }
 
     let new_runtime = Arc::new(create_qjs_runtime_with_options(runtime_name, options).await?);
-    load_bundle_inner(&new_runtime, bundle_name, bundle_js).await?;
+    let install_result =
+        install_bundle(&new_runtime, bundle_name, bundle_js, bundle_bytecode).await?;
 
     let mut map = qjs_runtime_map().write().await;
     map.insert(runtime_name.to_owned(), new_runtime);
@@ -862,7 +906,7 @@ async fn create_qjs_runtime_with_bundle_and_options(
             arg2 = options.fs
         )
     );
-    Ok(())
+    Ok(install_result)
 }
 
 fn parse_args_array(args_json: &str) -> Result<Value> {
@@ -963,11 +1007,57 @@ async fn load_bundle_inner(runtime: &AsyncHostRuntime, name: &str, bundle_js: &s
     })
 }
 
+/// 安装 bundle：优先字节码快速路径，任何失败都回退到源码加载。
+///
+/// 回退不是错误路径的兜底而是预期行为（缓存过期/损坏/引擎升级），所以只在
+/// `bytecode_error` 里回报原因，由 Dart 侧删除旧缓存并后台重编译。
+async fn install_bundle(
+    runtime: &AsyncHostRuntime,
+    name: &str,
+    bundle_js: &str,
+    bundle_bytecode: Option<&[u8]>,
+) -> Result<QjsBundleInstallResult> {
+    if let Some(bytecode) = bundle_bytecode {
+        let app_version = bytecode_app_version();
+        match rquickjs_playground::bytecode::load_bundle(
+            runtime,
+            name,
+            bundle_js,
+            &app_version,
+            bytecode,
+        )
+        .await
+        {
+            Ok(()) => {
+                return Ok(QjsBundleInstallResult {
+                    used_bytecode: true,
+                    bytecode_error: None,
+                });
+            }
+            Err(err) => {
+                tracing::warn!("[qjs-bytecode] {name}: {err}");
+                load_bundle_inner(runtime, name, bundle_js).await?;
+                return Ok(QjsBundleInstallResult {
+                    used_bytecode: false,
+                    bytecode_error: Some(err),
+                });
+            }
+        }
+    }
+
+    load_bundle_inner(runtime, name, bundle_js).await?;
+    Ok(QjsBundleInstallResult {
+        used_bytecode: false,
+        bytecode_error: None,
+    })
+}
+
 async fn replace_bundle_inner(
     runtime: &AsyncHostRuntime,
     name: &str,
     bundle_js: &str,
-) -> Result<()> {
+    bundle_bytecode: Option<&[u8]>,
+) -> Result<QjsBundleInstallResult> {
     let names = runtime.bundle_list().await.map_err(|err| {
         anyhow!(rquickjs_playground::tr!(
             "failed-to-read-bundle-list-2",
@@ -985,7 +1075,7 @@ async fn replace_bundle_inner(
         })?;
     }
 
-    load_bundle_inner(runtime, name, bundle_js).await
+    install_bundle(runtime, name, bundle_js, bundle_bytecode).await
 }
 
 async fn call_loaded_bundle_start(
@@ -1273,9 +1363,32 @@ pub async fn qjs_replace_bundle(
     runtime_name: String,
     bundle_name: String,
     bundle_js: String,
-) -> Result<()> {
+    bundle_bytecode: Option<Vec<u8>>,
+) -> Result<QjsBundleInstallResult> {
     let runtime = qjs_runtime(&runtime_name).await?;
-    replace_bundle_inner(&runtime, &bundle_name, &bundle_js).await
+    replace_bundle_inner(
+        &runtime,
+        &bundle_name,
+        &bundle_js,
+        bundle_bytecode.as_deref(),
+    )
+    .await
+}
+
+/// 把插件源码编译成可落盘字节码（不执行源码）。
+///
+/// 返回的 blob 自带缓存头（引擎版本 / 应用版本 / 源码指纹），加载时由
+/// `rquickjs_playground::bytecode::validate` 校验。
+pub async fn qjs_compile_bundle_bytecode(bundle_name: String, source: String) -> Result<Vec<u8>> {
+    if source.trim().is_empty() {
+        return Err(anyhow!(rquickjs_playground::tr!(
+            "bundle_js-cannot-be-empty"
+        )));
+    }
+    let app_version = bytecode_app_version();
+    rquickjs_playground::bytecode::compile_bundle(&bundle_name, &source, &app_version)
+        .await
+        .map_err(anyhow::Error::msg)
 }
 
 /// 统一执行入口:调用插件 bundle 里的函数,返回原始字节。
@@ -1690,7 +1803,7 @@ pub async fn is_qjs_runtime_initialized(name: String) -> Result<bool> {
     Ok(map.contains_key(&name))
 }
 
-pub async fn build_qjs_runtime(request: QjsRuntimeBuildRequest) -> Result<()> {
+pub async fn build_qjs_runtime(request: QjsRuntimeBuildRequest) -> Result<QjsBundleInstallResult> {
     let mut builder =
         QjsRuntimeBuilder::new(request.runtime_name).filesystem(request.inject_filesystem);
 

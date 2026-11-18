@@ -1,7 +1,7 @@
 use anyhow::Result;
 use flutter_rust_bridge::{DartFnFuture, frb};
 
-pub use crate::qjs::{QjsCancelTasksByGroupResult, QjsRuntimeBuildRequest};
+pub use crate::qjs::{QjsBundleInstallResult, QjsCancelTasksByGroupResult, QjsRuntimeBuildRequest};
 
 /// 插件调用结果：`source` 由宿主写入（本次调用的插件 id），
 /// `bytes` 是插件返回值原文，宿主不再信任插件返回里的 source 字段。
@@ -26,8 +26,29 @@ pub async fn qjs_replace_bundle(
     runtime_name: String,
     bundle_name: String,
     bundle_js: String,
-) -> Result<()> {
-    crate::qjs::qjs_replace_bundle(runtime_name, bundle_name, bundle_js).await
+    bundle_bytecode: Option<Vec<u8>>,
+) -> Result<QjsBundleInstallResult> {
+    crate::qjs::qjs_replace_bundle(runtime_name, bundle_name, bundle_js, bundle_bytecode).await
+}
+
+/// 当前引擎的字节码格式版本（quickjs `BC_VERSION`）。
+///
+/// 用于给落盘字节码命名：版本变化时旧缓存自然不再命中，也便于清理。
+#[frb(sync)]
+pub fn qjs_bytecode_version() -> u32 {
+    rquickjs_playground::bytecode::engine_bytecode_version()
+}
+
+/// 设置字节码缓存使用的应用版本号（应用升级后旧字节码作废）。
+#[frb(sync)]
+pub fn qjs_set_bytecode_app_version(version: String) {
+    crate::qjs::set_bytecode_app_version(version);
+}
+
+/// 把插件源码编译成可落盘字节码（不执行）。失败时返回错误，调用方按源码运行。
+#[frb]
+pub async fn qjs_compile_bundle_bytecode(bundle_name: String, source: String) -> Result<Vec<u8>> {
+    crate::qjs::qjs_compile_bundle_bytecode(bundle_name, source).await
 }
 
 /// 统一执行入口:调用插件 bundle 里的函数,返回原始字节。
@@ -221,7 +242,7 @@ pub async fn is_qjs_runtime_initialized(name: String) -> Result<bool> {
 }
 
 #[frb]
-pub async fn build_qjs_runtime(request: QjsRuntimeBuildRequest) -> Result<()> {
+pub async fn build_qjs_runtime(request: QjsRuntimeBuildRequest) -> Result<QjsBundleInstallResult> {
     crate::qjs::build_qjs_runtime(request).await
 }
 
