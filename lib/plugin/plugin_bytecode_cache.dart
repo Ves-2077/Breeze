@@ -172,15 +172,16 @@ class PluginBytecodeCache {
     if (existing != null) {
       return existing;
     }
-    final future = _compileAndStore(
-      pluginId: pluginId,
-      bundleName: bundleName,
-      source: source,
-    ).whenComplete(() {
-      // 注意：这里必须用块体。箭头函数会返回 `Map.remove` 的结果（正是当前
-      // future 自身），whenComplete 会去 await 它，导致永远不完成。
-      _inFlight.remove(pluginId);
-    });
+    final future =
+        _compileAndStore(
+          pluginId: pluginId,
+          bundleName: bundleName,
+          source: source,
+        ).whenComplete(() {
+          // 注意：这里必须用块体。箭头函数会返回 `Map.remove` 的结果（正是当前
+          // future 自身），whenComplete 会去 await 它，导致永远不完成。
+          _inFlight.remove(pluginId);
+        });
     _inFlight[pluginId] = future;
     return future;
   }

@@ -249,9 +249,7 @@ _MenuMetrics _measureMenu<T>(
       )..layout(maxWidth: textWidth);
       textHeight = painter.height;
     }
-    itemHeights.add(
-      math.max(_kMinTextHeight, textHeight) + _kItemVPadding * 2,
-    );
+    itemHeights.add(math.max(_kMinTextHeight, textHeight) + _kItemVPadding * 2);
   }
 
   var selectedIndex = -1;
@@ -1167,10 +1165,8 @@ class _FluentDropdownState<T> extends State<FluentDropdown<T>>
           mouseCursor: _enabled
               ? SystemMouseCursors.click
               : SystemMouseCursors.basic,
-          onShowHoverHighlight: (value) =>
-              setState(() => _isHovered = value),
-          onShowFocusHighlight: (value) =>
-              setState(() => _isFocused = value),
+          onShowHoverHighlight: (value) => setState(() => _isHovered = value),
+          onShowFocusHighlight: (value) => setState(() => _isFocused = value),
           actions: {
             ActivateIntent: CallbackAction<ActivateIntent>(
               onInvoke: (intent) {
@@ -1209,7 +1205,9 @@ class _FluentDropdownState<T> extends State<FluentDropdown<T>>
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: textStyle?.copyWith(
-                        color: textColor.withValues(alpha: _enabled ? 0.9 : 0.38),
+                        color: textColor.withValues(
+                          alpha: _enabled ? 0.9 : 0.38,
+                        ),
                       ),
                     ),
                   ),
@@ -1220,9 +1218,7 @@ class _FluentDropdownState<T> extends State<FluentDropdown<T>>
                     child: Icon(
                       Icons.keyboard_arrow_down,
                       size: 18,
-                      color: textColor.withValues(
-                        alpha: _enabled ? 0.5 : 0.3,
-                      ),
+                      color: textColor.withValues(alpha: _enabled ? 0.5 : 0.3),
                     ),
                   ),
                 ],
