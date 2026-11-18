@@ -62,7 +62,10 @@ class _PluginDetailPageState extends State<PluginDetailPage> {
         core: const <String, dynamic>{},
         extern: const <String, dynamic>{},
       );
-      final detail = PluginDetail.fromMap(response);
+      final detail = PluginDetail.fromMap(
+        response.data,
+        source: response.source,
+      );
       if (!mounted) return;
       setState(() {
         _detail = detail;

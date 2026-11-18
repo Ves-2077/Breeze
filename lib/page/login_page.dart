@@ -119,7 +119,10 @@ class _LoginPageState extends State<LoginPage> {
         core: const <String, dynamic>{},
         extern: const <String, dynamic>{},
       );
-      final envelope = UnifiedPluginEnvelope.fromMap(response);
+      final envelope = UnifiedPluginEnvelope.fromMap(
+        response.data,
+        source: response.source,
+      );
       _applyLoginBundle(envelope.scheme, envelope.data);
     } catch (e) {
       logger.e(e);
@@ -250,7 +253,8 @@ class _LoginPageState extends State<LoginPage> {
         core: const <String, dynamic>{},
         extern: const <String, dynamic>{},
       );
-      final raw = (result['imageBase64'] ?? result['image'] ?? '').toString();
+      final raw = (result.data['imageBase64'] ?? result.data['image'] ?? '')
+          .toString();
       final bytes = base64Decode(raw.replaceAll(RegExp(r'\s'), ''));
       if (bytes.isEmpty) throw StateError('empty captcha image');
       if (!mounted) return;
@@ -397,7 +401,7 @@ class _LoginPageState extends State<LoginPage> {
         core: {...values, 'values': values},
         extern: const <String, dynamic>{},
       );
-      showSuccessToast(_resolveLoginSuccessMessage(result));
+      showSuccessToast(_resolveLoginSuccessMessage(result.data));
 
       if (!mounted) return;
       context.maybePop();

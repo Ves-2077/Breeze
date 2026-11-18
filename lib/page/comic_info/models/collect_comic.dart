@@ -429,7 +429,7 @@ Future<FavoriteWorkflowExecutionResult> _runFavoriteWorkflow({
   );
 
   for (var step = 0; step < 16; step++) {
-    final result = FavoriteWorkflowResult.fromJson(response);
+    final result = FavoriteWorkflowResult.fromJson(response.data);
     switch (result.status) {
       case FavoriteWorkflowStatus.completed:
         return _toExecutionResult(result);
@@ -494,12 +494,13 @@ Future<FavoriteWorkflowExecutionResult> _runLegacyFavoriteWorkflow({
   required FavoriteWorkflowAction action,
   required bool currentStatus,
 }) async {
-  final data = await callUnifiedComicPlugin(
+  final result = await callUnifiedComicPlugin(
     pluginId: pluginId,
     fnPath: 'toggleFavorite',
     core: {'comicId': comicId, 'currentFavorite': currentStatus},
     extern: const <String, dynamic>{},
   );
+  final data = result.data;
   final favorited = data['favorited'];
   if (favorited is! bool) {
     throw StateError(t.comicInfo.pluginInvalidFavorited);
@@ -964,12 +965,13 @@ Future<bool> toggleCloudComicLike({
   required String comicId,
   required bool currentStatus,
 }) async {
-  final data = await callUnifiedComicPlugin(
+  final result = await callUnifiedComicPlugin(
     from: from,
     fnPath: 'toggleLike',
     core: {'comicId': comicId, 'currentLiked': currentStatus},
     extern: const <String, dynamic>{},
   );
+  final data = result.data;
   if (data['liked'] is! bool) {
     throw StateError(t.comicInfo.pluginInvalidLiked);
   }
@@ -977,12 +979,13 @@ Future<bool> toggleCloudComicLike({
 }
 
 Future<List<_FavoriteFolder>> _listCloudFavoriteFolders(String from) async {
-  final data = await callUnifiedComicPlugin(
+  final result = await callUnifiedComicPlugin(
     from: from,
     fnPath: 'listFavoriteFolders',
     core: const <String, dynamic>{},
     extern: const <String, dynamic>{},
   );
+  final data = result.data;
   final items = data['items'];
   if (items is! List) {
     return const <_FavoriteFolder>[];

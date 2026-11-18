@@ -1,11 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
 
-import 'package:cbor/simple.dart' as cbor;
-import 'package:worker_manager/worker_manager.dart';
+import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:zephyr/main.dart';
-import 'package:zephyr/network/http/plugin/qjs_fetch_image_result.dart';
+import 'package:zephyr/network/http/plugin/qjs_call_exception.dart';
 import 'package:zephyr/plugin/plugin_registry_service.dart';
 import 'package:zephyr/service/download/download_cancel_signal.dart';
 import 'package:zephyr/src/rust/api/qjs.dart';
@@ -15,6 +13,43 @@ import 'package:zephyr/type/pipe.dart';
 
 final Map<String, Set<String>> _trackedRuntimesByGroup = {};
 final Set<String> _runtimeInitDone = <String>{};
+
+String _rawQjsErrorText(Object error) {
+  if (error is QjsCallFailure) {
+    return error.message;
+  }
+  if (error is AnyhowException) {
+    return error.message;
+  }
+  return error.toString();
+}
+
+Future<T> _guardQjsCall<T>(
+  Future<T> future, {
+  required String fallbackSource,
+}) async {
+  try {
+    return await future;
+  } on DownloadTaskCancelledException {
+    rethrow;
+  } catch (error) {
+    if (error is QjsCallException) {
+      rethrow;
+    }
+    if (error is QjsCallFailure) {
+      throw QjsCallException(
+        source: error.source,
+        message: error.message,
+        cause: error,
+      );
+    }
+    throw QjsCallException(
+      source: fallbackSource,
+      message: _rawQjsErrorText(error),
+      cause: error,
+    );
+  }
+}
 
 String runtimeNameForPluginId(String pluginIdOrLegacy) {
   return normalizePluginId(pluginIdOrLegacy);
@@ -94,24 +129,34 @@ Future<void> ensureQjsRuntimeReady({required String pluginId}) async {
         await installBundle();
       }
     }
-    await _runRuntimeInitIfNeeded(runtimeName);
+    await _runRuntimeInitIfNeeded(
+      pluginId: normalizedPluginId,
+      runtimeName: runtimeName,
+    );
   } catch (e) {
     logger.w('初始化 QJS 失败: $runtimeName', error: e);
     rethrow;
   }
 }
 
-Future<void> _runRuntimeInitIfNeeded(String runtimeName) async {
+Future<void> _runRuntimeInitIfNeeded({
+  required String pluginId,
+  required String runtimeName,
+}) async {
   if (_runtimeInitDone.contains(runtimeName)) {
     return;
   }
   try {
-    await qjsTaskCall(
-      runtimeName: runtimeName,
-      taskGroupKey: '',
-      isOnce: false,
-      fnPath: 'init',
-      argsJson: '{}',
+    await _guardQjsCall(
+      qjsTaskCall(
+        runtimeName: runtimeName,
+        source: pluginId,
+        taskGroupKey: '',
+        isOnce: false,
+        fnPath: 'init',
+        argsJson: '{}',
+      ),
+      fallbackSource: pluginId,
     );
     _runtimeInitDone.add(runtimeName);
   } catch (e) {
@@ -128,7 +173,7 @@ Future<void> _runRuntimeInitIfNeeded(String runtimeName) async {
 ///
 /// 内部按需走常驻 bundle(非 once)或一次性 debug 池(once,`bundleUrl`/`bundleJs` 二选一),
 /// 并维护取消用的 runtime 跟踪。
-Future<T> _runQjsTask<T>({
+Future<T> runQjsTask<T>({
   required String pluginId,
   required String fnPath,
   required String argsJson,
@@ -136,6 +181,7 @@ Future<T> _runQjsTask<T>({
   String? taskGroupKey,
   required Future<T> Function({
     required String runtimeName,
+    required String source,
     required String taskGroupKey,
     required bool isOnce,
     String? bundleJs,
@@ -180,12 +226,17 @@ Future<T> _runQjsTask<T>({
   // QJS 结果通过 FRB 返回，避免 Dart 与 Rust 共享堆内存。
   final waitFuture = call(
     runtimeName: resolvedRuntimeName,
+    source: resolvedPluginId,
     taskGroupKey: taskGroupKey ?? '',
     isOnce: useCallOnce,
     bundleJs: bundleJs,
     bundleUrl: debugBundleUrl,
     fnPath: resolvedFnPath,
     argsJson: argsJson,
+  );
+  final guardedFuture = _guardQjsCall(
+    waitFuture,
+    fallbackSource: resolvedPluginId,
   );
 
   var didUntrack = false;
@@ -216,68 +267,25 @@ Future<T> _runQjsTask<T>({
   // unawaited_return_in_try_block）。untrack 已由上面的 whenComplete 在
   // future 完成时统一处理；空 taskGroupKey 时 untrackOnce 本身也是 no-op。
   return taskGroupKey != null && taskGroupKey.isNotEmpty
-      ? raceWithDownloadCancel(taskGroupKey, waitFuture)
-      : waitFuture;
+      ? raceWithDownloadCancel(taskGroupKey, guardedFuture)
+      : guardedFuture;
 }
 
-/// 调用插件函数,返回 JSON 字符串。
-Future<String> executeQjsCall({
+/// 调用插件函数，返回 Rust 侧写入 source 的原始字节结果。
+Future<QjsCallResult> executeQjsCall({
   required String pluginId,
   required String fnPath,
   required String argsJson,
   String? runtimeName,
   String? taskGroupKey,
-}) async {
-  final bytes = await _runQjsTask<Uint8List>(
+}) {
+  return runQjsTask<QjsCallResult>(
     pluginId: pluginId,
     fnPath: fnPath,
     argsJson: argsJson,
     runtimeName: runtimeName,
     taskGroupKey: taskGroupKey,
     call: qjsTaskCall,
-  );
-  return utf8.decode(bytes, allowMalformed: true);
-}
-
-/// 调用插件函数,返回原始字节(如图片)。
-Future<Uint8List> executeQjsFetchImageBytes({
-  required String pluginId,
-  required String fnPath,
-  required String argsJson,
-  String? runtimeName,
-  String? taskGroupKey,
-}) => _runQjsTask<Uint8List>(
-  pluginId: pluginId,
-  fnPath: fnPath,
-  argsJson: argsJson,
-  runtimeName: runtimeName,
-  taskGroupKey: taskGroupKey,
-  call: qjsTaskCall,
-);
-
-QjsFetchImageHttpResult _decodeQjsFetchImageResult(Uint8List encoded) {
-  return QjsFetchImageHttpResult.fromCbor(cbor.cbor.decode(encoded));
-}
-
-/// 调用插件图片函数，并解码 Rust reqwest 返回的 CBOR 结果信息。
-Future<QjsFetchImageHttpResult> executeQjsFetchImageResult({
-  required String pluginId,
-  required String fnPath,
-  required String argsJson,
-  String? runtimeName,
-  String? taskGroupKey,
-}) async {
-  final encoded = await _runQjsTask<Uint8List>(
-    pluginId: pluginId,
-    fnPath: fnPath,
-    argsJson: argsJson,
-    runtimeName: runtimeName,
-    taskGroupKey: taskGroupKey,
-    call: qjsFetchImage,
-  );
-  // 大图 CBOR 解码会阻塞 UI isolate（Sentry ANR: _readBytes），放到 worker 池。
-  return workerManager.execute<QjsFetchImageHttpResult>(
-    () => _decodeQjsFetchImageResult(encoded),
   );
 }
 

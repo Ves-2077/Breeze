@@ -84,7 +84,7 @@ class ComicListCubit extends Cubit<ComicListState> {
           ? sceneBundleFnPath!.trim()
           : 'getComicListSceneBundle';
 
-      Map<String, dynamic> response;
+      UnifiedPluginResult response;
       try {
         response = await callUnifiedComicPlugin(
           from: from,
@@ -106,10 +106,14 @@ class ComicListCubit extends Cubit<ComicListState> {
         );
       }
 
-      final envelope = UnifiedPluginEnvelope.fromMap(response);
+      final envelope = UnifiedPluginEnvelope.fromMap(
+        response.data,
+        source: response.source,
+      );
       final sceneMap = asJsonMap(envelope.data['scene']);
       final loadedScene = ComicListScene.fromMap(
         sceneMap.isNotEmpty ? sceneMap : envelope.data,
+        source: envelope.source,
       );
 
       if (isClosed) {
@@ -193,7 +197,10 @@ class ComicListCubit extends Cubit<ComicListState> {
         extern: filterRequest.extern,
         suppressNeedLoginEvent: suppressNeedLoginEvent,
       );
-      final envelope = UnifiedPluginEnvelope.fromMap(response);
+      final envelope = UnifiedPluginEnvelope.fromMap(
+        response.data,
+        source: response.source,
+      );
       final bundle = _parseFilterBundle(envelope);
 
       if (isClosed) {

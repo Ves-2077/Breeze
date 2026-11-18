@@ -941,7 +941,10 @@ class _ComicInfoState extends State<_ComicInfo>
           return item.toJson();
         })
         .where((json) => json.isNotEmpty)
-        .map(UnifiedComicListItem.fromJson)
+        .map(
+          (json) =>
+              UnifiedComicListItem.fromJson(json).copyWith(source: widget.from),
+        )
         .toList();
   }
 

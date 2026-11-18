@@ -201,12 +201,13 @@ class _SliderCaptchaDialogState extends State<SliderCaptchaDialog> {
       if (widget.createChallenge != null) {
         result = await widget.createChallenge!();
       } else {
-        result = await callUnifiedComicPlugin(
+        final response = await callUnifiedComicPlugin(
           from: widget.from,
           fnPath: widget.createFnPath,
           core: {...widget.values, 'values': widget.values},
           extern: const <String, dynamic>{},
         );
+        result = response.data;
       }
       if (!mounted) return;
       setState(() {
@@ -332,7 +333,7 @@ class _SliderCaptchaDialogState extends State<SliderCaptchaDialog> {
           },
           extern: const <String, dynamic>{},
         );
-        pass = result['pass']?.toString().trim() ?? '';
+        pass = result.data['pass']?.toString().trim() ?? '';
       }
       if (pass.trim().isEmpty) throw StateError(t.login.sliderFailed);
       if (!mounted) return;

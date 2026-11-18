@@ -323,7 +323,10 @@ class PluginHomeCubit extends Cubit<PluginHomeState> {
       // 登录错误由本页错误态出登录/刷新按钮，不走全局跳转。
       suppressNeedLoginEvent: true,
     );
-    final envelope = UnifiedPluginEnvelope.fromMap(response);
+    final envelope = UnifiedPluginEnvelope.fromMap(
+      response.data,
+      source: response.source,
+    );
     final data = asJsonMap(envelope.data);
     if (data.isEmpty && envelope.scheme.isEmpty) {
       throw StateError('插件返回格式错误');
@@ -331,7 +334,7 @@ class PluginHomeCubit extends Cubit<PluginHomeState> {
     return PluginHomeBundle.fromResponse({
       'data': envelope.data,
       'scheme': envelope.scheme,
-    }, pluginId);
+    }, response.source.isNotEmpty ? response.source : pluginId);
   }
 
   bool _sameList(List<String> a, List<String> b) {

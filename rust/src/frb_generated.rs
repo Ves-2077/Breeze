@@ -2315,6 +2315,7 @@ fn wire__crate__api__qjs__qjs_fetch_image_impl(
             let mut deserializer =
                 flutter_rust_bridge::for_generated::SseDeserializer::new(message);
             let api_runtime_name = <String>::sse_decode(&mut deserializer);
+            let api_source = <String>::sse_decode(&mut deserializer);
             let api_task_group_key = <String>::sse_decode(&mut deserializer);
             let api_is_once = <bool>::sse_decode(&mut deserializer);
             let api_bundle_js = <Option<String>>::sse_decode(&mut deserializer);
@@ -2323,10 +2324,11 @@ fn wire__crate__api__qjs__qjs_fetch_image_impl(
             let api_args_json = <String>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                transform_result_sse::<_, crate::api::qjs::QjsCallFailure>(
                     (move || async move {
                         let output_ok = crate::api::qjs::qjs_fetch_image(
                             api_runtime_name,
+                            api_source,
                             api_task_group_key,
                             api_is_once,
                             api_bundle_js,
@@ -2409,6 +2411,7 @@ fn wire__crate__api__qjs__qjs_task_call_impl(
             let mut deserializer =
                 flutter_rust_bridge::for_generated::SseDeserializer::new(message);
             let api_runtime_name = <String>::sse_decode(&mut deserializer);
+            let api_source = <String>::sse_decode(&mut deserializer);
             let api_task_group_key = <String>::sse_decode(&mut deserializer);
             let api_is_once = <bool>::sse_decode(&mut deserializer);
             let api_bundle_js = <Option<String>>::sse_decode(&mut deserializer);
@@ -2417,10 +2420,11 @@ fn wire__crate__api__qjs__qjs_task_call_impl(
             let api_args_json = <String>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| async move {
-                transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                transform_result_sse::<_, crate::api::qjs::QjsCallFailure>(
                     (move || async move {
                         let output_ok = crate::api::qjs::qjs_task_call(
                             api_runtime_name,
+                            api_source,
                             api_task_group_key,
                             api_is_once,
                             api_bundle_js,
@@ -3938,6 +3942,30 @@ impl SseDecode for crate::compressed::compressed::PackInfo {
     }
 }
 
+impl SseDecode for crate::api::qjs::QjsCallFailure {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_source = <String>::sse_decode(deserializer);
+        let mut var_message = <String>::sse_decode(deserializer);
+        return crate::api::qjs::QjsCallFailure {
+            source: var_source,
+            message: var_message,
+        };
+    }
+}
+
+impl SseDecode for crate::api::qjs::QjsCallResult {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_source = <String>::sse_decode(deserializer);
+        let mut var_bytes = <Vec<u8>>::sse_decode(deserializer);
+        return crate::api::qjs::QjsCallResult {
+            source: var_source,
+            bytes: var_bytes,
+        };
+    }
+}
+
 impl SseDecode for crate::qjs::QjsCancelTasksByGroupResult {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -4446,6 +4474,48 @@ impl flutter_rust_bridge::IntoIntoDart<crate::compressed::compressed::PackInfo>
     }
 }
 // Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::qjs::QjsCallFailure {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.source.into_into_dart().into_dart(),
+            self.message.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api::qjs::QjsCallFailure
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::qjs::QjsCallFailure>
+    for crate::api::qjs::QjsCallFailure
+{
+    fn into_into_dart(self) -> crate::api::qjs::QjsCallFailure {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::qjs::QjsCallResult {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.source.into_into_dart().into_dart(),
+            self.bytes.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api::qjs::QjsCallResult
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::qjs::QjsCallResult>
+    for crate::api::qjs::QjsCallResult
+{
+    fn into_into_dart(self) -> crate::api::qjs::QjsCallResult {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
 impl flutter_rust_bridge::IntoDart for crate::qjs::QjsCancelTasksByGroupResult {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         [
@@ -4886,6 +4956,22 @@ impl SseEncode for crate::compressed::compressed::PackInfo {
         <String>::sse_encode(self.processed_comic_info_string, serializer);
         <Vec<String>>::sse_encode(self.original_image_paths, serializer);
         <Vec<String>>::sse_encode(self.pack_image_paths, serializer);
+    }
+}
+
+impl SseEncode for crate::api::qjs::QjsCallFailure {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <String>::sse_encode(self.source, serializer);
+        <String>::sse_encode(self.message, serializer);
+    }
+}
+
+impl SseEncode for crate::api::qjs::QjsCallResult {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <String>::sse_encode(self.source, serializer);
+        <Vec<u8>>::sse_encode(self.bytes, serializer);
     }
 }
 

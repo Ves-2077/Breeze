@@ -44,7 +44,10 @@ class _PluginSettingSchemeSectionState
       core: const <String, dynamic>{},
       extern: const <String, dynamic>{},
     );
-    return UnifiedPluginEnvelope.fromMap(response);
+    return UnifiedPluginEnvelope.fromMap(
+      response.data,
+      source: response.source,
+    );
   }
 
   @override
@@ -191,7 +194,10 @@ class _PluginAdvancedActionSectionState
       core: const <String, dynamic>{},
       extern: const <String, dynamic>{},
     );
-    return UnifiedPluginEnvelope.fromMap(response);
+    return UnifiedPluginEnvelope.fromMap(
+      response.data,
+      source: response.source,
+    );
   }
 
   @override

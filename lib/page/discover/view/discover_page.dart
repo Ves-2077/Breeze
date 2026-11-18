@@ -133,7 +133,7 @@ class _DiscoverView extends StatelessWidget {
         onRetry: () => cubit.retryLoadInfo(plugin.uuid),
         onAction: (action) => DiscoverRouter.route(
           context,
-          action: DiscoverRouter.attachSource(action, plugin.uuid),
+          action: action,
           currentFrom: cubit.currentFrom,
         ),
       ),

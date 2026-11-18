@@ -250,7 +250,7 @@ class _PluginHomeScaffoldState extends State<PluginHomeScaffold>
           icon: Icon(_iconForAction(action)),
           onPressed: () => DiscoverRouter.route(
             context,
-            action: DiscoverRouter.attachSource(action, state.pluginId),
+            action: action,
             currentFrom: state.pluginId,
           ),
         ),

@@ -179,7 +179,10 @@ class CommentsCubit extends Cubit<CommentsViewState> {
         core: core,
         extern: extern,
       );
-      final envelope = UnifiedPluginEnvelope.fromMap(response);
+      final envelope = UnifiedPluginEnvelope.fromMap(
+        response.data,
+        source: response.source,
+      );
       final data = envelope.data;
 
       final needsRefetch =
@@ -285,7 +288,10 @@ class CommentsCubit extends Cubit<CommentsViewState> {
         core: {'comicId': comicId, 'commentId': item.id, 'page': page},
         extern: item.extern,
       );
-      final envelope = UnifiedPluginEnvelope.fromMap(response);
+      final envelope = UnifiedPluginEnvelope.fromMap(
+        response.data,
+        source: response.source,
+      );
       final data = envelope.data;
       final items = asJsonList(data['items'])
           .map(asJsonMap)
@@ -331,7 +337,10 @@ class CommentsCubit extends Cubit<CommentsViewState> {
       core: {'comicId': comicId, 'page': page},
       extern: const <String, dynamic>{},
     );
-    final envelope = UnifiedPluginEnvelope.fromMap(response);
+    final envelope = UnifiedPluginEnvelope.fromMap(
+      response.data,
+      source: response.source,
+    );
     final data = envelope.data;
     final topItems = asJsonList(data['topItems'])
         .map(asJsonMap)

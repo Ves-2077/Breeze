@@ -423,7 +423,7 @@ class _PluginSettingsPageViewState extends State<_PluginSettingsPageView> {
         core: {'cookie': cookie, 'url': url},
         extern: const <String, dynamic>{},
       );
-      final message = result['message']?.toString().trim();
+      final message = result.data['message']?.toString().trim();
       showSuccessToast(
         message?.isNotEmpty == true ? message! : t.plugin.cookieSynced,
       );
@@ -719,10 +719,10 @@ class _PluginSettingsPageViewState extends State<_PluginSettingsPageView> {
         core: const <String, dynamic>{},
         extern: const <String, dynamic>{},
       );
-      final startedWebLogin = await _maybeHandleWebLoginResult(result);
+      final startedWebLogin = await _maybeHandleWebLoginResult(result.data);
       if (!startedWebLogin) {
         final message =
-            result['message']?.toString() ?? t.plugin.executeSuccess;
+            result.data['message']?.toString() ?? t.plugin.executeSuccess;
         showSuccessToast(message);
       }
       if (!mounted) return;
@@ -749,7 +749,7 @@ class _PluginSettingsPageViewState extends State<_PluginSettingsPageView> {
           core: {'key': key, 'value': value},
           extern: const <String, dynamic>{},
         );
-        startedWebLogin = await _maybeHandleWebLoginResult(result);
+        startedWebLogin = await _maybeHandleWebLoginResult(result.data);
       }
 
       if (persist && key.isNotEmpty) {

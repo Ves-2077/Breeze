@@ -216,6 +216,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   PackInfo dco_decode_pack_info(dynamic raw);
 
   @protected
+  QjsCallFailure dco_decode_qjs_call_failure(dynamic raw);
+
+  @protected
+  QjsCallResult dco_decode_qjs_call_result(dynamic raw);
+
+  @protected
   QjsCancelTasksByGroupResult dco_decode_qjs_cancel_tasks_by_group_result(
     dynamic raw,
   );
@@ -431,6 +437,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   PackInfo sse_decode_pack_info(SseDeserializer deserializer);
+
+  @protected
+  QjsCallFailure sse_decode_qjs_call_failure(SseDeserializer deserializer);
+
+  @protected
+  QjsCallResult sse_decode_qjs_call_result(SseDeserializer deserializer);
 
   @protected
   QjsCancelTasksByGroupResult sse_decode_qjs_cancel_tasks_by_group_result(
@@ -699,6 +711,15 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_pack_info(PackInfo self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_qjs_call_failure(
+    QjsCallFailure self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_qjs_call_result(QjsCallResult self, SseSerializer serializer);
 
   @protected
   void sse_encode_qjs_cancel_tasks_by_group_result(

@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:path/path.dart' as p;
 import 'package:zephyr/main.dart';
+import 'package:zephyr/network/http/plugin/qjs_call_exception.dart';
 import 'package:zephyr/object_box/model.dart';
 import 'package:zephyr/page/bookshelf/service/comic_link_service.dart';
 import 'package:zephyr/plugin/bridge/plugin_config_bridge.dart';
@@ -20,6 +21,13 @@ class PluginRegistryService {
   PluginRegistryService._();
 
   static final PluginRegistryService I = PluginRegistryService._();
+
+  static String _qjsCallErrorMessage(Object error) {
+    if (error is QjsCallFailure) {
+      return error.message;
+    }
+    return error.toString();
+  }
 
   final Map<String, PluginRuntimeState> _states = {};
   final _streamController =
@@ -249,7 +257,7 @@ class PluginRegistryService {
           await updateLoadResult(
             plugin.uuid,
             success: false,
-            error: e.toString(),
+            error: _qjsCallErrorMessage(e),
           );
         }
       }),
@@ -281,19 +289,23 @@ class PluginRegistryService {
     Map<String, dynamic> decoded;
     try {
       final bundleJs = await _resolveBundleJs(plugin);
-      final bytes = await qjsTaskCall(
+      final result = await qjsTaskCall(
         runtimeName: onceRuntimeName,
+        source: uuid,
         taskGroupKey: '',
         isOnce: true,
         bundleJs: bundleJs,
         fnPath: 'getInfo',
         argsJson: '{}',
       );
-      final raw = utf8.decode(bytes, allowMalformed: true);
+      final raw = utf8.decode(result.bytes, allowMalformed: true);
       decoded = requireJsonMap(jsonDecode(raw));
     } catch (e) {
-      _infoErrorCache[uuid] = e.toString();
+      _infoErrorCache[uuid] = _qjsCallErrorMessage(e);
       _infoErrorStreamController.add(infoErrorSnapshot);
+      if (e is QjsCallFailure) {
+        throw QjsCallException(source: e.source, message: e.message, cause: e);
+      }
       rethrow;
     }
     _pluginInfoCache[uuid] = decoded;
@@ -743,6 +755,7 @@ class PluginRegistryService {
         // void/undefined/空对象都算成功只有抛错才算失败。
         await qjsTaskCall(
           runtimeName: runtimeName,
+          source: plugin.uuid,
           taskGroupKey: '',
           isOnce: false,
           fnPath: 'init',
@@ -752,7 +765,7 @@ class PluginRegistryService {
         _markInitOk(plugin.uuid);
         await updateLoadResult(plugin.uuid, success: true, error: null);
       } catch (e) {
-        final err = e.toString();
+        final err = _qjsCallErrorMessage(e);
         if (err.contains('target is not function: init')) {
           _pluginInitDone.add(plugin.uuid);
           _markInitOk(plugin.uuid);
@@ -762,7 +775,7 @@ class PluginRegistryService {
         await updateLoadResult(
           plugin.uuid,
           success: false,
-          error: 'init 执行失败: $e',
+          error: 'init 执行失败: $err',
         );
         logger.w('插件 init 执行失败: ${plugin.uuid}', error: e);
       }

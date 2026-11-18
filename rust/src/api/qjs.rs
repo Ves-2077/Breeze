@@ -3,6 +3,24 @@ use flutter_rust_bridge::{DartFnFuture, frb};
 
 pub use crate::qjs::{QjsCancelTasksByGroupResult, QjsRuntimeBuildRequest};
 
+/// 插件调用结果：`source` 由宿主写入（本次调用的插件 id），
+/// `bytes` 是插件返回值原文，宿主不再信任插件返回里的 source 字段。
+#[frb]
+#[derive(Clone, Debug)]
+pub struct QjsCallResult {
+    pub source: String,
+    pub bytes: Vec<u8>,
+}
+
+/// 插件调用失败：Rust 顶层捕获原始错误并带上本次调用的插件 id。
+/// Dart 直接读取 `source` / `message`，不再解析 AnyhowException 文本。
+#[frb]
+#[derive(Clone, Debug)]
+pub struct QjsCallFailure {
+    pub source: String,
+    pub message: String,
+}
+
 #[frb]
 pub async fn qjs_replace_bundle(
     runtime_name: String,
@@ -22,14 +40,15 @@ pub async fn qjs_replace_bundle(
 #[frb]
 pub async fn qjs_task_call(
     runtime_name: String,
+    source: String,
     task_group_key: String,
     is_once: bool,
     bundle_js: Option<String>,
     bundle_url: Option<String>,
     fn_path: String,
     args_json: String,
-) -> Result<Vec<u8>> {
-    crate::qjs::qjs_task_call(
+) -> std::result::Result<QjsCallResult, QjsCallFailure> {
+    let result = crate::qjs::qjs_task_call(
         runtime_name,
         task_group_key,
         is_once,
@@ -38,21 +57,29 @@ pub async fn qjs_task_call(
         fn_path,
         args_json,
     )
-    .await
+    .await;
+    match result {
+        Ok(bytes) => Ok(QjsCallResult { source, bytes }),
+        Err(error) => Err(QjsCallFailure {
+            source,
+            message: error.to_string(),
+        }),
+    }
 }
 
 /// 调用插件图片函数，并以 CBOR 返回 Rust reqwest 采集的 HTTP 结果信息。
 #[frb]
 pub async fn qjs_fetch_image(
     runtime_name: String,
+    source: String,
     task_group_key: String,
     is_once: bool,
     bundle_js: Option<String>,
     bundle_url: Option<String>,
     fn_path: String,
     args_json: String,
-) -> Result<Vec<u8>> {
-    crate::qjs::qjs_fetch_image(
+) -> std::result::Result<QjsCallResult, QjsCallFailure> {
+    let result = crate::qjs::qjs_fetch_image(
         runtime_name,
         task_group_key,
         is_once,
@@ -61,7 +88,14 @@ pub async fn qjs_fetch_image(
         fn_path,
         args_json,
     )
-    .await
+    .await;
+    match result {
+        Ok(bytes) => Ok(QjsCallResult { source, bytes }),
+        Err(error) => Err(QjsCallFailure {
+            source,
+            message: error.to_string(),
+        }),
+    }
 }
 
 #[frb]

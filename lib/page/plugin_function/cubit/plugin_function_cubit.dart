@@ -47,15 +47,17 @@ class PluginFunctionCubit extends Cubit<PluginFunctionState> {
       ),
     );
     try {
-      Map<String, dynamic> response;
-      response = await callUnifiedComicPlugin(
+      final response = await callUnifiedComicPlugin(
         from: from,
         fnPath: 'getFunctionPage',
         core: {'id': functionId},
         extern: const <String, dynamic>{},
       );
 
-      final envelope = UnifiedPluginEnvelope.fromMap(response);
+      final envelope = UnifiedPluginEnvelope.fromMap(
+        response.data,
+        source: response.source,
+      );
       _emit(
         state.copyWith(
           loading: false,

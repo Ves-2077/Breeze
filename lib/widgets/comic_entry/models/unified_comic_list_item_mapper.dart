@@ -12,6 +12,7 @@ UnifiedComicListItem unifiedComicFromPluginSearchItem(
 ) {
   return _requireUnifiedPluginItem(
     item.data,
+    source: source,
     context: 'search:$source:${item.id}',
   );
 }
@@ -22,6 +23,7 @@ UnifiedComicListItem unifiedComicFromPluginListMap(
 }) {
   return _requireUnifiedPluginItem(
     item,
+    source: source,
     context: 'list:$source:${item['id']?.toString() ?? ''}',
   );
 }
@@ -238,10 +240,11 @@ int _viewCountFromTitleMeta(String titleMetaJson) {
 
 UnifiedComicListItem _requireUnifiedPluginItem(
   Map<String, dynamic> item, {
+  required String source,
   required String context,
 }) {
   if (item['cover'] is! Map || item['metadata'] is! List) {
     throw StateError('插件返回非统一漫画结构: $context');
   }
-  return UnifiedComicListItem.fromJson(item);
+  return UnifiedComicListItem.fromJson(item).copyWith(source: source.trim());
 }

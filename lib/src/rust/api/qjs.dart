@@ -8,6 +8,8 @@ import '../qjs.dart';
 
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `fmt`, `fmt`
+
 Future<void> qjsReplaceBundle({
   required String runtimeName,
   required String bundleName,
@@ -25,8 +27,9 @@ Future<void> qjsReplaceBundle({
 /// 返回值为字节数组:JS 返回 `Uint8Array`/`ArrayBuffer` 时为真实字节,
 /// 否则为 JSON 序列化后的 UTF-8 字节,由调用方自行转换。
 /// 通过 FRB 按普通 `Uint8List` 传递，避免跨 FFI 共享 Rust 堆内存。
-Future<Uint8List> qjsTaskCall({
+Future<QjsCallResult> qjsTaskCall({
   required String runtimeName,
+  required String source,
   required String taskGroupKey,
   required bool isOnce,
   String? bundleJs,
@@ -35,6 +38,7 @@ Future<Uint8List> qjsTaskCall({
   required String argsJson,
 }) => RustLib.instance.api.crateApiQjsQjsTaskCall(
   runtimeName: runtimeName,
+  source: source,
   taskGroupKey: taskGroupKey,
   isOnce: isOnce,
   bundleJs: bundleJs,
@@ -44,8 +48,9 @@ Future<Uint8List> qjsTaskCall({
 );
 
 /// 调用插件图片函数，并以 CBOR 返回 Rust reqwest 采集的 HTTP 结果信息。
-Future<Uint8List> qjsFetchImage({
+Future<QjsCallResult> qjsFetchImage({
   required String runtimeName,
+  required String source,
   required String taskGroupKey,
   required bool isOnce,
   String? bundleJs,
@@ -54,6 +59,7 @@ Future<Uint8List> qjsFetchImage({
   required String argsJson,
 }) => RustLib.instance.api.crateApiQjsQjsFetchImage(
   runtimeName: runtimeName,
+  source: source,
   taskGroupKey: taskGroupKey,
   isOnce: isOnce,
   bundleJs: bundleJs,
@@ -158,3 +164,43 @@ void initRustFunctions() => RustLib.instance.api.crateApiQjsInitRustFunctions();
 
 String openccConvert({required String text, required String config}) =>
     RustLib.instance.api.crateApiQjsOpenccConvert(text: text, config: config);
+
+/// 插件调用失败：Rust 顶层捕获原始错误并带上本次调用的插件 id。
+/// Dart 直接读取 `source` / `message`，不再解析 AnyhowException 文本。
+class QjsCallFailure implements FrbException {
+  final String source;
+  final String message;
+
+  const QjsCallFailure({required this.source, required this.message});
+
+  @override
+  int get hashCode => source.hashCode ^ message.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is QjsCallFailure &&
+          runtimeType == other.runtimeType &&
+          source == other.source &&
+          message == other.message;
+}
+
+/// 插件调用结果：`source` 由宿主写入（本次调用的插件 id），
+/// `bytes` 是插件返回值原文，宿主不再信任插件返回里的 source 字段。
+class QjsCallResult {
+  final String source;
+  final Uint8List bytes;
+
+  const QjsCallResult({required this.source, required this.bytes});
+
+  @override
+  int get hashCode => source.hashCode ^ bytes.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is QjsCallResult &&
+          runtimeType == other.runtimeType &&
+          source == other.source &&
+          bytes == other.bytes;
+}

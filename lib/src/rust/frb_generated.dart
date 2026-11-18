@@ -292,8 +292,9 @@ abstract class RustLibApi extends BaseApi {
 
   Future<bool> crateApiQjsQjsDropRuntime({required String runtimeName});
 
-  Future<Uint8List> crateApiQjsQjsFetchImage({
+  Future<QjsCallResult> crateApiQjsQjsFetchImage({
     required String runtimeName,
+    required String source,
     required String taskGroupKey,
     required bool isOnce,
     String? bundleJs,
@@ -308,8 +309,9 @@ abstract class RustLibApi extends BaseApi {
     required String bundleJs,
   });
 
-  Future<Uint8List> crateApiQjsQjsTaskCall({
+  Future<QjsCallResult> crateApiQjsQjsTaskCall({
     required String runtimeName,
+    required String source,
     required String taskGroupKey,
     required bool isOnce,
     String? bundleJs,
@@ -2269,8 +2271,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   );
 
   @override
-  Future<Uint8List> crateApiQjsQjsFetchImage({
+  Future<QjsCallResult> crateApiQjsQjsFetchImage({
     required String runtimeName,
+    required String source,
     required String taskGroupKey,
     required bool isOnce,
     String? bundleJs,
@@ -2283,6 +2286,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         callFfi: (port_) {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_String(runtimeName, serializer);
+          sse_encode_String(source, serializer);
           sse_encode_String(taskGroupKey, serializer);
           sse_encode_bool(isOnce, serializer);
           sse_encode_opt_String(bundleJs, serializer);
@@ -2297,12 +2301,13 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           );
         },
         codec: SseCodec(
-          decodeSuccessData: sse_decode_list_prim_u_8_strict,
-          decodeErrorData: sse_decode_AnyhowException,
+          decodeSuccessData: sse_decode_qjs_call_result,
+          decodeErrorData: sse_decode_qjs_call_failure,
         ),
         constMeta: kCrateApiQjsQjsFetchImageConstMeta,
         argValues: [
           runtimeName,
+          source,
           taskGroupKey,
           isOnce,
           bundleJs,
@@ -2319,6 +2324,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     debugName: "qjs_fetch_image",
     argNames: [
       "runtimeName",
+      "source",
       "taskGroupKey",
       "isOnce",
       "bundleJs",
@@ -2366,8 +2372,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
-  Future<Uint8List> crateApiQjsQjsTaskCall({
+  Future<QjsCallResult> crateApiQjsQjsTaskCall({
     required String runtimeName,
+    required String source,
     required String taskGroupKey,
     required bool isOnce,
     String? bundleJs,
@@ -2380,6 +2387,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         callFfi: (port_) {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_String(runtimeName, serializer);
+          sse_encode_String(source, serializer);
           sse_encode_String(taskGroupKey, serializer);
           sse_encode_bool(isOnce, serializer);
           sse_encode_opt_String(bundleJs, serializer);
@@ -2394,12 +2402,13 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           );
         },
         codec: SseCodec(
-          decodeSuccessData: sse_decode_list_prim_u_8_strict,
-          decodeErrorData: sse_decode_AnyhowException,
+          decodeSuccessData: sse_decode_qjs_call_result,
+          decodeErrorData: sse_decode_qjs_call_failure,
         ),
         constMeta: kCrateApiQjsQjsTaskCallConstMeta,
         argValues: [
           runtimeName,
+          source,
           taskGroupKey,
           isOnce,
           bundleJs,
@@ -2416,6 +2425,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     debugName: "qjs_task_call",
     argNames: [
       "runtimeName",
+      "source",
       "taskGroupKey",
       "isOnce",
       "bundleJs",
@@ -3830,6 +3840,30 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  QjsCallFailure dco_decode_qjs_call_failure(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 2)
+      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
+    return QjsCallFailure(
+      source: dco_decode_String(arr[0]),
+      message: dco_decode_String(arr[1]),
+    );
+  }
+
+  @protected
+  QjsCallResult dco_decode_qjs_call_result(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 2)
+      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
+    return QjsCallResult(
+      source: dco_decode_String(arr[0]),
+      bytes: dco_decode_list_prim_u_8_strict(arr[1]),
+    );
+  }
+
+  @protected
   QjsCancelTasksByGroupResult dco_decode_qjs_cancel_tasks_by_group_result(
     dynamic raw,
   ) {
@@ -4406,6 +4440,22 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       originalImagePaths: var_originalImagePaths,
       packImagePaths: var_packImagePaths,
     );
+  }
+
+  @protected
+  QjsCallFailure sse_decode_qjs_call_failure(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_source = sse_decode_String(deserializer);
+    var var_message = sse_decode_String(deserializer);
+    return QjsCallFailure(source: var_source, message: var_message);
+  }
+
+  @protected
+  QjsCallResult sse_decode_qjs_call_result(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_source = sse_decode_String(deserializer);
+    var var_bytes = sse_decode_list_prim_u_8_strict(deserializer);
+    return QjsCallResult(source: var_source, bytes: var_bytes);
   }
 
   @protected
@@ -5020,6 +5070,26 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_String(self.processedComicInfoString, serializer);
     sse_encode_list_String(self.originalImagePaths, serializer);
     sse_encode_list_String(self.packImagePaths, serializer);
+  }
+
+  @protected
+  void sse_encode_qjs_call_failure(
+    QjsCallFailure self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.source, serializer);
+    sse_encode_String(self.message, serializer);
+  }
+
+  @protected
+  void sse_encode_qjs_call_result(
+    QjsCallResult self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.source, serializer);
+    sse_encode_list_prim_u_8_strict(self.bytes, serializer);
   }
 
   @protected

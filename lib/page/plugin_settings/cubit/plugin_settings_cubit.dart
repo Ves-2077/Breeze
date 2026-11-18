@@ -84,7 +84,10 @@ class PluginSettingsCubit extends Cubit<PluginSettingsState> {
         core: const <String, dynamic>{},
         extern: const <String, dynamic>{},
       );
-      final settingsEnvelope = UnifiedPluginEnvelope.fromMap(settingsResponse);
+      final settingsEnvelope = UnifiedPluginEnvelope.fromMap(
+        settingsResponse.data,
+        source: settingsResponse.source,
+      );
       final settingsSections = asJsonList(settingsEnvelope.scheme['sections'])
           .map((item) => asJsonMap(item))
           .toList();
@@ -104,7 +107,8 @@ class PluginSettingsCubit extends Cubit<PluginSettingsState> {
           extern: const <String, dynamic>{},
         );
         final capabilityEnvelope = UnifiedPluginEnvelope.fromMap(
-          capabilityResponse,
+          capabilityResponse.data,
+          source: capabilityResponse.source,
         );
         actions = asJsonList(capabilityEnvelope.scheme['actions'])
             .map((item) => asJsonMap(item))
@@ -184,7 +188,10 @@ class PluginSettingsCubit extends Cubit<PluginSettingsState> {
         core: const <String, dynamic>{},
         extern: const <String, dynamic>{},
       );
-      final envelope = UnifiedPluginEnvelope.fromMap(response);
+      final envelope = UnifiedPluginEnvelope.fromMap(
+        response.data,
+        source: response.source,
+      );
       emit(
         state.copyWith(
           userInfo: asJsonMap(envelope.data),

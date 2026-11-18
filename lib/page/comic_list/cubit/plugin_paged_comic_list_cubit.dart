@@ -75,10 +75,13 @@ class PluginPagedComicListCubit extends Cubit<PluginPagedComicListState> {
         extern: externBuilder(page),
         suppressNeedLoginEvent: suppressNeedLoginEvent,
       );
-      final envelope = UnifiedPluginEnvelope.fromMap(pluginResponse);
+      final envelope = UnifiedPluginEnvelope.fromMap(
+        pluginResponse.data,
+        source: pluginResponse.source,
+      );
       final data = asJsonMap(envelope.data);
-      final source = envelope.source.trim().isNotEmpty
-          ? envelope.source.trim()
+      final source = pluginResponse.source.trim().isNotEmpty
+          ? pluginResponse.source.trim()
           : pluginId;
       final items = asJsonList(data['items'])
           .map(_sanitizePluginItemMap)
