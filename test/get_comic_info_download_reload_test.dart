@@ -38,18 +38,18 @@ Map<String, dynamic> _detail({
 
 void main() {
   setUpAll(() async {
-    await TestObjectBoxHelper.setUpTestObjectBox();
+    await TestDatabaseHelper.setUpTestDatabase();
   });
   tearDownAll(() async {
-    await TestObjectBoxHelper.tearDownTestObjectBox();
+    await TestDatabaseHelper.tearDownTestDatabase();
   });
-  tearDown(TestObjectBoxHelper.cleanComicFolderBoxes);
+  tearDown(TestDatabaseHelper.cleanComicFolderBoxes);
 
   test('下载详情重新加载会读到编辑后的 detailJson', () async {
     final record = createTestDownload('test:c1')
       ..comicId = 'c1'
       ..detailJson = jsonEncode(_detail(title: 'Old', coverPath: 'old.jpg'));
-    objectbox.unifiedDownloadBox.put(record);
+    await database.downloads.put(record);
 
     final bloc = GetComicInfoBloc();
     addTearDown(bloc.close);
@@ -68,7 +68,7 @@ void main() {
     expect(state.allInfo!.comicInfo.cover.path, 'old.jpg');
 
     record.detailJson = jsonEncode(_detail(title: 'New', coverPath: 'new.jpg'));
-    objectbox.unifiedDownloadBox.put(record);
+    await database.downloads.put(record);
 
     bloc.add(
       const GetComicInfoEvent(

@@ -1,53 +1,46 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:zephyr/object_box/model.dart';
-import 'package:zephyr/object_box/objectbox.g.dart';
-import 'package:zephyr/src/rust/api/qjs.dart';
 import 'package:zephyr/main.dart';
+import 'package:zephyr/object_box/model.dart';
+import 'package:zephyr/src/rust/api/qjs.dart';
 
-String onSavePluginConfig(String name, String key, String value) {
-  final box = objectbox.pluginConfigBox;
+final Map<String, PluginConfig> _configCache = <String, PluginConfig>{};
 
-  // 使用同步事务确保原子性
-  return objectbox.store.runInTransaction(TxMode.write, () {
-    var entity = box.query(PluginConfig_.name.equals(name)).build().findFirst();
-    final parsedValue = _decodeMaybeJson(value);
-
-    if (entity == null) {
-      final data = key.isEmpty
-          ? <String, dynamic>{}
-          : <String, dynamic>{key: parsedValue};
-      entity = PluginConfig(name: name, config: jsonEncode(data));
-    } else {
-      final data = _decodeObjectMap(entity.config);
-      if (key.isNotEmpty) {
-        data[key] = parsedValue;
-      }
-      entity.config = jsonEncode(data);
-    }
-
-    box.put(entity);
-    return '{"ok":true}';
-  });
+/// 启动时把 PluginConfig 读入内存；同步读接口只读这份缓存。
+Future<void> preloadPluginConfigs() async {
+  final list = await database.plugins.listConfigs();
+  _configCache
+    ..clear()
+    ..addEntries(list.map((item) => MapEntry(item.name, item)));
 }
 
-String onLoadPluginConfig(String name, String key, String fallback) {
-  final box = objectbox.pluginConfigBox;
+Future<String> onSavePluginConfig(String name, String key, String value) async {
+  final existing =
+      _configCache[name] ?? await database.plugins.getConfigByName(name);
+  final parsedValue = _decodeMaybeJson(value);
 
-  return objectbox.store.runInTransaction(TxMode.read, () {
-    final entity = box
-        .query(PluginConfig_.name.equals(name))
-        .build()
-        .findFirst();
+  final entity = existing ?? PluginConfig(name: name, config: '{}');
+  final data = _decodeObjectMap(entity.config);
+  if (key.isNotEmpty) {
+    data[key] = parsedValue;
+  }
+  entity.config = jsonEncode(data);
+  await database.plugins.putConfig(entity);
+  _configCache[name] = entity;
+  return '{"ok":true}';
+}
 
-    final data = _decodeObjectMap(entity?.config ?? '');
-    final value = key.isEmpty
-        ? data
-        : (data[key] ?? _decodeMaybeJson(fallback));
-
-    return '{"ok":true,"value":${jsonEncode(value)}}';
-  });
+Future<String> onLoadPluginConfig(
+  String name,
+  String key,
+  String fallback,
+) async {
+  final entity =
+      _configCache[name] ?? await database.plugins.getConfigByName(name);
+  final data = _decodeObjectMap(entity?.config ?? '');
+  final value = key.isEmpty ? data : (data[key] ?? _decodeMaybeJson(fallback));
+  return '{"ok":true,"value":${jsonEncode(value)}}';
 }
 
 Map<String, dynamic> _decodeObjectMap(String raw) {
@@ -72,7 +65,6 @@ dynamic _decodeMaybeJson(String value) {
   if (text.isEmpty) {
     return value;
   }
-
   try {
     return jsonDecode(text);
   } catch (_) {
@@ -110,11 +102,21 @@ Future<void> savePluginConfigValue(
   String key,
   dynamic value,
 ) async {
-  onSavePluginConfig(pluginName, key, jsonEncode(value));
+  await onSavePluginConfig(pluginName, key, jsonEncode(value));
 }
 
+/// 同步写接口：先更新内存缓存，数据库写入异步完成。
+///
+/// 插件配置在启动时已 [preloadPluginConfigs]，因此同步读/写都只操作缓存；
+/// 这样 QJS 同步宿主调用和旧 UI 代码不需要改成异步。
 void savePluginConfigValueSync(String pluginName, String key, dynamic value) {
-  onSavePluginConfig(pluginName, key, jsonEncode(value));
+  final entity =
+      _configCache[pluginName] ?? PluginConfig(name: pluginName, config: '{}');
+  final data = _decodeObjectMap(entity.config);
+  data[key] = value;
+  entity.config = jsonEncode(data);
+  _configCache[pluginName] = entity;
+  unawaited(database.plugins.putConfig(entity));
 }
 
 T loadPluginConfigValue<T>(
@@ -122,11 +124,9 @@ T loadPluginConfigValue<T>(
   String key, {
   required T fallback,
 }) {
-  final raw = onLoadPluginConfig(pluginName, key, jsonEncode(fallback));
-  final parsed = jsonDecode(raw) as Map<String, dynamic>;
-  final value = parsed['value'];
-  if (value is T) {
-    return value;
-  }
-  return fallback;
+  final entity = _configCache[pluginName];
+  if (entity == null) return fallback;
+  final data = _decodeObjectMap(entity.config);
+  final value = data[key];
+  return value is T ? value : fallback;
 }

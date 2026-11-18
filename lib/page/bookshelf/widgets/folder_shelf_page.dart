@@ -12,7 +12,6 @@ import 'package:path/path.dart' as p;
 import 'package:zephyr/config/global/global_setting.dart';
 import 'package:zephyr/main.dart';
 import 'package:zephyr/i18n/strings.g.dart';
-import 'package:zephyr/object_box/objectbox.g.dart';
 import 'package:zephyr/object_box/model.dart';
 import 'package:zephyr/page/bookshelf/bloc/folder_shelf_bloc.dart';
 import 'package:zephyr/page/bookshelf/cubit/bookshelf_search_cubit.dart';
@@ -547,11 +546,11 @@ class _FolderShelfPageContentState extends State<_FolderShelfPageContent>
             }
 
             final comicType = _comicEntryTypeOf(state.mode);
-            final folderSyncIdMap = buildFolderSyncIdMap(
-              _folderTypeOf(state.mode),
-            );
-            String folderPathOf(ComicFolder f) =>
-                ComicFolderService.folderPath(f, syncIdMap: folderSyncIdMap);
+            // 列表里的文件夹都是当前路径的直接子文件夹，路径可直接由当前路径拼出，
+            // 避免在 build 里做异步查询。
+            String folderPathOf(ComicFolder f) => state.currentPath.isEmpty
+                ? '/${f.name}'
+                : '${state.currentPath}/${f.name}';
             final listPadding = EdgeInsets.fromLTRB(
               10,
               state.selectionMode ? 10 : (state.isRoot ? 10 : 64),
@@ -1016,16 +1015,14 @@ class _FolderShelfPageContentState extends State<_FolderShelfPageContent>
       final state = context.read<FolderShelfBloc>().state;
       // 历史无 ComicLink：直接软删除历史本体（与旧 LocalShelfPage 一致）。
       if (state.mode == ShelfPageMode.history) {
-        final history = objectbox.unifiedHistoryBox
-            .query(UnifiedComicHistory_.uniqueKey.equals(uniqueKey))
-            .build()
-            .findFirst();
+        final history = await database.histories.getByKey(uniqueKey);
         if (history != null) {
           history
             ..deleted = true
             ..updatedAt = DateTime.now().toUtc();
-          objectbox.unifiedHistoryBox.put(history);
+          await database.histories.put(history);
         }
+        if (!context.mounted) return;
         context.read<FolderShelfBloc>().add(const FolderShelfLoadRequested());
         return;
       }
@@ -1034,11 +1031,12 @@ class _FolderShelfPageContentState extends State<_FolderShelfPageContent>
         ShelfPageMode.download => ComicFolderType.download,
         ShelfPageMode.history => ComicFolderType.history,
       };
-      ComicLinkService.removeComic(
+      await ComicLinkService.removeComic(
         uniqueKey,
         state.currentPath.isEmpty ? null : state.currentPath,
         folderType,
       );
+      if (!context.mounted) return;
       context.read<FolderShelfBloc>().add(const FolderShelfLoadRequested());
     }
   }
@@ -1053,8 +1051,9 @@ Future<void> _showTargetFolderDialog(
   final mode = state.mode;
   final sourceFolderPaths = selectedFolderPaths ?? state.selectedFolderPaths;
   final type = _folderTypeOf(mode);
-  final allFolders = ComicFolderService.listAllFolders(type);
-  final syncIdMap = buildFolderSyncIdMap(type);
+  final allFolders = await ComicFolderService.listAllFolders(type);
+  if (!context.mounted) return;
+  final syncIdMap = {for (final folder in allFolders) folder.syncId: folder};
   final pathMap = {
     for (final folder in allFolders)
       folder.syncId: ComicFolderService.folderPath(

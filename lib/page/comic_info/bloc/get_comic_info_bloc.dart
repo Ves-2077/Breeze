@@ -4,7 +4,6 @@ import 'package:bloc/bloc.dart';
 import 'package:bloc_concurrency/bloc_concurrency.dart';
 import 'package:zephyr/main.dart';
 import 'package:zephyr/object_box/model.dart';
-import 'package:zephyr/object_box/objectbox.g.dart';
 import 'package:zephyr/page/comic_info/comic_info.dart';
 import 'package:zephyr/page/comic_info/json/normal/normal_comic_all_info.dart'
     as normal;
@@ -35,14 +34,9 @@ class GetComicInfoBloc extends Bloc<GetComicInfoEvent, GetComicInfoState> {
       dynamic comicInfo;
 
       if (event.type == ComicEntryType.download) {
-        comicInfo = objectbox.unifiedDownloadBox
-            .query(
-              UnifiedComicDownload_.uniqueKey.equals(
-                '${event.from}:${event.comicId}',
-              ),
-            )
-            .build()
-            .findFirst();
+        comicInfo = await database.downloads.getByKey(
+          '${event.from}:${event.comicId}',
+        );
       }
 
       if (comicInfo == null) {

@@ -3,7 +3,6 @@ import 'dart:convert';
 
 import 'package:zephyr/main.dart';
 import 'package:zephyr/object_box/model.dart';
-import 'package:zephyr/object_box/objectbox.g.dart';
 import 'package:zephyr/plugin/models/cloud_plugin_manifest_internal.dart';
 import 'package:zephyr/plugin/plugin_registry_service.dart';
 import 'package:zephyr/plugin/utils/plugin_cloud_download_utils.dart';
@@ -204,11 +203,9 @@ class PluginCloudUpdateService {
   }
 
   Future<_SelfUpdateChannel> _resolveSelfUpdateChannel(String uuid) async {
-    final found = objectbox.pluginInfoBox
-        .query(PluginInfo_.uuid.equals(uuid))
-        .build()
-        .findFirst();
-    Map<String, dynamic>? info = parseGetInfoJson(found?.getInfoJson ?? '');
+    Map<String, dynamic>? info = parseGetInfoJson(
+      PluginRegistryService.I.readPersistedGetInfoJson(uuid),
+    );
 
     if (info == null) {
       final local = PluginRegistryService.I.getByUuid(uuid);
@@ -354,12 +351,7 @@ class PluginCloudUpdateService {
     required PluginRuntimeState local,
     required _PluginUpdatePayload payload,
   }) async {
-    final box = objectbox;
-
-    final found = box.pluginInfoBox
-        .query(PluginInfo_.uuid.equals(local.uuid))
-        .build()
-        .findFirst();
+    final found = await database.plugins.getInfoByUuid(local.uuid);
     final now = DateTime.now().toUtc();
     final toSave = PluginInfo(
       id: found?.id ?? 0,

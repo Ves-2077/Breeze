@@ -3,6 +3,7 @@ import 'package:bloc_concurrency/bloc_concurrency.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:stream_transform/stream_transform.dart';
 import 'package:worker_manager/worker_manager.dart';
+import 'package:zephyr/config/global/global_setting.dart';
 import 'package:zephyr/main.dart';
 import 'package:zephyr/page/search/cubit/search_cubit.dart';
 import 'package:zephyr/page/search_result/method/get_plugin_result.dart';
@@ -203,8 +204,7 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
   }
 
   (List<String>, String) _loadMaskedKeywords() {
-    final settings = objectbox.userSettingBox.get(1)!.globalSetting;
-    final maskedKeywords = settings.maskedKeywords
+    final maskedKeywords = globalSetting.maskedKeywords
         .where((keyword) => keyword.trim().isNotEmpty)
         .map((keyword) => _normalizeMaskedText(keyword.trim()))
         .where((keyword) => keyword.isNotEmpty)

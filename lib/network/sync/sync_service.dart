@@ -6,6 +6,7 @@ import 'package:zephyr/main.dart';
 import 'package:zephyr/object_box/model.dart';
 import 'package:zephyr/page/comic_follow/cubit/comic_follow_cubit.dart';
 import 'package:zephyr/plugin/plugin_registry_service.dart';
+import 'package:zephyr/plugin/bridge/plugin_config_bridge.dart';
 
 import 'package:zephyr/network/sync/comic_sync_core.dart';
 import 'package:zephyr/network/sync/s3_sync_service.dart';
@@ -429,7 +430,7 @@ Future<_SettingsSnapshot> _buildLocalSettingsSnapshot(
   }
 
   if (globalSetting.syncSetting.syncPlugins) {
-    final pluginData = _buildPluginBlockData();
+    final pluginData = await _buildPluginBlockData();
     final hash = _calculateStructuredMd5(pluginData);
     final previous = existingMeta[_pluginsBlockName];
     final pluginBaseTimestamp = _derivePluginBlockTimestamp(
@@ -670,9 +671,11 @@ Map<String, Map<String, dynamic>> _extractSyncableSettingsBlocks(
   };
 }
 
-Map<String, dynamic> _buildPluginBlockData() {
-  final deletedUuids = objectbox.pluginInfoBox
-      .getAll()
+Future<Map<String, dynamic>> _buildPluginBlockData() async {
+  final infos = await database.plugins.listInfos();
+  final configs = await database.plugins.listConfigs();
+
+  final deletedUuids = infos
       .where((item) => item.isDeleted)
       .map((item) => item.uuid.trim())
       .where((uuid) => uuid.isNotEmpty)
@@ -682,8 +685,7 @@ Map<String, dynamic> _buildPluginBlockData() {
       ..._buildPluginConfigNameCandidatesForSync(uuid),
   };
 
-  final pluginConfigs = objectbox.pluginConfigBox
-      .getAll()
+  final pluginConfigs = configs
       .map((item) {
         final name = item.name.trim();
         if (name.isEmpty || blockedConfigNames.contains(name)) {
@@ -702,15 +704,11 @@ Map<String, dynamic> _buildPluginBlockData() {
     return aName.compareTo(bName);
   });
 
-  final pluginInfos = objectbox.pluginInfoBox
-      .getAll()
-      .where((item) => !item.isDeleted)
-      .map((item) {
-        final json = item.toJson();
-        json.remove('id');
-        return json;
-      })
-      .toList();
+  final pluginInfos = infos.where((item) => !item.isDeleted).map((item) {
+    final json = item.toJson();
+    json.remove('id');
+    return json;
+  }).toList();
   pluginInfos.sort((a, b) {
     final aKey = '${a['uuid'] ?? ''}:${a['version'] ?? ''}';
     final bKey = '${b['uuid'] ?? ''}:${b['version'] ?? ''}';
@@ -766,11 +764,9 @@ Future<void> _applyMergedGlobalState(
     return;
   }
 
-  final user = objectbox.userSettingBox.get(1);
-  if (user != null) {
-    user.globalSetting = value;
-    objectbox.userSettingBox.put(user);
-  }
+  final user = await database.userSettings.getOrCreate();
+  user.globalSetting = value;
+  await database.userSettings.put(user);
 }
 
 Future<void> _applyPluginBlockData(Map<String, dynamic> pluginBlockData) async {
@@ -783,7 +779,7 @@ Future<void> _applyPluginBlockData(Map<String, dynamic> pluginBlockData) async {
     'previousRegistry=${previousSnapshot.length}',
   );
 
-  final localPluginInfos = objectbox.pluginInfoBox.getAll();
+  final localPluginInfos = await database.plugins.listInfos();
   final localPluginByUuid = <String, PluginInfo>{
     for (final item in localPluginInfos)
       if (item.uuid.trim().isNotEmpty) item.uuid.trim(): item,
@@ -861,16 +857,17 @@ Future<void> _applyPluginBlockData(Map<String, dynamic> pluginBlockData) async {
     localPluginByUuid[uuid] = upsert;
   }
   if (infoUpserts.isNotEmpty) {
-    objectbox.pluginInfoBox.putMany(infoUpserts);
+    await database.plugins.putInfos(infoUpserts);
   }
 
   final blockedConfigNames = <String>{
     for (final uuid in localDeletedUuids)
       ..._buildPluginConfigNameCandidatesForSync(uuid),
   };
+  final existingConfigs = await database.plugins.listConfigs();
   final blockedConfigIds = <int>[];
   final localConfigByName = <String, PluginConfig>{
-    for (final item in objectbox.pluginConfigBox.getAll())
+    for (final item in existingConfigs)
       if (item.name.trim().isNotEmpty &&
           !blockedConfigNames.contains(item.name.trim()))
         item.name.trim(): PluginConfig(
@@ -879,14 +876,14 @@ Future<void> _applyPluginBlockData(Map<String, dynamic> pluginBlockData) async {
           config: item.config,
         ),
   };
-  for (final item in objectbox.pluginConfigBox.getAll()) {
+  for (final item in existingConfigs) {
     final name = item.name.trim();
     if (name.isNotEmpty && blockedConfigNames.contains(name)) {
       blockedConfigIds.add(item.id);
     }
   }
   if (blockedConfigIds.isNotEmpty) {
-    objectbox.pluginConfigBox.removeMany(blockedConfigIds);
+    await database.plugins.removeConfigByIds(blockedConfigIds);
   }
   var skippedBlockedConfig = 0;
   for (final json in pluginConfigJsonList) {
@@ -911,8 +908,9 @@ Future<void> _applyPluginBlockData(Map<String, dynamic> pluginBlockData) async {
     }
   }
   if (localConfigByName.isNotEmpty) {
-    objectbox.pluginConfigBox.putMany(localConfigByName.values.toList());
+    await database.plugins.putConfigs(localConfigByName.values.toList());
   }
+  await preloadPluginConfigs();
   logger.d(
     '[sync][plugins] apply_remote_db '
     'upsertInfos=${infoUpserts.length} totalLocalInfos=${localPluginByUuid.length} '
@@ -966,11 +964,9 @@ Future<void> _updateLocalSettingsSyncTime(
   if (globalSettingCubit != null) {
     globalSettingCubit.applySyncedState(merged);
   } else {
-    final user = objectbox.userSettingBox.get(1);
-    if (user != null) {
-      user.globalSetting = merged;
-      objectbox.userSettingBox.put(user);
-    }
+    final user = await database.userSettings.getOrCreate();
+    user.globalSetting = merged;
+    await database.userSettings.put(user);
   }
 }
 

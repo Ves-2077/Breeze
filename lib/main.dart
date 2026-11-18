@@ -34,8 +34,10 @@ import 'package:zephyr/util/network_policy.dart';
 import 'package:zephyr/util/process_exit.dart';
 import 'package:zephyr/util/proxy_setting.dart';
 import 'package:zephyr/network/sync/sync_device_id.dart';
+import 'package:zephyr/database/database.dart';
+import 'package:zephyr/database/app_database.dart';
 import 'package:zephyr/object_box/model.dart';
-import 'package:zephyr/object_box/object_box.dart';
+import 'package:zephyr/plugin/bridge/plugin_config_bridge.dart';
 import 'package:zephyr/page/comic_follow/cubit/comic_follow_cubit.dart';
 import 'package:zephyr/platform/desktop/desktop_window.dart';
 import 'package:zephyr/platform/desktop/system_tray.dart';
@@ -60,9 +62,9 @@ import 'package:zephyr/main.dart';
 export 'package:zephyr/network/http/wind_http.dart'
     show WindHttp, FetchResponse, FetchException, fetch, fetchDirect;
 
-ObjectBox? _objectbox;
-ObjectBox get objectbox => _objectbox!;
-set objectbox(ObjectBox value) => _objectbox = value;
+Database? _database;
+Database get database => _database!;
+set database(Database value) => _database = value;
 
 final appRouter = AppRouter();
 
@@ -175,7 +177,7 @@ Future<void> main(List<String> args) async {
           child: const MyApp(),
         ),
       );
-    } on ObjectBoxSchemaMismatchException {
+    } on DatabaseIncompatibleException {
       await _runDatabaseIncompatibleApp();
     } catch (e, stack) {
       // 捕获初始化阶段（_initServices）可能抛出的异常
@@ -244,7 +246,7 @@ Future<void> main(List<String> args) async {
             ),
           ),
         );
-      } on ObjectBoxSchemaMismatchException {
+      } on DatabaseIncompatibleException {
         await _runDatabaseIncompatibleApp();
       } catch (exception, stackTrace) {
         await Sentry.captureException(exception, stackTrace: stackTrace);
@@ -325,11 +327,16 @@ Future<(GlobalSettingCubit, PluginRegistryCubit)> _initServices() async {
     ]);
   }
 
-  objectbox = await ObjectBox.create();
-  final setting = objectbox.userSettingBox.get(1);
+  final dbRoot = await getDbPath();
+  database = await Database.open(
+    path: '$dbRoot/breeze_db.sqlite3',
+    legacyObjectBoxDir: '$dbRoot/breeze_db',
+  );
+  final setting = await database.userSettings.get();
   if (setting == null) {
-    objectbox.userSettingBox.put(UserSetting());
+    await database.userSettings.put(UserSetting());
   }
+  await preloadPluginConfigs();
 
   final globalSettingCubit = GlobalSettingCubit();
   await globalSettingCubit.initBox();
@@ -599,7 +606,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     // 先隐藏窗口（同步 FFI 调用，零延迟），再强杀进程，
     // 让用户感知不到 Dart VM 回收的延迟。
     mainWindow?.hide();
-    objectbox.close();
+    await database.close();
     nuclearKillProcess();
   }
 

@@ -3,13 +3,12 @@ import 'package:material_ui/material_ui.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:zephyr/cubit/string_select.dart';
 import 'package:zephyr/object_box/model.dart';
-import 'package:zephyr/object_box/objectbox.g.dart';
 import 'package:zephyr/page/comic_info/method/get_plugin_detail.dart';
 import 'package:zephyr/page/download/adapters/download_chapter_adapter.dart';
 import 'package:zephyr/page/download/adapters/download_chapter_matcher.dart';
 import 'package:zephyr/page/download/models/download_chapter.dart';
 import 'package:zephyr/page/download/models/unified_comic_download.dart';
-import 'package:zephyr/service/download/download_task_repository.dart';
+import 'package:zephyr/service/download/models/download_task_json.dart';
 import 'package:zephyr/page/comic_read/type/chapter_extern.dart';
 import 'package:zephyr/type/enum.dart';
 import 'package:zephyr/config/router/router.gr.dart' show ComicReadRoute;
@@ -18,15 +17,15 @@ import 'package:zephyr/page/comic_info/models/read_launch_adapter.dart';
 import 'package:zephyr/main.dart';
 import 'package:zephyr/widgets/toast.dart';
 
-void goToComicRead(
+Future<void> goToComicRead(
   BuildContext context,
   String comicId,
   ComicEntryType type,
   dynamic allInfo,
   String from,
-) {
+) async {
   try {
-    _goToComicRead(context, comicId, type, allInfo, from);
+    await _goToComicRead(context, comicId, type, allInfo, from);
   } catch (e) {
     // 插件详情数据异常时不要让点击无反应，也不要冒到 FlutterError。
     logger.e(e);
@@ -34,20 +33,17 @@ void goToComicRead(
   }
 }
 
-void _goToComicRead(
+Future<void> _goToComicRead(
   BuildContext context,
   String comicId,
   ComicEntryType type,
   dynamic allInfo,
   String from,
-) {
+) async {
   final isDownload =
       type == ComicEntryType.download ||
       type == ComicEntryType.historyAndDownload;
-  final historyForChapter = objectbox.unifiedHistoryBox
-      .query(UnifiedComicHistory_.uniqueKey.equals('$from:$comicId'))
-      .build()
-      .findFirst();
+  final historyForChapter = await database.histories.getByKey('$from:$comicId');
   final chapter = _resolveChapter(allInfo, from, historyForChapter);
 
   // 在线入口统一查库：目标章节已下载则直接读本地，不再看来源 type。
@@ -57,21 +53,13 @@ void _goToComicRead(
   DownloadChapter? readChapter = chapter;
   var readEpsCount = 0;
   if (!isDownload && chapter != null) {
-    const repository = DownloadTaskRepository();
-    final local =
-        repository.findDownloadedChapter(
-          from: from,
-          comicId: comicId,
-          chapterKey: chapter.id,
-        ) ??
-        repository.findDownloadedChapter(
-          from: from,
-          comicId: comicId,
-          chapterKey: chapter.effectiveRequestId,
-        );
-    final record = local == null
+    final record = await database.downloads.getByKey(
+      buildDownloadTaskKey(from, comicId),
+    );
+    final local = record == null
         ? null
-        : repository.findDownloadRecord(from, comicId);
+        : _findStoredChapter(record, chapter.id) ??
+              _findStoredChapter(record, chapter.effectiveRequestId);
     if (local != null && record != null) {
       readInfo = record;
       readIsDownload = true;
@@ -87,6 +75,7 @@ void _goToComicRead(
     readEpsCount = resolveReadEpsCount(allInfo, from, isDownload: true);
     readComicId = resolveReadComicId(allInfo, from, isDownload: true);
   }
+  if (!context.mounted) return;
   final hasHistory = context.read<StringSelectCubit>().state.isNotEmpty;
 
   final typeVal = hasHistory
@@ -114,6 +103,24 @@ void _goToComicRead(
       stringSelectCubit: context.read<StringSelectCubit>(),
     ),
   );
+}
+
+/// 在本地下载记录里按章节 key（id / requestId）查找章节。
+DownloadChapter? _findStoredChapter(
+  UnifiedComicDownload record,
+  String chapterKey,
+) {
+  final key = chapterKey.trim();
+  if (key.isEmpty) return null;
+  const matcher = DownloadChapterMatcher();
+  try {
+    for (final candidate in resolveDownloadChapters(record)) {
+      if (matcher.matches(candidate, key)) return candidate;
+    }
+  } catch (_) {
+    return null;
+  }
+  return null;
 }
 
 DownloadChapter? _resolveChapter(

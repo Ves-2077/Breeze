@@ -1,5 +1,6 @@
 pub mod comic_archive;
 pub mod data_backup;
+pub mod database;
 pub mod http;
 pub mod image;
 pub mod localization;

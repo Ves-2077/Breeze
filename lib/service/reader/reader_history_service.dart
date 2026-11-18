@@ -3,8 +3,6 @@ import 'dart:convert';
 
 import 'package:zephyr/main.dart';
 import 'package:zephyr/object_box/model.dart';
-import 'package:zephyr/object_box/object_box.dart';
-import 'package:zephyr/object_box/objectbox.g.dart';
 import 'package:zephyr/page/comic_info/json/normal/normal_comic_all_info.dart'
     as normal;
 import 'package:zephyr/page/comic_info/method/get_plugin_detail.dart';
@@ -58,14 +56,7 @@ class ReaderHistoryService {
     _isLoading = true;
     _markedChapterId = null;
 
-    final query = objectbox.unifiedHistoryBox
-        .query(UnifiedComicHistory_.uniqueKey.equals('$source:$comicId'))
-        .build();
-    try {
-      _history = await query.findFirstAsync();
-    } finally {
-      query.close();
-    }
+    _history = await database.histories.getByKey('$source:$comicId');
   }
 
   /// 上次加载到的历史页码，未加载或为 null 时返回 0。
@@ -78,26 +69,29 @@ class ReaderHistoryService {
   void markCurrentChapterRead() {
     final snapshot = _snapshotProvider?.call();
     if (snapshot == null) return;
-    _markChapterRead(snapshot.epInfo, snapshot.chapterOrder);
+    unawaited(_markChapterRead(snapshot.epInfo, snapshot.chapterOrder));
   }
 
   /// 章节切换时由周期保存顺带记录；同一章只写一次。
-  void _markChapterRead(NormalComicEpInfo epInfo, int chapterOrder) {
+  Future<void> _markChapterRead(
+    NormalComicEpInfo epInfo,
+    int chapterOrder,
+  ) async {
     final source = _source;
     final comicId = _comicId;
     final chapterId = epInfo.epId.trim();
     if (source == null || comicId == null || chapterId.isEmpty) return;
     if (_markedChapterId == chapterId) return;
 
+    _markedChapterId = chapterId;
     try {
-      ComicReadChapterRepository.instance.markRead(
+      await ComicReadChapterRepository.instance.markRead(
         source: source,
         comicId: comicId,
         chapterId: chapterId,
         chapterTitle: epInfo.epName,
         chapterOrder: chapterOrder,
       );
-      _markedChapterId = chapterId;
     } catch (e, s) {
       logger.w('mark chapter read failed', error: e);
       logger.d(s);
@@ -129,7 +123,7 @@ class ReaderHistoryService {
     final snapshot = _snapshotProvider?.call();
     if (snapshot == null) return;
 
-    _markChapterRead(snapshot.epInfo, snapshot.chapterOrder);
+    await _markChapterRead(snapshot.epInfo, snapshot.chapterOrder);
 
     final currentTime = DateTime.now().toLocal().toString().substring(0, 19);
     _statusController.add(
@@ -150,14 +144,7 @@ class ReaderHistoryService {
         'pageIndex': snapshot.pageIndex,
         'timestamp': timestamp.toIso8601String(),
       };
-      final historyJson = await objectbox.store
-          .runAsync<Map<String, dynamic>, Map<String, dynamic>>(
-            (store, payload) => _upsertUnifiedHistoryOnWorker(
-              ObjectBox.fromStore(store),
-              payload,
-            ),
-            payload,
-          );
+      final historyJson = await _upsertUnifiedHistory(payload);
       _history = UnifiedComicHistory.fromJson(historyJson);
     } catch (e, s) {
       logger.w('后台写入历史记录失败', error: e);
@@ -221,8 +208,7 @@ class ReaderHistoryService {
   }
 }
 
-Future<Map<String, dynamic>> _upsertUnifiedHistoryOnWorker(
-  ObjectBox objectbox,
+Future<Map<String, dynamic>> _upsertUnifiedHistory(
   Map<String, dynamic> payload,
 ) async {
   final source = payload['source']?.toString() ?? '';
@@ -240,11 +226,7 @@ Future<Map<String, dynamic>> _upsertUnifiedHistoryOnWorker(
   ).toUtc();
 
   final key = '$source:$comicId';
-  final downloadQuery = objectbox.unifiedDownloadBox
-      .query(UnifiedComicDownload_.uniqueKey.equals(key))
-      .build();
-  final download = downloadQuery.findFirst();
-  downloadQuery.close();
+  final download = await database.downloads.getByKey(key);
   final titleOverride = download != null && !download.deleted
       ? download.titleOverride?.trim() ?? ''
       : '';
@@ -257,58 +239,50 @@ Future<Map<String, dynamic>> _upsertUnifiedHistoryOnWorker(
   final effectiveCover = coverOverride.isNotEmpty
       ? download!.cover
       : _normalizeWorkerFlexMapString(normalInfo.cover);
-  final query = objectbox.unifiedHistoryBox
-      .query(UnifiedComicHistory_.uniqueKey.equals(key))
-      .build();
+  final existing = await database.histories.getByKey(key);
+  final nextCover = existing != null && _isLocalCover(existing.cover)
+      ? existing.cover
+      : effectiveCover;
+  final entity =
+      existing ??
+      UnifiedComicHistory(
+        uniqueKey: key,
+        source: source,
+        comicId: comicId,
+        title: effectiveTitle,
+        description: normalInfo.description,
+        cover: nextCover,
+        creator: _normalizeWorkerFlexMapString(normalInfo.creator),
+        titleMeta: _normalizeWorkerFlexListString(normalInfo.titleMeta),
+        metadata: _normalizeWorkerMetadataString(normalInfo.metadata),
+        chapterId: chapterId,
+        chapterTitle: chapterTitle,
+        chapterOrder: chapterOrder,
+        pageIndex: pageIndex,
+        createdAt: timestamp,
+        lastReadAt: timestamp,
+        updatedAt: timestamp,
+        deleted: false,
+        schemaVersion: 2,
+      );
 
-  try {
-    final existing = query.findFirst();
-    final nextCover = existing != null && _isLocalCover(existing.cover)
-        ? existing.cover
-        : effectiveCover;
-    final entity =
-        existing ??
-        UnifiedComicHistory(
-          uniqueKey: key,
-          source: source,
-          comicId: comicId,
-          title: effectiveTitle,
-          description: normalInfo.description,
-          cover: nextCover,
-          creator: _normalizeWorkerFlexMapString(normalInfo.creator),
-          titleMeta: _normalizeWorkerFlexListString(normalInfo.titleMeta),
-          metadata: _normalizeWorkerMetadataString(normalInfo.metadata),
-          chapterId: chapterId,
-          chapterTitle: chapterTitle,
-          chapterOrder: chapterOrder,
-          pageIndex: pageIndex,
-          createdAt: timestamp,
-          lastReadAt: timestamp,
-          updatedAt: timestamp,
-          deleted: false,
-          schemaVersion: 2,
-        );
+  entity
+    ..title = effectiveTitle
+    ..description = normalInfo.description
+    ..cover = nextCover
+    ..creator = _normalizeWorkerFlexMapString(normalInfo.creator)
+    ..titleMeta = _normalizeWorkerFlexListString(normalInfo.titleMeta)
+    ..metadata = _normalizeWorkerMetadataString(normalInfo.metadata)
+    ..chapterId = chapterId
+    ..chapterTitle = chapterTitle
+    ..chapterOrder = chapterOrder
+    ..pageIndex = pageIndex
+    ..lastReadAt = timestamp
+    ..updatedAt = timestamp
+    ..deleted = false;
 
-    entity
-      ..title = effectiveTitle
-      ..description = normalInfo.description
-      ..cover = nextCover
-      ..creator = _normalizeWorkerFlexMapString(normalInfo.creator)
-      ..titleMeta = _normalizeWorkerFlexListString(normalInfo.titleMeta)
-      ..metadata = _normalizeWorkerMetadataString(normalInfo.metadata)
-      ..chapterId = chapterId
-      ..chapterTitle = chapterTitle
-      ..chapterOrder = chapterOrder
-      ..pageIndex = pageIndex
-      ..lastReadAt = timestamp
-      ..updatedAt = timestamp
-      ..deleted = false;
-
-    entity.id = objectbox.unifiedHistoryBox.put(entity);
-    return entity.toJson();
-  } finally {
-    query.close();
-  }
+  await database.histories.put(entity);
+  return entity.toJson();
 }
 
 bool _isLocalCover(String raw) {

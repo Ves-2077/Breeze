@@ -91,16 +91,22 @@ List<Map<String, dynamic>> _chapters() => <Map<String, dynamic>>[
 void main() {
   late Directory downloadRoot;
 
+  /// 页面加载走真实异步（Rust SQLite FFI），必须用 runAsync 交替推进，
+  /// 让真实事件循环把查询结果送回后再 pump 一帧。
   Future<void> settleImages(WidgetTester tester) async {
-    await tester.runAsync(() async {
-      await Future<void>.delayed(const Duration(milliseconds: 250));
-    });
+    for (var i = 0; i < 100; i++) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 100)),
+      );
+      await tester.pump();
+      if (find.byType(CircularProgressIndicator).evaluate().isEmpty) break;
+    }
     await tester.pumpAndSettle();
   }
 
   setUpAll(() async {
     await initRustLib(silent: true);
-    await TestObjectBoxHelper.setUpTestObjectBox();
+    await TestDatabaseHelper.setUpTestDatabase();
     debugComicEditImagePathResolver = ({
       required String from,
       required String comicId,
@@ -117,18 +123,18 @@ void main() {
     if (await downloadRoot.exists()) {
       await downloadRoot.delete(recursive: true);
     }
-    await TestObjectBoxHelper.tearDownTestObjectBox();
+    await TestDatabaseHelper.tearDownTestDatabase();
   });
 
-  setUp(() {
-    objectbox.unifiedDownloadBox.removeAll();
-    objectbox.downloadTaskBox.removeAll();
+  setUp(() async {
+    await database.downloads.removeAll();
+    await database.downloadTasks.removeAll();
     final record = createTestDownload('test:c1')
       ..comicId = 'c1'
       ..title = 'Original'
       ..chapters = jsonEncode(_chapters())
       ..detailJson = jsonEncode(_detail());
-    objectbox.unifiedDownloadBox.put(record);
+    await database.downloads.put(record);
   });
 
   testWidgets('编辑页渲染三个 Tab 与标题', (tester) async {

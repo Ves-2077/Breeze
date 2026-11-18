@@ -8,8 +8,6 @@ import 'package:zephyr/cubit/string_select.dart';
 import 'package:zephyr/i18n/strings.g.dart';
 import 'package:zephyr/main.dart';
 import 'package:zephyr/network/http/plugin/qjs_download_runtime.dart';
-import 'package:zephyr/object_box/model.dart';
-import 'package:zephyr/object_box/objectbox.g.dart';
 import 'package:zephyr/page/comic_info/comic_info.dart';
 import 'package:zephyr/page/comic_info/json/normal/normal_comic_all_info.dart'
     show ComicInfo, ComicInfoActionItem;
@@ -206,15 +204,7 @@ class _InfoColumnState extends State<_InfoColumn> {
 
     // 旧数据库记录可能保存了当时实际使用的绝对 storageRoot。
     for (final source in sourceCandidates) {
-      final query = objectbox.unifiedDownloadBox
-          .query(UnifiedComicDownload_.uniqueKey.equals('$source:$comicId'))
-          .build();
-      UnifiedComicDownload? download;
-      try {
-        download = query.findFirst();
-      } finally {
-        query.close();
-      }
+      final download = await database.downloads.getByKey('$source:$comicId');
       final storedRoot = download?.storageRoot.trim() ?? '';
       if (storedRoot.isNotEmpty && p.isAbsolute(storedRoot)) {
         addRoot(storedRoot);

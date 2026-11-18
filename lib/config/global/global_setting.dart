@@ -1,5 +1,7 @@
 // 全局设置
 
+import 'dart:async';
+
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:material_ui/material_ui.dart';
@@ -124,9 +126,9 @@ extension ReadSettingStateBackgroundColor on ReadSettingState {
   }
 }
 
-GlobalSettingState get globalSetting {
-  return objectbox.userSettingBox.get(1)!.globalSetting;
-}
+GlobalSettingState _globalSettingState = const GlobalSettingState();
+
+GlobalSettingState get globalSetting => _globalSettingState;
 
 @freezed
 abstract class GlobalSettingState with _$GlobalSettingState {
@@ -411,7 +413,9 @@ class GlobalSettingCubit extends Cubit<GlobalSettingState> {
   late final Color _defaultSeedColor = colorThemeList[6].color;
 
   Future<void> initBox() async {
-    final persisted = objectbox.userSettingBox.get(1)!.globalSetting;
+    final userSetting = await database.userSettings.getOrCreate();
+    final persisted = userSetting.globalSetting;
+    _globalSettingState = persisted;
     _syncRuntimeFlags(persisted);
     emit(persisted);
   }
@@ -567,15 +571,19 @@ class GlobalSettingCubit extends Cubit<GlobalSettingState> {
   }
 
   void _updateDataBase(GlobalSettingState state) {
-    // logger.d(state.toJson());
-    final userBox = objectbox.userSettingBox;
-    var dbSettings = userBox.get(1)!;
+    _globalSettingState = state;
+    unawaited(_persistGlobalSetting(state));
+  }
+
+  Future<void> _persistGlobalSetting(GlobalSettingState state) async {
+    final userSetting = await database.userSettings.get();
+    if (userSetting == null) return;
     var toSave = state;
-    final existingVersion = dbSettings.globalSetting.compatibleVersion.trim();
+    final existingVersion = userSetting.globalSetting.compatibleVersion.trim();
     if (toSave.compatibleVersion.trim().isEmpty && existingVersion.isNotEmpty) {
       toSave = toSave.copyWith(compatibleVersion: existingVersion);
     }
-    dbSettings.globalSetting = toSave;
-    userBox.put(dbSettings);
+    userSetting.globalSetting = toSave;
+    await database.userSettings.put(userSetting);
   }
 }

@@ -2,7 +2,6 @@ import 'dart:convert';
 
 import 'package:zephyr/main.dart';
 import 'package:zephyr/object_box/model.dart';
-import 'package:zephyr/object_box/objectbox.g.dart';
 import 'package:zephyr/page/download/adapters/download_chapter_matcher.dart';
 import 'package:zephyr/page/download/models/download_chapter.dart';
 import 'package:zephyr/page/download/models/unified_comic_download.dart';
@@ -10,9 +9,9 @@ import 'package:zephyr/service/download/models/download_task_json.dart';
 
 /// DownloadTask 的唯一读写入口。
 ///
-/// ObjectBox 实体暂时保持兼容，任务 payload 和检查点都存放在
-/// [DownloadTask.dbTaskInfoStr] 对应的版本化 JSON 中。这样旧任务仍可读取，
-/// 新任务可以在进程退出后恢复章节级进度。
+/// 任务 payload 和检查点都存放在 [DownloadTask.dbTaskInfoStr] 对应的
+/// 版本化 JSON 中。这样旧任务仍可读取，新任务可以在进程退出后恢复章节级
+/// 进度。所有读写都经过 `database.downloadTasks`（异步 SQLite）。
 class DownloadTaskRepository {
   const DownloadTaskRepository();
 
@@ -25,19 +24,22 @@ class DownloadTaskRepository {
   static final Map<String, Future<void>> _pendingTaskWrites =
       <String, Future<void>>{};
 
-  List<DownloadTask> getAll({bool incompleteOnly = false}) {
-    final tasks = objectbox.downloadTaskBox.getAll();
-    if (!incompleteOnly) return tasks;
-    return tasks.where((task) => !task.isCompleted).toList();
+  Future<List<DownloadTask>> getAll({bool incompleteOnly = false}) {
+    return incompleteOnly
+        ? database.downloadTasks.listIncomplete()
+        : database.downloadTasks.getAll();
   }
 
-  DownloadTask? findByTaskKey(String taskKey, {bool incompleteOnly = false}) {
+  Future<DownloadTask?> findByTaskKey(
+    String taskKey, {
+    bool incompleteOnly = false,
+  }) async {
     DownloadTask? result;
     final normalizedKey = taskKey.trim();
     if (normalizedKey.isNotEmpty) {
       final cachedId = _taskKeyCache[normalizedKey];
       if (cachedId != null) {
-        final cached = objectbox.downloadTaskBox.get(cachedId);
+        final cached = await database.downloadTasks.getById(cachedId);
         if (cached != null &&
             (!incompleteOnly || !cached.isCompleted) &&
             _taskKeyOf(cached) == normalizedKey) {
@@ -45,7 +47,7 @@ class DownloadTaskRepository {
         }
         _taskKeyCache.remove(normalizedKey);
       }
-      for (final task in getAll(incompleteOnly: incompleteOnly)) {
+      for (final task in await getAll(incompleteOnly: incompleteOnly)) {
         if (_taskKeyOf(task) == normalizedKey) {
           result = task;
           _taskKeyCache[normalizedKey] = task.id;
@@ -56,7 +58,7 @@ class DownloadTaskRepository {
     return result;
   }
 
-  DownloadTask? findByPayload({
+  Future<DownloadTask?> findByPayload({
     required String from,
     required String comicId,
     bool incompleteOnly = false,
@@ -68,16 +70,14 @@ class DownloadTaskRepository {
   }
 
   /// 查找本漫画的本地下载记录，没有返回 null。
-  UnifiedComicDownload? findDownloadRecord(String from, String comicId) {
+  Future<UnifiedComicDownload?> findDownloadRecord(
+    String from,
+    String comicId,
+  ) async {
     try {
-      return objectbox.unifiedDownloadBox
-          .query(
-            UnifiedComicDownload_.uniqueKey.equals(
-              buildDownloadTaskKey(from, comicId),
-            ),
-          )
-          .build()
-          .findFirst();
+      return await database.downloads.getByKey(
+        buildDownloadTaskKey(from, comicId),
+      );
     } catch (_) {
       return null;
     }
@@ -87,16 +87,17 @@ class DownloadTaskRepository {
   ///
   /// [findByPayload] 用的是漫画级 taskKey，而实际下载任务是章节级 key，
   /// 不能用来判断“这本漫画是否还有下载在跑”。
-  List<DownloadTask> findIncompleteByComic({
+  Future<List<DownloadTask>> findIncompleteByComic({
     required String from,
     required String comicId,
-  }) {
+  }) async {
     final normalizedFrom = from.trim();
     final normalizedComicId = comicId.trim();
     if (normalizedFrom.isEmpty || normalizedComicId.isEmpty) {
       return const <DownloadTask>[];
     }
-    return getAll().where((task) {
+    final tasks = await database.downloadTasks.listByComicId(normalizedComicId);
+    return tasks.where((task) {
       if (task.isCompleted && !task.isDownloading) return false;
       if (task.comicId.trim() != normalizedComicId) return false;
       final payload = readPayload(task);
@@ -109,12 +110,12 @@ class DownloadTaskRepository {
   ///
   /// [chapterKey] 可以是逻辑 id / requestId / order 字符串中的任意一个。
   /// 阅读入口统一用它判断“该章是否已下载”，命中则直接读本地。
-  DownloadChapter? findDownloadedChapter({
+  Future<DownloadChapter?> findDownloadedChapter({
     required String from,
     required String comicId,
     required String chapterKey,
-  }) {
-    final record = findDownloadRecord(from, comicId);
+  }) async {
+    final record = await findDownloadRecord(from, comicId);
     if (record == null || chapterKey.trim().isEmpty) return null;
     const matcher = DownloadChapterMatcher();
     try {
@@ -129,7 +130,7 @@ class DownloadTaskRepository {
 
   /// 按章节查找未完成任务。章节 key 必须是逻辑身份
   ///（logicalKey > chapterId > requestId，见 [downloadChapterKeyOfRef]）。
-  DownloadTask? findByChapterKey({
+  Future<DownloadTask?> findByChapterKey({
     required String from,
     required String comicId,
     required String chapterKey,
@@ -154,13 +155,13 @@ class DownloadTaskRepository {
     }
   }
 
-  int putPayload(
+  Future<int> putPayload(
     DownloadTask task,
     DownloadTaskJson payload, {
     String? status,
     bool? isDownloading,
     bool? isCompleted,
-  }) {
+  }) async {
     task
       ..taskInfo = payload
       ..comicId = payload.comicId
@@ -168,18 +169,18 @@ class DownloadTaskRepository {
     if (status != null) task.status = status;
     if (isDownloading != null) task.isDownloading = isDownloading;
     if (isCompleted != null) task.isCompleted = isCompleted;
-    final id = objectbox.downloadTaskBox.put(task);
+    final id = await database.downloadTasks.put(task);
     _taskKeyCache[payload.taskKey] = id;
     return id;
   }
 
-  int putState(
+  Future<int> putState(
     DownloadTask task, {
     DownloadTaskJson? payload,
     String? status,
     bool? isDownloading,
     bool? isCompleted,
-  }) {
+  }) async {
     if (payload != null) {
       task
         ..taskInfo = payload
@@ -189,15 +190,16 @@ class DownloadTaskRepository {
     if (status != null) task.status = status;
     if (isDownloading != null) task.isDownloading = isDownloading;
     if (isCompleted != null) task.isCompleted = isCompleted;
-    final id = objectbox.downloadTaskBox.put(task);
+    final id = await database.downloadTasks.put(task);
     if (payload != null) _taskKeyCache[payload.taskKey] = id;
     return id;
   }
 
   /// 后台写任务库（checkpoint / 状态同步等高频写）。
   ///
-  /// 纯数据进、出：payload 在主线程拼好，以 JSON 字符串传入；worker 里只做
-  /// get + 赋值 + put，不读主线程任何对象。返回 worker 侧耗时（毫秒）。
+  /// 纯数据进、出：payload 在主线程拼好，以 JSON 字符串传入；写库时重新
+  /// 读取实体后只覆盖传入字段，避免旧快照覆盖其他字段。同一 taskKey 的
+  /// 写通过 [_pendingTaskWrites] 串行执行。
   Future<void> putTaskWriteBackground({
     required String taskKey,
     required int taskId,
@@ -214,13 +216,7 @@ class DownloadTaskRepository {
     if (payloadJson != null) args['payloadJson'] = payloadJson;
     final prev = _pendingTaskWrites[normalizedKey] ?? Future.value();
     late final Future<void> next;
-    next = prev.then(
-      (_) => objectbox.store.runInTransactionAsync<int, Map<String, dynamic>>(
-        TxMode.write,
-        _applyDownloadTaskWrite,
-        args,
-      ),
-    );
+    next = prev.then((_) => _applyDownloadTaskWrite(args));
     _pendingTaskWrites[normalizedKey] = next;
     next.whenComplete(() {
       if (identical(_pendingTaskWrites[normalizedKey], next)) {
@@ -236,8 +232,8 @@ class DownloadTaskRepository {
     return _pendingTaskWrites[taskKey.trim()] ?? Future.value();
   }
 
-  void resetInterruptedTasks() {
-    final interrupted = getAll(incompleteOnly: true)
+  Future<void> resetInterruptedTasks() async {
+    final interrupted = (await getAll(incompleteOnly: true))
         .where((task) => task.isDownloading)
         .toList();
     if (interrupted.isEmpty) return;
@@ -254,7 +250,7 @@ class DownloadTaskRepository {
         );
       }
     }
-    objectbox.downloadTaskBox.putMany(interrupted);
+    await database.downloadTasks.putMany(interrupted);
     logger.i('重置了 ${interrupted.length} 个中断的下载任务');
   }
 
@@ -276,25 +272,20 @@ String downloadTaskKeyOf(DownloadTask task) {
   return task.comicId.trim();
 }
 
-/// 后台 isolate 里执行单条任务写（顶层函数，可跨 isolate 传递）。
+/// 执行单条任务写（纯数据进）。
 ///
-/// 只碰传入的纯数据，不读主线程任何对象；实体不存在（已被删）则跳过。
-/// 返回 worker 侧耗时毫秒数。
-int _applyDownloadTaskWrite(Store store, Map<String, dynamic> args) {
-  final sw = Stopwatch()..start();
-  final box = store.box<DownloadTask>();
-  final task = box.get(args['id'] as int);
-  if (task != null) {
-    task.status = (args['status'] as String?) ?? task.status;
-    task.isDownloading = (args['isDownloading'] as bool?) ?? task.isDownloading;
-    task.isCompleted = (args['isCompleted'] as bool?) ?? task.isCompleted;
-    final payloadJson = args['payloadJson'] as String?;
-    if (payloadJson != null) {
-      task.taskInfo = DownloadTaskJson.fromJson(
-        jsonDecode(payloadJson) as Map<String, dynamic>,
-      );
-    }
-    box.put(task);
+/// 先按 id 重新读取实体，只覆盖传入字段；实体不存在（已被删）则跳过。
+Future<void> _applyDownloadTaskWrite(Map<String, dynamic> args) async {
+  final task = await database.downloadTasks.getById(args['id'] as int);
+  if (task == null) return;
+  task.status = (args['status'] as String?) ?? task.status;
+  task.isDownloading = (args['isDownloading'] as bool?) ?? task.isDownloading;
+  task.isCompleted = (args['isCompleted'] as bool?) ?? task.isCompleted;
+  final payloadJson = args['payloadJson'] as String?;
+  if (payloadJson != null) {
+    task.taskInfo = DownloadTaskJson.fromJson(
+      jsonDecode(payloadJson) as Map<String, dynamic>,
+    );
   }
-  return sw.elapsedMilliseconds;
+  await database.downloadTasks.put(task);
 }

@@ -4,7 +4,6 @@ import 'package:material_ui/material_ui.dart';
 import 'package:zephyr/i18n/strings.g.dart';
 import 'package:zephyr/main.dart';
 import 'package:zephyr/object_box/model.dart';
-import 'package:zephyr/object_box/objectbox.g.dart';
 import 'package:zephyr/page/comic_info/cubit/episode_download_status_cubit.dart';
 import 'package:zephyr/page/comic_info/cubit/episode_selection_cubit.dart';
 import 'package:zephyr/page/download/adapters/download_chapter_adapter.dart';
@@ -12,7 +11,6 @@ import 'package:zephyr/page/download/models/download_chapter.dart';
 import 'package:zephyr/page/download/models/unified_comic_download.dart';
 import 'package:zephyr/service/download/download_delete_service.dart';
 import 'package:zephyr/service/download/download_queue_manager.dart';
-import 'package:zephyr/service/download/download_task_repository.dart';
 import 'package:zephyr/service/download/models/download_task_json.dart';
 import 'package:zephyr/widgets/toast.dart';
 
@@ -25,7 +23,6 @@ import 'package:zephyr/widgets/toast.dart';
 class EpisodeDownloadController {
   EpisodeDownloadController();
 
-  static const _repository = DownloadTaskRepository();
   static const _adapter = DownloadChapterAdapter();
 
   /// 多选态版本号 cubit：只在进入/切换/全选/清空/退出选择时 bump。
@@ -74,7 +71,7 @@ class EpisodeDownloadController {
     // attach 在 _EpisodeBoard 的 initState/didUpdateWidget 里调用，
     // 这里同步算初值后 emit 一次；后续变化由订阅回调异步 emit。
     _resubscribe();
-    _loadInitial();
+    unawaited(_loadInitial());
   }
 
   void _updateStatus({
@@ -98,31 +95,40 @@ class EpisodeDownloadController {
     _taskSubscription = null;
     if (!downloadUiEnabled) return;
 
-    final recordQuery = objectbox.unifiedDownloadBox
-        .query(UnifiedComicDownload_.uniqueKey.equals(_recordKey))
-        .watch();
-    _recordSubscription = recordQuery.listen((query) {
-      _updateStatus(downloadedIds: _resolveDownloadedIds(query.findFirst()));
+    final recordKey = _recordKey;
+    final comicId = _comicId;
+    _recordSubscription = database.downloads.watchByKey(recordKey).listen((
+      record,
+    ) {
+      if (recordKey != _recordKey) return;
+      _updateStatus(downloadedIds: _resolveDownloadedIds(record));
     });
 
-    final taskQuery = objectbox.downloadTaskBox
-        .query(DownloadTask_.comicId.equals(_comicId))
-        .watch();
-    _taskSubscription = taskQuery.listen((query) {
-      _updateStatus(taskSnaps: _buildTaskSnaps(query.find()));
+    _taskSubscription = database.downloadTasks.watchIncomplete().listen((
+      tasks,
+    ) {
+      if (comicId != _comicId) return;
+      _updateStatus(taskSnaps: _buildTaskSnaps(_tasksOfComic(tasks, comicId)));
     });
   }
 
-  void _loadInitial() {
-    final record = _repository.findDownloadRecord(_from, _comicId);
-    final tasks = objectbox.downloadTaskBox
-        .query(DownloadTask_.comicId.equals(_comicId))
-        .build()
-        .find();
+  Future<void> _loadInitial() async {
+    final recordKey = _recordKey;
+    final comicId = _comicId;
+    final record = await database.downloads.getByKey(recordKey);
+    final tasks = await database.downloadTasks.listByComicId(comicId);
+    if (recordKey != _recordKey || comicId != _comicId) return;
     _updateStatus(
       downloadedIds: _resolveDownloadedIds(record),
       taskSnaps: _buildTaskSnaps(tasks),
     );
+  }
+
+  static List<DownloadTask> _tasksOfComic(
+    List<DownloadTask> tasks,
+    String comicId,
+  ) {
+    return tasks.where((task) => task.comicId.trim() == comicId).toList();
   }
 
   Map<String, ChapterTaskSnap> _buildTaskSnaps(List<DownloadTask> tasks) {

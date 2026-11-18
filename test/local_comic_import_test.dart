@@ -35,7 +35,7 @@ void main() {
 
   setUpAll(() async {
     await initRustLib(silent: true);
-    await TestObjectBoxHelper.setUpTestObjectBox();
+    await TestDatabaseHelper.setUpTestDatabase();
     downloadRoot = await Directory.systemTemp.createTemp(
       'breeze_local_import_downloads_',
     );
@@ -47,13 +47,13 @@ void main() {
     if (await downloadRoot.exists()) {
       await downloadRoot.delete(recursive: true);
     }
-    await TestObjectBoxHelper.tearDownTestObjectBox();
+    await TestDatabaseHelper.tearDownTestDatabase();
   });
 
   setUp(() async {
-    objectbox.unifiedDownloadBox.removeAll();
-    objectbox.comicLinkBox.removeAll();
-    objectbox.comicFolderBox.removeAll();
+    await database.downloads.removeAll();
+    await database.links.removeAll();
+    await database.folders.removeAll();
     tempRoot = await Directory.systemTemp.createTemp('breeze_local_import_');
   });
 
@@ -78,7 +78,7 @@ void main() {
     expect(result.chapterCount, 1);
     expect(result.imageCount, 2);
 
-    final record = objectbox.unifiedDownloadBox.getAll().single;
+    final record = (await database.downloads.getAll()).single;
     expect(record.source, kLocalComicPluginId);
     expect(record.uniqueKey, '$kLocalComicPluginId:${result.comicId}');
     expect(record.allowLike, isFalse);
@@ -109,7 +109,7 @@ void main() {
     );
     expect(await coverStore.findCanonicalDownload(), isNotNull);
 
-    final links = ComicLinkService.listAllLinks(ComicFolderType.download);
+    final links = await ComicLinkService.listAllLinks(ComicFolderType.download);
     expect(links, hasLength(1));
     expect(links.single.comicUniqueKey, record.uniqueKey);
 
@@ -137,7 +137,7 @@ void main() {
       isDirectory: true,
     );
 
-    final record = objectbox.unifiedDownloadBox.getAll().single;
+    final record = (await database.downloads.getAll()).single;
     final chapters = jsonDecode(record.chapters) as List;
     for (final chapter in chapters.cast<Map>()) {
       for (final image in (chapter['images'] as List).cast<Map>()) {
@@ -145,7 +145,7 @@ void main() {
       }
     }
     record.chapters = jsonEncode(chapters);
-    objectbox.unifiedDownloadBox.put(record);
+    await database.downloads.put(record);
 
     final info = await getPluginInfoFromLocal(
       kLocalComicPluginId,
@@ -177,7 +177,7 @@ void main() {
     expect(result.chapterCount, 1);
     expect(result.imageCount, 2);
 
-    final record = objectbox.unifiedDownloadBox.getAll().single;
+    final record = (await database.downloads.getAll()).single;
     final chapters = jsonDecode(record.chapters) as List;
     expect((chapters.single as Map)['name'], 'Book');
     expect(((chapters.single as Map)['images'] as List), hasLength(2));
@@ -199,7 +199,7 @@ void main() {
     expect(result.chapterCount, 1);
     expect(result.imageCount, 2);
 
-    final record = objectbox.unifiedDownloadBox.getAll().single;
+    final record = (await database.downloads.getAll()).single;
     final chapters = jsonDecode(record.chapters) as List;
     expect((chapters.single as Map)['name'], 'comic');
     expect(((chapters.single as Map)['images'] as List), hasLength(2));
@@ -234,7 +234,7 @@ void main() {
     );
 
     expect(result.chapterCount, 3);
-    final record = objectbox.unifiedDownloadBox.getAll().single;
+    final record = (await database.downloads.getAll()).single;
     final chapters = (jsonDecode(record.chapters) as List)
         .cast<Map<String, dynamic>>();
     expect(chapters.map((chapter) => chapter['name']), <String>[

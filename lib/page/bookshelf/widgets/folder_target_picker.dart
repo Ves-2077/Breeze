@@ -22,7 +22,8 @@ Future<Set<String>?> showFolderTargetPicker(
   String? title,
   String? currentSyncId,
 }) async {
-  var folders = ComicFolderService.listAllFolders(type);
+  var folders = await ComicFolderService.listAllFolders(type);
+  if (!context.mounted) return null;
   Map<String, ComicFolder> syncIdMap = {
     for (final folder in folders) folder.syncId: folder,
   };
@@ -41,8 +42,8 @@ Future<Set<String>?> showFolderTargetPicker(
       final expandedPaths = <String>{};
       return StatefulBuilder(
         builder: (ctx, setState) {
-          void reloadFolders() {
-            folders = ComicFolderService.listAllFolders(type);
+          Future<void> reloadFolders() async {
+            folders = await ComicFolderService.listAllFolders(type);
             syncIdMap = {for (final folder in folders) folder.syncId: folder};
             pathMap = {
               for (final folder in folders)
@@ -73,12 +74,12 @@ Future<Set<String>?> showFolderTargetPicker(
             final name = await _askFolderName(ctx);
             if (name == null || name.trim().isEmpty) return;
             try {
-              final folder = ComicFolderService.createFolder(
+              final folder = await ComicFolderService.createFolder(
                 kComicFolderRootPath,
                 name.trim(),
                 type,
               );
-              reloadFolders();
+              await reloadFolders();
               final newPath = ComicFolderService.folderPath(
                 folder,
                 syncIdMap: syncIdMap,
@@ -292,11 +293,6 @@ List<FolderNode> buildFolderForest(
     }
   }
   return roots;
-}
-
-Map<String, ComicFolder> buildFolderSyncIdMap(ComicFolderType type) {
-  final allFolders = ComicFolderService.listAllFolders(type);
-  return {for (final folder in allFolders) folder.syncId: folder};
 }
 
 void collectForbiddenSyncIds(

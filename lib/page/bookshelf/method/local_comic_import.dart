@@ -394,11 +394,11 @@ Future<LocalComicImportResult> _persistImportedComic({
   );
 
   try {
-    objectbox.unifiedDownloadBox.put(entity);
-    ComicLinkService.addComic(uniqueKey, null, ComicFolderType.download);
+    await database.downloads.put(entity);
+    await ComicLinkService.addComic(uniqueKey, null, ComicFolderType.download);
 
     final nowMillis = DateTime.now().toUtc().millisecondsSinceEpoch;
-    final links = ComicLinkService.linksOfComic(
+    final links = await ComicLinkService.linksOfComic(
       uniqueKey,
       ComicFolderType.download,
     );
@@ -406,10 +406,10 @@ Future<LocalComicImportResult> _persistImportedComic({
       link
         ..createdAt = nowMillis
         ..updatedAt = nowMillis;
-      objectbox.comicLinkBox.put(link);
+      await database.links.put(link);
     }
   } catch (_) {
-    objectbox.unifiedDownloadBox.remove(entity.id);
+    await database.downloads.removeById(entity.id);
     rethrow;
   }
 

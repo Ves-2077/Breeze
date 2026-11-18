@@ -6,8 +6,6 @@ import 'package:zephyr/i18n/strings.g.dart';
 import 'package:zephyr/main.dart';
 import 'package:zephyr/widgets/comic_entry/models/models.dart';
 import 'package:zephyr/object_box/model.dart';
-import 'package:zephyr/object_box/objectbox.g.dart';
-import 'package:zephyr/object_box/object_box.dart';
 import 'package:zephyr/page/bookshelf/cubit/search_status.dart';
 import 'package:zephyr/page/bookshelf/models/shelf_page_mode.dart';
 import 'package:zephyr/page/bookshelf/service/comic_folder_service.dart';
@@ -68,17 +66,9 @@ class FolderShelfBloc extends Bloc<FolderShelfEvent, FolderShelfState> {
         'sort': search?.sort ?? 'dd',
         'sources': search?.sources ?? const <String>[],
       };
-      // 查询频率低，直接用 ObjectBox 的 runAsync：后台 isolate 里 attach
-      // 同一个 store 执行回调，查完自动关闭。
-      final result = await objectbox.store
-          .runAsync<Map<String, dynamic>, Map<String, dynamic>>((
-            store,
-            payload,
-          ) async {
-            await initRustLib(silent: true);
-            objectbox = ObjectBox.fromStore(store);
-            return _runFolderShelfLoadTask(payload);
-          }, payload);
+      // 查询频率低；SQLite 调用本身是异步的，直接在 bloc 所在 isolate 执行。
+      await initRustLib(silent: true);
+      final result = await _runFolderShelfLoadTask(payload);
 
       final error = result['error']?.toString() ?? '';
       if (error.isNotEmpty) {
@@ -157,7 +147,7 @@ class FolderShelfBloc extends Bloc<FolderShelfEvent, FolderShelfState> {
   ) async {
     if (_isHistoryMode) return;
     try {
-      ComicFolderService.createFolder(
+      await ComicFolderService.createFolder(
         state.currentPath,
         event.name,
         _folderType,
@@ -175,8 +165,8 @@ class FolderShelfBloc extends Bloc<FolderShelfEvent, FolderShelfState> {
   ) async {
     if (_isHistoryMode) return;
     try {
-      ComicFolderService.deleteFolder(event.path, _folderType);
-      ComicLinkService.removeLinksInFolderTree(event.path, _folderType);
+      await ComicFolderService.deleteFolder(event.path, _folderType);
+      await ComicLinkService.removeLinksInFolderTree(event.path, _folderType);
       add(const FolderShelfLoadRequested());
     } catch (e) {
       logger.e(e);
@@ -190,7 +180,11 @@ class FolderShelfBloc extends Bloc<FolderShelfEvent, FolderShelfState> {
   ) async {
     if (_isHistoryMode) return;
     try {
-      ComicFolderService.renameFolder(event.path, event.newName, _folderType);
+      await ComicFolderService.renameFolder(
+        event.path,
+        event.newName,
+        _folderType,
+      );
       add(const FolderShelfLoadRequested());
     } catch (e) {
       logger.e(e);
@@ -268,14 +262,7 @@ class FolderShelfBloc extends Bloc<FolderShelfEvent, FolderShelfState> {
     // 历史无文件夹，全选只选中漫画。
     final allFolders = _isHistoryMode
         ? <String>{}
-        : state.folders
-              .map(
-                (f) => ComicFolderService.folderPath(
-                  f,
-                  syncIdMap: _buildSyncIdMap(_folderType),
-                ),
-              )
-              .toSet();
+        : await _folderPathsOfType(_folderType);
     emit(
       state.copyWith(
         selectionMode: true,
@@ -286,9 +273,12 @@ class FolderShelfBloc extends Bloc<FolderShelfEvent, FolderShelfState> {
     );
   }
 
-  Map<String, ComicFolder> _buildSyncIdMap(ComicFolderType type) {
-    final all = ComicFolderService.listAllFolders(type);
-    return {for (final folder in all) folder.syncId: folder};
+  Future<Set<String>> _folderPathsOfType(ComicFolderType type) async {
+    final all = await ComicFolderService.listAllFolders(type);
+    final syncIdMap = {for (final folder in all) folder.syncId: folder};
+    return state.folders
+        .map((f) => ComicFolderService.folderPath(f, syncIdMap: syncIdMap))
+        .toSet();
   }
 
   Future<void> _onMoveSelected(
@@ -305,13 +295,13 @@ class FolderShelfBloc extends Bloc<FolderShelfEvent, FolderShelfState> {
       }
       for (final targetPath in targetPaths) {
         if (sourceFolderPaths.isNotEmpty) {
-          ComicFolderService.batchMoveFolders(
+          await ComicFolderService.batchMoveFolders(
             sourceFolderPaths,
             targetPath,
             _folderType,
           );
         }
-        ComicLinkService.batchMoveComics(
+        await ComicLinkService.batchMoveComics(
           state.selectedComicKeys,
           state.currentPath.isEmpty ? null : state.currentPath,
           targetPath,
@@ -332,12 +322,12 @@ class FolderShelfBloc extends Bloc<FolderShelfEvent, FolderShelfState> {
     if (_isHistoryMode) return;
     try {
       for (final targetPath in event.targetPaths) {
-        ComicFolderService.batchCopyFolders(
+        await ComicFolderService.batchCopyFolders(
           state.selectedFolderPaths,
           targetPath,
           _folderType,
         );
-        ComicLinkService.batchCopyComics(
+        await ComicLinkService.batchCopyComics(
           state.selectedComicKeys,
           targetPath,
           _folderType,
@@ -357,18 +347,18 @@ class FolderShelfBloc extends Bloc<FolderShelfEvent, FolderShelfState> {
     try {
       // 历史无 ComicLink：直接软删除历史本体（与旧 LocalShelfPage 一致）。
       if (_isHistoryMode) {
-        _deleteHistoryComics(state.selectedComicKeys);
+        await _deleteHistoryComics(state.selectedComicKeys);
         _exitSelectionAndRefresh();
         return;
       }
-      ComicFolderService.batchDeleteFolders(
+      await ComicFolderService.batchDeleteFolders(
         state.selectedFolderPaths,
         _folderType,
       );
       for (final folderPath in state.selectedFolderPaths) {
-        ComicLinkService.removeLinksInFolderTree(folderPath, _folderType);
+        await ComicLinkService.removeLinksInFolderTree(folderPath, _folderType);
       }
-      ComicLinkService.batchRemoveComics(
+      await ComicLinkService.batchRemoveComics(
         state.selectedComicKeys,
         state.currentPath.isEmpty ? null : state.currentPath,
         _folderType,
@@ -381,19 +371,16 @@ class FolderShelfBloc extends Bloc<FolderShelfEvent, FolderShelfState> {
   }
 
   /// 批量软删除历史记录。调用方保证只传历史 uniqueKey。
-  void _deleteHistoryComics(Set<String> comicUniqueKeys) {
+  Future<void> _deleteHistoryComics(Set<String> comicUniqueKeys) async {
     if (comicUniqueKeys.isEmpty) return;
     final now = DateTime.now().toUtc();
     for (final uniqueKey in comicUniqueKeys) {
-      final history = objectbox.unifiedHistoryBox
-          .query(UnifiedComicHistory_.uniqueKey.equals(uniqueKey))
-          .build()
-          .findFirst();
+      final history = await database.histories.getByKey(uniqueKey);
       if (history != null) {
         history
           ..deleted = true
           ..updatedAt = now;
-        objectbox.unifiedHistoryBox.put(history);
+        await database.histories.put(history);
       }
     }
   }
@@ -404,7 +391,9 @@ class FolderShelfBloc extends Bloc<FolderShelfEvent, FolderShelfState> {
   }
 }
 
-Map<String, dynamic> _runFolderShelfLoadTask(Map<String, dynamic> payload) {
+Future<Map<String, dynamic>> _runFolderShelfLoadTask(
+  Map<String, dynamic> payload,
+) async {
   try {
     final mode = ShelfPageMode.values.byName(payload['mode'] as String);
     final folderType = FolderShelfBloc._toFolderType(mode);
@@ -423,25 +412,20 @@ Map<String, dynamic> _runFolderShelfLoadTask(Map<String, dynamic> payload) {
     final sortByViewTime =
         (mode == ShelfPageMode.favorite || mode == ShelfPageMode.download) &&
         (sort == 'vd' || sort == 'va');
-    final viewTimes = <String, DateTime>{
-      if (sortByViewTime)
-        for (final history in objectbox.unifiedHistoryBox.getAll().where(
-          (history) => !history.deleted,
-        ))
-          history.uniqueKey: history.lastReadAt,
-    };
+    final viewTimes = <String, DateTime>{};
+    if (sortByViewTime) {
+      for (final history in await database.histories.listActive()) {
+        viewTimes[history.uniqueKey] = history.lastReadAt;
+      }
+    }
     final itemTimes = <String, DateTime>{};
     if (sortByViewTime) {
       if (mode == ShelfPageMode.favorite) {
-        for (final favorite in objectbox.unifiedFavoriteBox.getAll().where(
-          (favorite) => !favorite.deleted,
-        )) {
+        for (final favorite in await database.favorites.listActive()) {
           itemTimes[favorite.uniqueKey] = favorite.createdAt;
         }
       } else {
-        for (final download in objectbox.unifiedDownloadBox.getAll().where(
-          (download) => !download.deleted,
-        )) {
+        for (final download in await database.downloads.listActive()) {
           itemTimes[download.uniqueKey] = download.downloadedAt;
         }
       }
@@ -450,7 +434,7 @@ Map<String, dynamic> _runFolderShelfLoadTask(Map<String, dynamic> payload) {
 
     // 历史无文件夹体系：直读历史表，按更新时间排序。
     if (mode == ShelfPageMode.history) {
-      return _loadHistoryShelf(
+      return await _loadHistoryShelf(
         sortAscending: sortAscending,
         keyword: keyword,
         sourceFilter: sourceFilter,
@@ -462,17 +446,17 @@ Map<String, dynamic> _runFolderShelfLoadTask(Map<String, dynamic> payload) {
     final normalizedKeyword = isSearching ? _normalizeSearchText(keyword) : '';
     final folders = isSearching
         ? <ComicFolder>[]
-        : ComicFolderService.listChildFolders(
+        : await ComicFolderService.listChildFolders(
             currentPath,
             folderType,
             sortAscending: sortAscending,
           );
     final links = isSearching
-        ? ComicLinkService.listAllLinks(
+        ? await ComicLinkService.listAllLinks(
             folderType,
             sortAscending: sortAscending,
           )
-        : ComicLinkService.listLinks(
+        : await ComicLinkService.listLinks(
             currentPath.isEmpty ? null : currentPath,
             folderType,
             sortAscending: sortAscending,
@@ -481,7 +465,7 @@ Map<String, dynamic> _runFolderShelfLoadTask(Map<String, dynamic> payload) {
     final comicSearchTexts = <String, String>{};
     final seenKeys = <String>{};
     for (final link in links) {
-      final resolved = _resolveComic(link.comicUniqueKey, folderType);
+      final resolved = await _resolveComic(link.comicUniqueKey, folderType);
       if (resolved == null) continue;
       if (sourceFilter != null &&
           !sourceFilter.contains(resolved.info.source)) {
@@ -555,62 +539,35 @@ Map<String, dynamic> _runFolderShelfLoadTask(Map<String, dynamic> payload) {
 }
 
 /// 历史无文件夹体系：直接查询历史表，按 updatedAt 排序（与旧 LocalShelfPage 一致）。
-Map<String, dynamic> _loadHistoryShelf({
+Future<Map<String, dynamic>> _loadHistoryShelf({
   required bool sortAscending,
   required String keyword,
   required Set<String>? sourceFilter,
-}) {
-  final condition = UnifiedComicHistory_.deleted
-      .equals(false)
-      .and(_historySourceConditionFromSources(sourceFilter));
-  final query = objectbox.unifiedHistoryBox
-      .query(condition)
-      .order(
-        UnifiedComicHistory_.updatedAt,
-        flags: sortAscending ? 0 : Order.descending,
-      )
-      .build();
-  try {
-    final isSearching = keyword.trim().isNotEmpty;
-    final normalizedKeyword = isSearching ? _normalizeSearchText(keyword) : '';
-    final comics = <ComicSimplifyEntryInfo>[];
-    final comicSearchTexts = <String, String>{};
-    for (final history in query.find()) {
-      final info = unifiedComicFromUnifiedHistory(history)
-          .toSimplifyEntryInfo();
-      final key = '${info.from.trim()}:${info.id}';
-      final searchText = _buildComicSearchText(history);
-      if (isSearching && !searchText.contains(normalizedKeyword)) {
-        continue;
-      }
-      comics.add(info);
-      comicSearchTexts[key] = searchText;
+}) async {
+  final isSearching = keyword.trim().isNotEmpty;
+  final normalizedKeyword = isSearching ? _normalizeSearchText(keyword) : '';
+  final comics = <ComicSimplifyEntryInfo>[];
+  final comicSearchTexts = <String, String>{};
+  // sourceFilter 为 null/空集视为不过滤，与收藏/下载一致。
+  final filterSources = sourceFilter != null && sourceFilter.isNotEmpty;
+  for (final history in await database.histories.listActive(
+    ascending: sortAscending,
+  )) {
+    if (filterSources && !sourceFilter.contains(history.source)) continue;
+    final info = unifiedComicFromUnifiedHistory(history).toSimplifyEntryInfo();
+    final key = '${info.from.trim()}:${info.id}';
+    final searchText = _buildComicSearchText(history);
+    if (isSearching && !searchText.contains(normalizedKeyword)) {
+      continue;
     }
-    return {
-      'folders': <ComicFolder>[],
-      'comics': comics,
-      'comicSearchTexts': comicSearchTexts,
-    };
-  } finally {
-    query.close();
+    comics.add(info);
+    comicSearchTexts[key] = searchText;
   }
-}
-
-/// 历史源过滤：沿用 FolderShelf 约定——sources 为空视为不过滤（与收藏/下载一致）。
-/// search 为 null（尚未同步图源）时同样不过滤，避免首帧闪空。
-Condition<UnifiedComicHistory> _historySourceConditionFromSources(
-  Set<String>? sourceFilter,
-) {
-  // _sourceFilterFromSearch 在 sources 为空/未同步时返回 null（不过滤）；
-  // 空集理论上到不了这里，为保险起见同样视为不过滤，与收藏/下载一致。
-  if (sourceFilter == null || sourceFilter.isEmpty) {
-    return UnifiedComicHistory_.id.notNull();
-  }
-  var condition = UnifiedComicHistory_.source.equals(sourceFilter.first);
-  for (final source in sourceFilter.skip(1)) {
-    condition = condition.or(UnifiedComicHistory_.source.equals(source));
-  }
-  return condition;
+  return {
+    'folders': <ComicFolder>[],
+    'comics': comics,
+    'comicSearchTexts': comicSearchTexts,
+  };
 }
 
 void _sortShelfItemsByViewTime(
@@ -653,49 +610,28 @@ Set<String>? _sourceFilterFromSearch(SearchStatusState? search) {
   return cleaned;
 }
 
-({ComicSimplifyEntryInfo info, String searchText})? _resolveComic(
+Future<({ComicSimplifyEntryInfo info, String searchText})?> _resolveComic(
   String uniqueKey,
   ComicFolderType folderType,
-) {
+) async {
   switch (folderType) {
     case ComicFolderType.favorite:
-      final comic = objectbox.unifiedFavoriteBox
-          .query(
-            UnifiedComicFavorite_.uniqueKey
-                .equals(uniqueKey)
-                .and(UnifiedComicFavorite_.deleted.equals(false)),
-          )
-          .build()
-          .findFirst();
-      if (comic == null) return null;
+      final comic = await database.favorites.getByKey(uniqueKey);
+      if (comic == null || comic.deleted) return null;
       return (
         info: unifiedComicFromUnifiedFavorite(comic).toSimplifyEntryInfo(),
         searchText: _buildComicSearchText(comic),
       );
     case ComicFolderType.download:
-      final comic = objectbox.unifiedDownloadBox
-          .query(
-            UnifiedComicDownload_.uniqueKey
-                .equals(uniqueKey)
-                .and(UnifiedComicDownload_.deleted.equals(false)),
-          )
-          .build()
-          .findFirst();
-      if (comic == null) return null;
+      final comic = await database.downloads.getByKey(uniqueKey);
+      if (comic == null || comic.deleted) return null;
       return (
         info: unifiedComicFromUnifiedDownload(comic).toSimplifyEntryInfo(),
         searchText: _buildComicSearchText(comic),
       );
     case ComicFolderType.history:
-      final comic = objectbox.unifiedHistoryBox
-          .query(
-            UnifiedComicHistory_.uniqueKey
-                .equals(uniqueKey)
-                .and(UnifiedComicHistory_.deleted.equals(false)),
-          )
-          .build()
-          .findFirst();
-      if (comic == null) return null;
+      final comic = await database.histories.getByKey(uniqueKey);
+      if (comic == null || comic.deleted) return null;
       return (
         info: unifiedComicFromUnifiedHistory(comic).toSimplifyEntryInfo(),
         searchText: _buildComicSearchText(comic),

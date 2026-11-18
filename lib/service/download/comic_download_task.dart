@@ -7,7 +7,6 @@ import 'package:zephyr/config/global/global.dart';
 import 'package:zephyr/main.dart';
 import 'package:zephyr/network/http/plugin/qjs_download_runtime.dart';
 import 'package:zephyr/object_box/model.dart';
-import 'package:zephyr/object_box/objectbox.g.dart';
 import 'package:zephyr/page/comic_info/json/normal/normal_comic_all_info.dart'
     as normal;
 import 'package:zephyr/page/comic_info/method/get_plugin_detail.dart';
@@ -44,62 +43,62 @@ Future<void> unifiedDownloadTask(
   final runtimeName = runtimeNameForPluginId(pluginId);
   final taskKey = task.taskKey;
   const taskRepository = DownloadTaskRepository();
-  bool shouldRetryUntilSuccess() {
-    return objectbox.userSettingBox
-            .get(1)
-            ?.globalSetting
-            .retryDownloadUntilSuccess ??
-        false;
-  }
+  // 设置在整个任务生命周期内只读一次：下载循环里传的是同步回调。
+  final retryUntilSuccess =
+      (await database.userSettings.get())
+          ?.globalSetting
+          .retryDownloadUntilSuccess ??
+      false;
+  bool shouldRetryUntilSuccess() => retryUntilSuccess;
 
   Timer? progressTimer;
   bool running = true;
 
-  DownloadTask? findCurrentTask() {
-    final current = taskRepository.findByTaskKey(taskKey);
+  Future<DownloadTask?> findCurrentTask() async {
+    final current = await taskRepository.findByTaskKey(taskKey);
     if (current == null || !current.isDownloading) return null;
     return current;
   }
 
-  void updateTaskStatus(String status) {
-    final dbTask = findCurrentTask();
+  Future<void> writeTaskStatus(String status) async {
+    final dbTask = await findCurrentTask();
     if (dbTask == null) return;
-    // 高频状态同步走后台写，主线程不碰 put。
-    unawaited(
-      taskRepository.putTaskWriteBackground(
-        taskKey: taskKey,
-        taskId: dbTask.id,
-        status: status,
-      ),
+    // 高频状态同步走后台写，避免阻塞下载循环。
+    await taskRepository.putTaskWriteBackground(
+      taskKey: taskKey,
+      taskId: dbTask.id,
+      status: status,
     );
   }
 
-  void updateCheckpoint(
+  void updateTaskStatus(String status) {
+    unawaited(writeTaskStatus(status));
+  }
+
+  Future<void> updateCheckpoint(
     DownloadTaskJson Function(DownloadTaskJson payload) update, {
     String? status,
-  }) {
-    final dbTask = taskRepository.findByTaskKey(taskKey);
+  }) async {
+    final dbTask = await taskRepository.findByTaskKey(taskKey);
     if (dbTask == null) return;
-    // payload 在主线程拼好，后台只做 put；串行排队保证有序。
+    // payload 在主线程拼好，写库时只覆盖 payload / status；串行排队保证有序。
     final payload = taskRepository.readPayload(dbTask) ?? task;
     final next = update(payload);
-    unawaited(
-      taskRepository.putTaskWriteBackground(
-        taskKey: taskKey,
-        taskId: dbTask.id,
-        status: status,
-        payloadJson: downloadTaskJsonToJson(next),
-      ),
+    await taskRepository.putTaskWriteBackground(
+      taskKey: taskKey,
+      taskId: dbTask.id,
+      status: status,
+      payloadJson: downloadTaskJsonToJson(next),
     );
   }
 
-  DownloadTaskJson currentPayload() {
-    final current = taskRepository.findByTaskKey(taskKey);
+  Future<DownloadTaskJson> currentPayload() async {
+    final current = await taskRepository.findByTaskKey(taskKey);
     return taskRepository.readPayload(current ?? DownloadTask()) ?? task;
   }
 
   Future<void> ensureTaskRunning() async {
-    final currentTask = findCurrentTask();
+    final currentTask = await findCurrentTask();
     final signaled = isDownloadCancelSignaled(taskKey);
     if (signaled || currentTask == null || !currentTask.isDownloading) {
       logger.w(
@@ -113,7 +112,7 @@ Future<void> unifiedDownloadTask(
   const adapter = DownloadChapterAdapter();
   final chapter = adapter.fromTaskRef(task.chapterRef);
   // 上次尝试已落盘的图片路径：恢复时会快速复用，取消时需要一并清理。
-  final completedPaths = <String>{...currentPayload().imagePaths};
+  final completedPaths = <String>{...(await currentPayload()).imagePaths};
   // 真 404 而跳过的图片路径：落库时打标记，不计失败。
   final skippedPaths = <String>{};
 
@@ -129,7 +128,7 @@ Future<void> unifiedDownloadTask(
   try {
     await ensureQjsRuntimeReady(pluginId: pluginId);
     await ensureTaskRunning();
-    updateCheckpoint(
+    await updateCheckpoint(
       (payload) =>
           payload.copyWith(stateCode: 'running', phaseCode: 'preparingRuntime'),
     );
@@ -141,11 +140,11 @@ Future<void> unifiedDownloadTask(
     );
 
     // 本地已有本漫画记录时跳过详情和封面，直下本章。
-    var existing = taskRepository.findDownloadRecord(from, comicId);
+    var existing = await taskRepository.findDownloadRecord(from, comicId);
     late normal.NormalComicAllInfo normalInfo;
     List<Map<String, dynamic>>? onlineCatalog;
     if (existing == null) {
-      updateCheckpoint(
+      await updateCheckpoint(
         (payload) => payload.copyWith(
           phaseCode: 'fetchingComicInfo',
           lastErrorCode: '',
@@ -163,7 +162,7 @@ Future<void> unifiedDownloadTask(
       comicId = detail.comicId;
 
       updateTaskStatus(t.download.statusDownloadingCover);
-      updateCheckpoint(
+      await updateCheckpoint(
         (payload) => payload.copyWith(phaseCode: 'downloadingCover'),
         status: t.download.statusDownloadingCover,
       );
@@ -234,7 +233,7 @@ Future<void> unifiedDownloadTask(
             existing
               ..detailJson = jsonEncode(detailMap)
               ..updatedAt = DateTime.now().toUtc();
-            objectbox.unifiedDownloadBox.put(existing);
+            await database.downloads.put(existing);
           }
           logger.i('下载目录快照已刷新: $from:$comicId');
         } catch (e) {
@@ -252,7 +251,7 @@ Future<void> unifiedDownloadTask(
     await ensureTaskRunning();
     updateTaskStatus(t.download.statusFetchingChapterInfo);
     reporter.updateMessage(t.download.statusFetchingChapterInfo);
-    updateCheckpoint(
+    await updateCheckpoint(
       (payload) => payload.copyWith(
         stateCode: 'running',
         phaseCode: 'fetchingChapterInfo',
@@ -294,7 +293,7 @@ Future<void> unifiedDownloadTask(
       );
     }
 
-    updateCheckpoint(
+    await updateCheckpoint(
       (payload) => payload.copyWith(
         phaseCode: 'downloadingChapter',
         totalImages: jobs.length,
@@ -347,7 +346,7 @@ Future<void> unifiedDownloadTask(
               if (!shouldPersist) return;
               lastPersistedImages = completed;
               lastPersistedAt = now;
-              updateCheckpoint(
+              await updateCheckpoint(
                 (payload) => payload.copyWith(
                   completedImages: completed,
                   reusedImages: reused,
@@ -363,7 +362,7 @@ Future<void> unifiedDownloadTask(
       rethrow;
     }
 
-    updateCheckpoint(
+    await updateCheckpoint(
       (payload) => payload.copyWith(phaseCode: 'committingChapter'),
     );
     await _saveUnifiedDownloadChapter(
@@ -376,7 +375,7 @@ Future<void> unifiedDownloadTask(
       skippedPaths: skippedPaths,
     );
 
-    updateCheckpoint(
+    await updateCheckpoint(
       (payload) => payload.copyWith(
         stateCode: 'completed',
         phaseCode: 'completed',
@@ -426,10 +425,7 @@ Future<void> _saveUnifiedDownloadChapter({
 }) async {
   final now = DateTime.now().toUtc();
   final key = buildDownloadTaskKey(from, comicId);
-  final existing = objectbox.unifiedDownloadBox
-      .query(UnifiedComicDownload_.uniqueKey.equals(key))
-      .build()
-      .findFirst();
+  final existing = await database.downloads.getByKey(key);
   final downloadPath = await getDownloadPath();
   // JSON 拼装是纯计算，走全局 worker 池；主线程只做 put。
   final buildArgs = <String, dynamic>{
@@ -465,56 +461,48 @@ Future<void> _saveUnifiedDownloadChapter({
     () => _buildDownloadRecordJson(buildArgs),
   );
 
-  // 记录落库 + 根目录下载链接，同一个后台事务里提交，主线程零写库。
-  // 失败时回退主线程直写，保证记录不丢。
-  final saveArgs = <String, dynamic>{
-    'entity': {
-      'id': existing?.id ?? 0,
-      'uniqueKey': key,
-      'source': from,
-      'comicId': comicId,
-      'title': built['title'] as String,
-      'description': built['description'] as String,
-      'cover': built['cover'] as String,
-      'titleOverride': built['titleOverride'] as String?,
-      'coverOverride': built['coverOverride'] as String?,
-      'creator': built['creator'] as String,
-      'titleMeta': built['titleMeta'] as String,
-      'metadata': built['metadata'] as String,
-      'totalViews': built['totalViews'] as int,
-      'totalLikes': built['totalLikes'] as int,
-      'totalComments': built['totalComments'] as int,
-      'isFavourite': built['isFavourite'] as bool,
-      'isLiked': built['isLiked'] as bool,
-      'allowComment': built['allowComment'] as bool,
-      'allowLike': built['allowLike'] as bool,
-      'allowFavorite': built['allowFavorite'] as bool,
-      'allowDownload': built['allowDownload'] as bool,
-      'chapters': built['chapters'] as String,
-      'detailJson': built['detail'] as String,
-      'storageRoot': p.join(
-        downloadPath,
-        encodePath(path: normalizePluginId(from)),
-        encodePath(path: comicId),
-      ),
-      'createdAtMs': (existing?.createdAt ?? now).millisecondsSinceEpoch,
-      'nowMs': now.millisecondsSinceEpoch,
-    },
-    'linkUniqueKey': '$key||${ComicFolderType.download.name}',
-    'linkComicKey': key,
-    'deviceId': syncDeviceId,
-  };
-  try {
-    await objectbox.store.runInTransactionAsync<int, Map<String, dynamic>>(
-      TxMode.write,
-      _saveDownloadRecordOnWorker,
-      saveArgs,
-    );
-  } catch (e) {
-    // 后台提交失败时回退主线程直写（同一函数，主 store）。
-    logger.w('后台落库失败，回退主线程: $key', error: e);
-    _saveDownloadRecordOnWorker(objectbox.store, saveArgs);
-  }
+  // 记录落库 + 根目录下载链接同事务提交。
+  final record = UnifiedComicDownload(
+    id: existing?.id ?? 0,
+    uniqueKey: key,
+    source: from,
+    comicId: comicId,
+    title: built['title'] as String,
+    description: built['description'] as String,
+    cover: built['cover'] as String,
+    titleOverride: built['titleOverride'] as String?,
+    coverOverride: built['coverOverride'] as String?,
+    creator: built['creator'] as String,
+    titleMeta: built['titleMeta'] as String,
+    metadata: built['metadata'] as String,
+    totalViews: built['totalViews'] as int,
+    totalLikes: built['totalLikes'] as int,
+    totalComments: built['totalComments'] as int,
+    isFavourite: built['isFavourite'] as bool,
+    isLiked: built['isLiked'] as bool,
+    allowComment: built['allowComment'] as bool,
+    allowLike: built['allowLike'] as bool,
+    allowFavorite: built['allowFavorite'] as bool,
+    allowDownload: built['allowDownload'] as bool,
+    chapters: built['chapters'] as String,
+    detailJson: built['detail'] as String,
+    storageRoot: p.join(
+      downloadPath,
+      encodePath(path: normalizePluginId(from)),
+      encodePath(path: comicId),
+    ),
+    createdAt: existing?.createdAt ?? now,
+    updatedAt: now,
+    downloadedAt: now,
+    deleted: false,
+    schemaVersion: 2,
+  );
+  await database.downloadTasks.saveDownloadRecordWithRootLink(
+    record: record,
+    linkUniqueKey: '$key||${ComicFolderType.download.name}',
+    linkComicKey: key,
+    deviceId: syncDeviceId,
+  );
 }
 
 /// 后台 isolate 里拼下载记录 JSON（纯计算，无 DB/IO/logger）。
@@ -656,98 +644,6 @@ Map<String, dynamic> _buildDownloadRecordJson(Map<String, dynamic> args) {
     'imageCount': storedChapter.images.length,
     'storedCount': storedChapters.length,
   };
-}
-
-/// 后台 isolate 里落下载记录 + 根目录下载链接（同一事务，顶层函数）。
-///
-/// 失败时调用方会用主 store 直接调本函数重试，因此函数体不能依赖 worker 特有状态。
-int _saveDownloadRecordOnWorker(Store store, Map<String, dynamic> args) {
-  final e = Map<String, dynamic>.from(args['entity'] as Map);
-  final entity = UnifiedComicDownload(
-    uniqueKey: e['uniqueKey'] as String,
-    source: e['source'] as String,
-    comicId: e['comicId'] as String,
-    title: e['title'] as String,
-    description: e['description'] as String,
-    cover: e['cover'] as String,
-    titleOverride: e['titleOverride'] as String?,
-    coverOverride: e['coverOverride'] as String?,
-    creator: e['creator'] as String,
-    titleMeta: e['titleMeta'] as String,
-    metadata: e['metadata'] as String,
-    totalViews: e['totalViews'] as int,
-    totalLikes: e['totalLikes'] as int,
-    totalComments: e['totalComments'] as int,
-    isFavourite: e['isFavourite'] as bool,
-    isLiked: e['isLiked'] as bool,
-    allowComment: e['allowComment'] as bool,
-    allowLike: e['allowLike'] as bool,
-    allowFavorite: e['allowFavorite'] as bool,
-    allowDownload: e['allowDownload'] as bool,
-    chapters: e['chapters'] as String,
-    detailJson: e['detailJson'] as String,
-    storageRoot: e['storageRoot'] as String,
-    createdAt: DateTime.fromMillisecondsSinceEpoch(
-      e['createdAtMs'] as int,
-      isUtc: true,
-    ),
-    updatedAt: DateTime.fromMillisecondsSinceEpoch(
-      e['nowMs'] as int,
-      isUtc: true,
-    ),
-    downloadedAt: DateTime.fromMillisecondsSinceEpoch(
-      e['nowMs'] as int,
-      isUtc: true,
-    ),
-    deleted: false,
-    schemaVersion: 2,
-  );
-  entity.id = e['id'] as int;
-  store.box<UnifiedComicDownload>().put(entity);
-
-  // 与 ComicLinkService.addComic(key, null, download) 等价：复活 tombstone 或新建。
-  final linkUniqueKey = args['linkUniqueKey'] as String;
-  final nowMs = e['nowMs'] as int;
-  final linkBox = store.box<ComicLink>();
-  final found = linkBox
-      .query(ComicLink_.uniqueKey.equals(linkUniqueKey))
-      .build()
-      .findFirst();
-  if (found != null) {
-    if (found.deletedAt != null) {
-      found
-        ..deletedAt = null
-        ..createdAt = nowMs
-        ..updatedAt = nowMs
-        ..versionVectorJson = _bumpLinkVersionVector(
-          found.versionVectorJson,
-          args['deviceId'] as String,
-        );
-      linkBox.put(found);
-    }
-  } else {
-    linkBox.put(
-      ComicLink(
-        uniqueKey: linkUniqueKey,
-        comicUniqueKey: args['linkComicKey'] as String,
-        typeData: ComicFolderType.download.name,
-        versionVectorJson: jsonEncode({args['deviceId'] as String: 1}),
-        createdAt: nowMs,
-        updatedAt: nowMs,
-      ),
-    );
-  }
-  return 0;
-}
-
-String _bumpLinkVersionVector(String raw, String deviceId) {
-  try {
-    final map = Map<String, dynamic>.from(jsonDecode(raw) as Map);
-    map[deviceId] = ((map[deviceId] as num?) ?? 0).toInt() + 1;
-    return jsonEncode(map);
-  } catch (_) {
-    return jsonEncode({deviceId: 1});
-  }
 }
 
 UnifiedComicDownloadStoredChapter _buildStoredChapter(
@@ -909,7 +805,7 @@ Future<void> _markTaskCompleted(String taskKey) async {
   const repository = DownloadTaskRepository();
   // 先排空在途的 checkpoint 写，再落完成态，防止旧写覆盖。
   await repository.flushTaskWrites(taskKey);
-  final task = repository.findByTaskKey(taskKey);
+  final task = await repository.findByTaskKey(taskKey);
   if (task == null) return;
   final payload = repository.readPayload(task);
   task
@@ -922,5 +818,5 @@ Future<void> _markTaskCompleted(String taskKey) async {
       phaseCode: 'completed',
     );
   }
-  objectbox.downloadTaskBox.put(task);
+  await database.downloadTasks.put(task);
 }

@@ -164,9 +164,9 @@ class EpButtonWidget extends StatelessWidget {
     );
   }
 
-  void _openRead(BuildContext context) {
+  Future<void> _openRead(BuildContext context) async {
     final chapter = const DownloadChapterAdapter().fromEp(doc);
-    final local = const DownloadTaskRepository().findDownloadedChapter(
+    final local = await const DownloadTaskRepository().findDownloadedChapter(
       from: from,
       comicId: comicId,
       chapterKey: chapter.id,
@@ -179,8 +179,12 @@ class EpButtonWidget extends StatelessWidget {
     if (type == ComicEntryType.normal || type == ComicEntryType.history) {
       final record = local == null
           ? null
-          : const DownloadTaskRepository().findDownloadRecord(from, comicId);
+          : await const DownloadTaskRepository().findDownloadRecord(
+              from,
+              comicId,
+            );
       if (local != null && record != null) {
+        if (!context.mounted) return;
         context.pushRoute(
           ComicReadRoute(
             comicInfo: record,
@@ -206,6 +210,7 @@ class EpButtonWidget extends StatelessWidget {
         ? ComicEntryType.normal
         : type;
     final chapterExtern = Map<String, dynamic>.from(doc.extern);
+    if (!context.mounted) return;
     context.pushRoute(
       ComicReadRoute(
         comicInfo: allInfo,

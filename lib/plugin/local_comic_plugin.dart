@@ -2,7 +2,6 @@ import 'dart:convert';
 
 import 'package:zephyr/main.dart';
 import 'package:zephyr/object_box/model.dart';
-import 'package:zephyr/object_box/objectbox.g.dart';
 
 /// 本地导入漫画使用的“幽灵插件” UUID。
 ///
@@ -50,62 +49,55 @@ Map<String, dynamic> localComicPluginInfo() => <String, dynamic>{
 /// 必须在 [PluginRegistryService.init] 之前调用；已存在时只修复被误删/禁用
 /// 或缺失 getInfo 缓存的记录，不覆盖用户数据。
 Future<void> ensureLocalComicPluginInstalled() async {
-  final query = objectbox.pluginInfoBox
-      .query(PluginInfo_.uuid.equals(kLocalComicPluginId))
-      .build();
-  try {
-    final existing = query.findFirst();
-    final now = DateTime.now().toUtc();
-    if (existing == null) {
-      objectbox.pluginInfoBox.put(
-        PluginInfo(
-          uuid: kLocalComicPluginId,
-          version: kLocalComicPluginVersion,
-          originScript: _kLocalComicBundle,
-          lastLoadSuccess: true,
-          insertedAt: now,
-          updatedAt: now,
-          isEnabled: true,
-          isDeleted: false,
-          debug: false,
-          getInfoJson: jsonEncode(localComicPluginInfo()),
-        ),
-      );
-      return;
-    }
+  final existing = await database.plugins.getInfoByUuid(kLocalComicPluginId);
+  final now = DateTime.now().toUtc();
+  if (existing == null) {
+    await database.plugins.putInfo(
+      PluginInfo(
+        uuid: kLocalComicPluginId,
+        version: kLocalComicPluginVersion,
+        originScript: _kLocalComicBundle,
+        lastLoadSuccess: true,
+        insertedAt: now,
+        updatedAt: now,
+        isEnabled: true,
+        isDeleted: false,
+        debug: false,
+        getInfoJson: jsonEncode(localComicPluginInfo()),
+      ),
+    );
+    return;
+  }
 
-    var changed = false;
-    if (existing.isDeleted) {
-      existing
-        ..isDeleted = false
-        ..deletedAt = null
-        ..isEnabled = true;
-      changed = true;
-    }
-    if (!existing.isEnabled) {
-      existing.isEnabled = true;
-      changed = true;
-    }
-    if (existing.originScript.trim().isEmpty) {
-      existing.originScript = _kLocalComicBundle;
-      changed = true;
-    }
-    if (existing.getInfoJson.trim().isEmpty) {
-      existing.getInfoJson = jsonEncode(localComicPluginInfo());
-      changed = true;
-    }
-    if (existing.version != kLocalComicPluginVersion) {
-      existing
-        ..version = kLocalComicPluginVersion
-        ..originScript = _kLocalComicBundle
-        ..getInfoJson = jsonEncode(localComicPluginInfo());
-      changed = true;
-    }
-    if (changed) {
-      existing.updatedAt = now;
-      objectbox.pluginInfoBox.put(existing);
-    }
-  } finally {
-    query.close();
+  var changed = false;
+  if (existing.isDeleted) {
+    existing
+      ..isDeleted = false
+      ..deletedAt = null
+      ..isEnabled = true;
+    changed = true;
+  }
+  if (!existing.isEnabled) {
+    existing.isEnabled = true;
+    changed = true;
+  }
+  if (existing.originScript.trim().isEmpty) {
+    existing.originScript = _kLocalComicBundle;
+    changed = true;
+  }
+  if (existing.getInfoJson.trim().isEmpty) {
+    existing.getInfoJson = jsonEncode(localComicPluginInfo());
+    changed = true;
+  }
+  if (existing.version != kLocalComicPluginVersion) {
+    existing
+      ..version = kLocalComicPluginVersion
+      ..originScript = _kLocalComicBundle
+      ..getInfoJson = jsonEncode(localComicPluginInfo());
+    changed = true;
+  }
+  if (changed) {
+    existing.updatedAt = now;
+    await database.plugins.putInfo(existing);
   }
 }

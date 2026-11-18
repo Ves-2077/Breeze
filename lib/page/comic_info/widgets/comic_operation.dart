@@ -269,10 +269,11 @@ class _ComicOperationWidgetState extends State<ComicOperationWidget> {
   /// 空选确认（仅剩根目录不勾时）视为取消收藏，需二次确认。
   Future<void> _chooseLocalFavoriteFolders() async {
     try {
-      final initialSelected = localComicFavoriteFolderPaths(
+      final initialSelected = await localComicFavoriteFolderPaths(
         from: widget.from,
         comicId: comicInfoView.id,
       );
+      if (!mounted) return;
       final picked = await showFolderTargetPicker(
         context,
         type: ComicFolderType.favorite,

@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/services.dart';
-import 'package:objectbox/objectbox.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path/path.dart' as p;
 import 'package:zephyr/config/global/global_setting.dart';
@@ -10,6 +10,7 @@ import 'package:zephyr/i18n/strings.g.dart';
 import 'package:zephyr/main.dart';
 import 'package:zephyr/network/sync/sync_device_id.dart';
 import 'package:zephyr/object_box/model.dart';
+import 'package:zephyr/plugin/bridge/plugin_config_bridge.dart';
 import 'package:zephyr/src/rust/api/data_backup.dart';
 import 'package:zephyr/util/get_path.dart';
 import 'package:zephyr/widgets/toast.dart';
@@ -64,10 +65,9 @@ Future<String> exportBreezeBackup({
     await File(p.join(tempDir.path, 'config.json'))
         .writeAsString(jsonEncode(config));
 
-    // 2. 写入 objectbox.json
-    await File(
-      p.join(tempDir.path, 'objectbox.json'),
-    ).writeAsString(await objectbox.collectAllDataJsonAsync(removeIds: true));
+    // 2. 写入 objectbox.json（文件名保持与旧版备份兼容）
+    await File(p.join(tempDir.path, 'objectbox.json'))
+        .writeAsString(await database.collectAllDataJsonAsync(removeIds: true));
 
     // 3. 调用 Rust 流式打包
     await createDataBackupZip(
@@ -200,19 +200,28 @@ Future<void> applyBreezeBackupImport(BackupConfig config) async {
         jsonDecode(await configFile.readAsString()) as Map<String, dynamic>;
     final includeDownloads = backupConfig['includeDownloads'] as bool? ?? false;
 
-    // 2. 清空现有 ObjectBox 数据
+    // 2. 清空并恢复数据库数据（单事务：失败时保留导入前的数据）
     // 若备份不包含下载文件，则保留本机下载相关记录，避免下载记录被清空后
     // 已下载文件变成“孤儿文件”。
-    await _clearObjectBoxData(preserveDownloads: !includeDownloads);
-
-    // 3. 恢复 ObjectBox 数据
     final objectBoxFile = File(p.join(config.extractDir, 'objectbox.json'));
+    Map<String, dynamic>? objectBoxJson;
+    GlobalSettingState? restoredGlobal;
     if (await objectBoxFile.exists()) {
-      final objectBoxJson = jsonDecode(
+      objectBoxJson = jsonDecode(
         await objectBoxFile.readAsString(),
       ) as Map<String, dynamic>;
-      await _restoreObjectBoxData(objectBoxJson);
     }
+
+    await database.transaction((_) async {
+      await _clearAllData(preserveDownloads: !includeDownloads);
+      if (objectBoxJson != null) {
+        restoredGlobal = await _restoreAllData(objectBoxJson);
+      }
+    });
+    if (restoredGlobal != null) {
+      _applyRestoredGlobalSetting(restoredGlobal!);
+    }
+    await preloadPluginConfigs();
 
     // 4. 恢复下载文件
     if (includeDownloads) {
@@ -234,33 +243,33 @@ Future<void> applyBreezeBackupImport(BackupConfig config) async {
   }
 }
 
-/// 清空所有 ObjectBox Box。
+/// 清空所有业务表。
 ///
 /// 当 [preserveDownloads] 为 true 时，保留下载记录，用于导入
 /// 不含下载文件的备份，避免本机已下载文件变成无记录的孤儿文件。
 ///
-/// 下载任务在任何情况下都不会被导入，因此 [downloadTaskBox] 总是被清空。
-Future<void> _clearObjectBoxData({bool preserveDownloads = false}) async {
-  objectbox.bikaHistoryBox.removeAll();
-  if (!preserveDownloads) objectbox.bikaDownloadBox.removeAll();
-  objectbox.jmFavoriteBox.removeAll();
-  objectbox.jmHistoryBox.removeAll();
-  if (!preserveDownloads) objectbox.jmDownloadBox.removeAll();
-  objectbox.unifiedFavoriteBox.removeAll();
-  objectbox.unifiedHistoryBox.removeAll();
-  objectbox.comicFollowBox.removeAll();
-  if (!preserveDownloads) objectbox.unifiedDownloadBox.removeAll();
-  // 注意：UserSetting 不在这里清除，而是在 _restoreUserSetting 中直接替换/更新，
+/// 下载任务在任何情况下都不会被导入，因此下载任务表总是被清空。
+Future<void> _clearAllData({bool preserveDownloads = false}) async {
+  await database.legacy.clearBikaHistories();
+  if (!preserveDownloads) await database.legacy.clearBikaDownloads();
+  await database.legacy.clearJmFavorites();
+  await database.legacy.clearJmHistories();
+  if (!preserveDownloads) await database.legacy.clearJmDownloads();
+  await database.favorites.removeAll();
+  await database.histories.removeAll();
+  await database.follows.removeAll();
+  if (!preserveDownloads) await database.downloads.removeAll();
+  // 注意：UserSetting 不在这里清除，而是在 _restoreUserSetting 中直接覆盖 id=1，
   // 因为应用其他位置假设 UserSetting 的 id 始终为 1。
   // 下载任务在任何情况下都不导入，所以这里总是先清空本地下载任务。
-  objectbox.downloadTaskBox.removeAll();
-  objectbox.pluginConfigBox.removeAll();
-  objectbox.pluginInfoBox.removeAll();
-  objectbox.comicFolderBox.removeAll();
-  objectbox.comicLinkBox.removeAll();
-  objectbox.comicReadPreferenceBox.removeAll();
-  objectbox.comicReadChapterBox.removeAll();
-  objectbox.searchBookmarkBox.removeAll();
+  await database.downloadTasks.removeAll();
+  await database.plugins.removeAllConfigs();
+  await database.plugins.removeAllInfos();
+  await database.folders.removeAll();
+  await database.links.removeAll();
+  await database.readPreferences.removeAll();
+  await database.readChapters.removeAll();
+  await database.bookmarks.removeAll();
 }
 
 /// 为缺少 `id` 的 JSON 补一个默认 0，避免 json_serializable 生成代码里对 `id` 做非空强制转换时崩溃。
@@ -271,12 +280,16 @@ Map<String, dynamic> _withDefaultId(Map<String, dynamic> json) {
   return json;
 }
 
-/// 从 JSON 恢复所有 ObjectBox 实体；导入时重置 id 让 ObjectBox 重新分配主键。
+/// 从 JSON 恢复所有实体；导入时重置 id 让数据库重新分配主键。
+///
+/// 旧 Bika/Jm 表通过 [LegacyComicRepository] 的显式插入方法恢复（备份 JSON
+/// 是模型形态：日期为 ISO 字符串、列表为数组、布尔为 bool）。
 ///
 /// 对于 ComicFolder / ComicLink，还会用当前设备的 syncDeviceId 对
 /// versionVectorJson 做一次 bump，避免导入后同步时出现设备 ID 不一致的冲突。
-Future<void> _restoreObjectBoxData(Map<String, dynamic> json) async {
+Future<GlobalSettingState?> _restoreAllData(Map<String, dynamic> json) async {
   final currentDeviceId = await ensureSyncDeviceId();
+  GlobalSettingState? restoredGlobal;
 
   String bumpVersionVector(String raw) {
     final map = _parseVersionVector(raw);
@@ -284,150 +297,143 @@ Future<void> _restoreObjectBoxData(Map<String, dynamic> json) async {
     return jsonEncode(map);
   }
 
-  void putAll<T>(
-    Box<T> box,
-    List<dynamic>? list,
-    T Function(Map<String, dynamic>) fromJson,
-  ) {
-    final items = (list ?? const <dynamic>[])
-        .map(
-          (e) => fromJson(_withDefaultId(Map<String, dynamic>.from(e as Map))),
-        )
+  List<Map<String, dynamic>> rowsOf(String key) {
+    return (json[key] as List? ?? const <dynamic>[])
+        .whereType<Map>()
+        .map((e) => _withDefaultId(Map<String, dynamic>.from(e)))
         .toList();
-    if (items.isNotEmpty) {
-      box.putMany(items);
-    }
   }
 
-  putAll(
-    objectbox.bikaHistoryBox,
-    json['bikaComicHistory'] as List?,
-    (j) => BikaComicHistory.fromJson(j),
+  Future<void> putAll<T>(
+    String key,
+    T Function(Map<String, dynamic>) fromJson,
+    Future<void> Function(List<T>) write,
+  ) async {
+    final items = rowsOf(key).map(fromJson).toList();
+    if (items.isEmpty) return;
+    await write(items);
+  }
+
+  final legacy = database.legacy;
+  await legacy.restoreBikaHistories(rowsOf('bikaComicHistory'));
+  await legacy.restoreBikaDownloads(rowsOf('bikaComicDownload'));
+  await legacy.restoreJmFavorites(rowsOf('jmFavorite'));
+  await legacy.restoreJmHistories(rowsOf('jmHistory'));
+  await legacy.restoreJmDownloads(rowsOf('jmDownload'));
+
+  await putAll(
+    'unifiedComicFavorite',
+    UnifiedComicFavorite.fromJson,
+    database.favorites.putMany,
   );
-  putAll(
-    objectbox.bikaDownloadBox,
-    json['bikaComicDownload'] as List?,
-    (j) => BikaComicDownload.fromJson(j),
+  await putAll(
+    'unifiedComicHistory',
+    UnifiedComicHistory.fromJson,
+    database.histories.putMany,
   );
-  putAll(
-    objectbox.jmFavoriteBox,
-    json['jmFavorite'] as List?,
-    (j) => JmFavorite.fromJson(j),
+  await putAll('comicFollow', ComicFollow.fromJson, database.follows.putMany);
+  await putAll(
+    'unifiedComicDownload',
+    UnifiedComicDownload.fromJson,
+    database.downloads.putMany,
   );
-  putAll(
-    objectbox.jmHistoryBox,
-    json['jmHistory'] as List?,
-    (j) => JmHistory.fromJson(j),
-  );
-  putAll(
-    objectbox.jmDownloadBox,
-    json['jmDownload'] as List?,
-    (j) => JmDownload.fromJson(j),
-  );
-  putAll(
-    objectbox.unifiedFavoriteBox,
-    json['unifiedComicFavorite'] as List?,
-    (j) => UnifiedComicFavorite.fromJson(j),
-  );
-  putAll(
-    objectbox.unifiedHistoryBox,
-    json['unifiedComicHistory'] as List?,
-    (j) => UnifiedComicHistory.fromJson(j),
-  );
-  putAll(
-    objectbox.comicFollowBox,
-    json['comicFollow'] as List?,
-    (j) => ComicFollow.fromJson(j),
-  );
-  putAll(
-    objectbox.unifiedDownloadBox,
-    json['unifiedComicDownload'] as List?,
-    (j) => UnifiedComicDownload.fromJson(j),
-  );
-  await _restoreUserSetting(json['userSetting'] as List?);
+  restoredGlobal = await _restoreUserSetting(json['userSetting'] as List?);
   // 下载任务不导入，避免恢复后继续执行已过期的下载任务。
-  putAll(
-    objectbox.pluginConfigBox,
-    json['pluginConfig'] as List?,
-    (j) => PluginConfig.fromJson(j),
+  await putAll(
+    'pluginConfig',
+    PluginConfig.fromJson,
+    database.plugins.putConfigs,
   );
-  putAll(
-    objectbox.pluginInfoBox,
-    json['pluginInfo'] as List?,
-    (j) => PluginInfo.fromJson(j),
-  );
-  putAll(objectbox.comicFolderBox, json['comicFolder'] as List?, (j) {
+  await putAll('pluginInfo', PluginInfo.fromJson, database.plugins.putInfos);
+  await putAll('comicFolder', (j) {
     final folder = ComicFolder.fromJson(j);
     folder.versionVectorJson = bumpVersionVector(folder.versionVectorJson);
     return folder;
-  });
-  putAll(objectbox.comicLinkBox, json['comicLink'] as List?, (j) {
+  }, database.folders.putMany);
+  await putAll('comicLink', (j) {
     final link = ComicLink.fromJson(j);
     link.versionVectorJson = bumpVersionVector(link.versionVectorJson);
     return link;
+  }, database.links.putMany);
+  await putAll(
+    'comicReadPreference',
+    ComicReadPreference.fromJson,
+    database.readPreferences.putMany,
+  );
+  await putAll('comicReadChapter', ComicReadChapter.fromJson, (items) async {
+    for (final item in items) {
+      await database.readChapters.put(item);
+    }
   });
-  putAll(
-    objectbox.comicReadPreferenceBox,
-    json['comicReadPreference'] as List?,
-    (j) => ComicReadPreference.fromJson(j),
-  );
-  putAll(
-    objectbox.comicReadChapterBox,
-    json['comicReadChapter'] as List?,
-    (j) => ComicReadChapter.fromJson(j),
-  );
-  putAll(
-    objectbox.searchBookmarkBox,
-    json['searchBookmark'] as List?,
-    (j) => SearchBookmark.fromJson(j),
-  );
+  await putAll('searchBookmark', SearchBookmark.fromJson, (items) async {
+    for (final item in items) {
+      await database.bookmarks.put(item);
+    }
+  });
+  return restoredGlobal;
 }
 
 /// 恢复 UserSetting。
 ///
-/// 应用大量代码假设 UserSetting 的 ObjectBox id 为 1，因此这里不先清空再插入，
-/// 而是直接替换现有 id=1 记录的内容；没有记录时再插入新记录。
+/// 应用大量代码假设 UserSetting 的主键固定为 1，[UserSettingRepository.put]
+/// 也只会写入 id=1 的槽位，因此这里不先清空再插入，而是直接覆盖该槽位。
+/// 恢复后还会把合并结果推回 [GlobalSettingCubit]，让进程内缓存（`globalSetting`
+/// getter、eInk 运行时开关、界面状态）立即生效，无需重启。
 ///
 /// 导入时会保留当前设备上的平台相关/本地-only 设置，避免被备份覆盖：
 /// 自定义导出目录、代理、应用锁（手势密码/PIN）、语言、窗口几何、日志地址、
 /// Impeller 强制启用标志等。
-Future<void> _restoreUserSetting(List<dynamic>? list) async {
-  if (list == null || list.isEmpty) return;
+Future<GlobalSettingState?> _restoreUserSetting(List<dynamic>? list) async {
+  if (list == null || list.isEmpty) return null;
 
   final backup = UserSetting.fromJson(
     _withDefaultId(Map<String, dynamic>.from(list.first as Map)),
   );
 
-  final current = objectbox.userSettingBox.get(1);
-  if (current != null) {
-    // 复用现有 id=1 的 slot，直接覆盖设置数据
-    if (backup.globalSettingData != null &&
-        backup.globalSettingData!.isNotEmpty) {
-      current.globalSetting = _mergeGlobalSettingForImport(
-        backup.globalSetting,
-        current.globalSetting,
-      );
-    }
-    if (backup.bikaSettingData != null && backup.bikaSettingData!.isNotEmpty) {
-      current.bikaSettingData = backup.bikaSettingData;
-    }
-    if (backup.jmSettingData != null && backup.jmSettingData!.isNotEmpty) {
-      current.jmSettingData = backup.jmSettingData;
-    }
-    current.jmJwt = backup.jmJwt;
-    objectbox.userSettingBox.put(current);
-  } else {
-    // 没有现有记录时直接插入备份数据，让 ObjectBox 自动分配 id（空盒时通常为 1）
-    backup.id = 0;
-    if (backup.globalSettingData != null &&
-        backup.globalSettingData!.isNotEmpty) {
-      backup.globalSetting = _mergeGlobalSettingForImport(
-        backup.globalSetting,
-        const GlobalSettingState(),
-      );
-    }
-    objectbox.userSettingBox.put(backup);
+  final current = await database.userSettings.get();
+  final currentGlobal = current?.globalSetting ?? const GlobalSettingState();
+
+  final hasBackupGlobal =
+      backup.globalSettingData != null && backup.globalSettingData!.isNotEmpty;
+  final mergedGlobal = hasBackupGlobal
+      ? _mergeGlobalSettingForImport(backup.globalSetting, currentGlobal)
+      : currentGlobal;
+
+  // 复用现有 id=1 的 slot：未备份的字段沿用本机值。
+  final next = UserSetting(
+    id: 1,
+    globalSettingData: current?.globalSettingData,
+    bikaSettingData: current?.bikaSettingData,
+    jmSettingData: current?.jmSettingData,
+    jmJwt: current?.jmJwt ?? '',
+  );
+  if (hasBackupGlobal) {
+    next.globalSetting = mergedGlobal;
   }
+  if (backup.bikaSettingData != null && backup.bikaSettingData!.isNotEmpty) {
+    next.bikaSettingData = backup.bikaSettingData;
+  }
+  if (backup.jmSettingData != null && backup.jmSettingData!.isNotEmpty) {
+    next.jmSettingData = backup.jmSettingData;
+  }
+  next.jmJwt = backup.jmJwt;
+
+  await database.userSettings.put(next);
+  return mergedGlobal;
+}
+
+/// 把恢复后的全局设置推回内存缓存与界面。
+///
+/// 优先使用导航器上下文里的 [GlobalSettingCubit]；应用尚未挂载 UI 时，
+/// 用一个游离 cubit 至少刷新模块级 `globalSetting` 缓存。
+void _applyRestoredGlobalSetting(GlobalSettingState value) {
+  final context = navigatorKey.currentContext;
+  if (context != null && context.mounted) {
+    BlocProvider.of<GlobalSettingCubit>(context).applySyncedState(value);
+    return;
+  }
+  logger.w('备份恢复时未找到 GlobalSettingCubit，仅刷新进程内缓存');
+  GlobalSettingCubit().applySyncedState(value);
 }
 
 /// 合并备份的 [GlobalSettingState] 与当前设备的本地设置。

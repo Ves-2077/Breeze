@@ -88,12 +88,12 @@ class ComicEditCubit extends Cubit<ComicEditState> {
   Future<void> load() async {
     emit(state.copyWith(loading: true, error: ''));
     try {
-      final record = _service.findRecord(from, comicId);
+      final record = await _service.findRecord(from, comicId);
       if (record == null) {
         emit(state.copyWith(loading: false, error: t.comicEdit.notFound));
         return;
       }
-      if (_service.hasIncompleteDownload(from, comicId)) {
+      if (await _service.hasIncompleteDownload(from, comicId)) {
         emit(state.copyWith(loading: false, locked: true, record: record));
         return;
       }
@@ -341,7 +341,7 @@ class ComicEditCubit extends Cubit<ComicEditState> {
     emit(state.copyWith(busy: true, error: ''));
     try {
       final document = await action();
-      final record = _service.findRecord(from, comicId);
+      final record = await _service.findRecord(from, comicId);
       final selectedChapterId =
           selectChapter?.call(document) ??
           _resolveSelectedChapter(document, state.selectedChapterId);

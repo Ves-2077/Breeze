@@ -4,7 +4,6 @@ import 'package:material_ui/material_ui.dart';
 import 'package:zephyr/page/comic_info/models/favorite_workflow.dart';
 import 'package:zephyr/network/http/plugin/unified_comic_plugin.dart';
 import 'package:zephyr/object_box/model.dart';
-import 'package:zephyr/object_box/objectbox.g.dart';
 import 'package:zephyr/page/bookshelf/service/comic_link_service.dart';
 import 'package:zephyr/page/bookshelf/service/comic_folder_service.dart';
 import 'package:zephyr/util/json/json_sanitize.dart';
@@ -20,13 +19,10 @@ Future<bool> isLocalComicCollected({
 }) async {
   final pluginId = (from).trim();
   final key = '$pluginId:$comicId';
-  final unified = objectbox.unifiedFavoriteBox
-      .query(UnifiedComicFavorite_.uniqueKey.equals(key))
-      .build()
-      .findFirst();
+  final unified = await database.favorites.getByKey(key);
   final collected = unified != null && unified.deleted == false;
   if (collected) {
-    _repairFavoriteCoverPathIfNeeded(unified);
+    await _repairFavoriteCoverPathIfNeeded(unified);
   }
   return collected;
 }
@@ -39,26 +35,23 @@ Future<bool> toggleLocalComicFavorite({
   final pluginId = (from).trim();
   final key = '$pluginId:${normalInfo.comicInfo.id}';
   final now = DateTime.now().toUtc();
-  final unified = objectbox.unifiedFavoriteBox
-      .query(UnifiedComicFavorite_.uniqueKey.equals(key))
-      .build()
-      .findFirst();
+  final unified = await database.favorites.getByKey(key);
 
   if (unified != null && unified.deleted == false) {
     unified.deleted = true;
     unified.updatedAt = now;
-    objectbox.unifiedFavoriteBox.put(unified);
-    ComicLinkService.removeComicFromAll(key, ComicFolderType.favorite);
+    await database.favorites.put(unified);
+    await ComicLinkService.removeComicFromAll(key, ComicFolderType.favorite);
     if (showToast) {
       // showSuccessToast('已取消本地收藏');
     }
     return false;
   }
 
-  _ensureLocalFavoriteRecord(pluginId: pluginId, normalInfo: normalInfo);
+  await _ensureLocalFavoriteRecord(pluginId: pluginId, normalInfo: normalInfo);
 
   // 新收藏默认添加一条根目录链接
-  ComicLinkService.addComic(key, null, ComicFolderType.favorite);
+  await ComicLinkService.addComic(key, null, ComicFolderType.favorite);
 
   if (showToast) {
     // showSuccessToast('成功收藏到本地');
@@ -70,22 +63,16 @@ Future<bool> toggleLocalComicFavorite({
 ///
 /// 已收藏时直接返回；从未收藏或曾取消时重建记录（复活保留 createdAt）。
 /// 只负责本体记录，不动文件夹链接，调用方自行决定链接去向。
-String _ensureLocalFavoriteRecord({
+Future<String> _ensureLocalFavoriteRecord({
   required String pluginId,
   required NormalComicAllInfo normalInfo,
-}) {
+}) async {
   final comicInfo = normalInfo.comicInfo;
   final key = '$pluginId:${comicInfo.id}';
   final now = DateTime.now().toUtc();
-  final unified = objectbox.unifiedFavoriteBox
-      .query(UnifiedComicFavorite_.uniqueKey.equals(key))
-      .build()
-      .findFirst();
+  final unified = await database.favorites.getByKey(key);
 
-  final download = objectbox.unifiedDownloadBox
-      .query(UnifiedComicDownload_.uniqueKey.equals(key))
-      .build()
-      .findFirst();
+  final download = await database.downloads.getByKey(key);
   final titleOverride = download != null && !download.deleted
       ? download.titleOverride?.trim() ?? ''
       : '';
@@ -106,14 +93,14 @@ String _ensureLocalFavoriteRecord({
         ..title = effectiveTitle
         ..cover = effectiveCover
         ..updatedAt = now;
-      objectbox.unifiedFavoriteBox.put(unified);
+      await database.favorites.put(unified);
     }
     return key;
   }
 
   final createdAt = unified?.createdAt ?? now;
 
-  objectbox.unifiedFavoriteBox.put(
+  await database.favorites.put(
     UnifiedComicFavorite(
       id: unified?.id ?? 0,
       uniqueKey: key,
@@ -135,14 +122,17 @@ String _ensureLocalFavoriteRecord({
 }
 
 /// 该漫画当前所在的本地收藏文件夹路径集合（含根目录 [kComicFolderRootPath]）。
-Set<String> localComicFavoriteFolderPaths({
+Future<Set<String>> localComicFavoriteFolderPaths({
   required String from,
   required String comicId,
-}) {
+}) async {
   final key = '${(from).trim()}:$comicId';
-  final links = ComicLinkService.linksOfComic(key, ComicFolderType.favorite);
+  final links = await ComicLinkService.linksOfComic(
+    key,
+    ComicFolderType.favorite,
+  );
   if (links.isEmpty) return <String>{};
-  final pathMap = _favoriteFolderPathMap();
+  final pathMap = await _favoriteFolderPathMap();
   final paths = <String>{};
   for (final link in links) {
     final folderSyncId = link.folderSyncId;
@@ -157,8 +147,10 @@ Set<String> localComicFavoriteFolderPaths({
   return paths;
 }
 
-Map<String, String> _favoriteFolderPathMap() {
-  final folders = ComicFolderService.listAllFolders(ComicFolderType.favorite);
+Future<Map<String, String>> _favoriteFolderPathMap() async {
+  final folders = await ComicFolderService.listAllFolders(
+    ComicFolderType.favorite,
+  );
   final syncIdMap = {for (final folder in folders) folder.syncId: folder};
   return {
     for (final folder in folders)
@@ -179,7 +171,7 @@ Future<bool> setLocalComicFavoriteFolders({
   required Set<String> targetPaths,
 }) async {
   final pluginId = (from).trim();
-  final key = _ensureLocalFavoriteRecord(
+  final key = await _ensureLocalFavoriteRecord(
     pluginId: pluginId,
     normalInfo: normalInfo,
   );
@@ -189,15 +181,15 @@ Future<bool> setLocalComicFavoriteFolders({
 
   // 先加后删：即使全不相交也不会出现零链接中间态。
   for (final path in targetPaths) {
-    ComicLinkService.addComic(
+    await ComicLinkService.addComic(
       key,
       path.isEmpty ? null : path,
       ComicFolderType.favorite,
     );
   }
   final currentPaths = <String, String?>{};
-  final pathMap = _favoriteFolderPathMap();
-  for (final link in ComicLinkService.linksOfComic(
+  final pathMap = await _favoriteFolderPathMap();
+  for (final link in await ComicLinkService.linksOfComic(
     key,
     ComicFolderType.favorite,
   )) {
@@ -211,7 +203,11 @@ Future<bool> setLocalComicFavoriteFolders({
   }
   for (final entry in currentPaths.entries) {
     if (!targetPaths.contains(entry.key)) {
-      ComicLinkService.removeComic(key, entry.value, ComicFolderType.favorite);
+      await ComicLinkService.removeComic(
+        key,
+        entry.value,
+        ComicFolderType.favorite,
+      );
     }
   }
   return true;
@@ -231,7 +227,9 @@ Map<String, dynamic> _comicImageToMap(ComicImage image) {
   });
 }
 
-void _repairFavoriteCoverPathIfNeeded(UnifiedComicFavorite favorite) {
+Future<void> _repairFavoriteCoverPathIfNeeded(
+  UnifiedComicFavorite favorite,
+) async {
   final coverRaw = favorite.cover.trim();
   if (coverRaw.isEmpty) {
     return;
@@ -265,7 +263,7 @@ void _repairFavoriteCoverPathIfNeeded(UnifiedComicFavorite favorite) {
   coverMap['path'] = repairedPath;
   favorite.cover = jsonEncode(sanitizeDynamic(coverMap));
   favorite.updatedAt = DateTime.now().toUtc();
-  objectbox.unifiedFavoriteBox.put(favorite);
+  await database.favorites.put(favorite);
 }
 
 String _resolveImagePath({

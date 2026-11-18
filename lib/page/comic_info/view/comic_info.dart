@@ -194,27 +194,38 @@ class _ComicInfoState extends State<_ComicInfo>
     _reloadReadChapters();
   }
 
-  void _reloadReadChapters() {
-    final ids = ComicReadChapterRepository.instance.readChapterIds(
+  Future<void> _reloadReadChapters() async {
+    final key = _readChapterComicKey;
+    final ids = await ComicReadChapterRepository.instance.readChapterIds(
       source: widget.from,
       comicId: _comicId,
     );
-    if (!mounted) return;
+    if (!mounted || key != _readChapterComicKey) return;
     setState(() {
-      _readChapterKey = _readChapterComicKey;
+      _readChapterKey = key;
       _readChapterIds = ids;
     });
   }
 
-  /// 首次进入/切换漫画时同步加载已读集合；build 期只读，不触发 setState。
+  /// 首次进入/切换漫画时异步加载已读集合；build 期只读，结果回来后 setState。
   void _loadReadChaptersIfNeeded() {
     final key = _readChapterComicKey;
     if (key == _readChapterKey) return;
     _readChapterKey = key;
-    _readChapterIds = ComicReadChapterRepository.instance.readChapterIds(
+    _loadReadChapters(key);
+  }
+
+  Future<void> _loadReadChapters(String key) async {
+    final comicId = _comicId;
+    final ids = await ComicReadChapterRepository.instance.readChapterIds(
       source: widget.from,
-      comicId: _comicId,
+      comicId: comicId,
     );
+    if (!mounted || key != _readChapterComicKey) return;
+    setState(() {
+      _readChapterKey = key;
+      _readChapterIds = ids;
+    });
   }
 
   @override
@@ -777,10 +788,11 @@ class _ComicInfoState extends State<_ComicInfo>
   // 编辑逻辑
   Future<void> _handleEdit() async {
     const service = ComicEditService();
-    if (service.hasIncompleteDownload(widget.from, _comicId)) {
+    if (await service.hasIncompleteDownload(widget.from, _comicId)) {
       showErrorToast(t.comicEdit.lockedMessage);
       return;
     }
+    if (!mounted) return;
 
     await context.pushRoute(
       ComicEditRoute(from: widget.from, comicId: _comicId),

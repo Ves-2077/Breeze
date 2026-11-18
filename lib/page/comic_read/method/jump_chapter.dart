@@ -48,7 +48,7 @@ class JumpChapter {
     required this.totalChapterCount,
   });
 
-  void jumpToChapter(BuildContext context, bool isPrev) {
+  Future<void> jumpToChapter(BuildContext context, bool isPrev) async {
     final router = AutoRouter.of(context);
     final index = chapters.indexWhere(
       (chapter) => _matchesCurrentChapter(chapter),
@@ -79,19 +79,19 @@ class JumpChapter {
         resolvedEntryType == ComicEntryType.history) {
       const repository = DownloadTaskRepository();
       final local =
-          repository.findDownloadedChapter(
+          await repository.findDownloadedChapter(
             from: from,
             comicId: comicId,
             chapterKey: chapter.id,
           ) ??
-          repository.findDownloadedChapter(
+          await repository.findDownloadedChapter(
             from: from,
             comicId: comicId,
             chapterKey: chapter.effectiveRequestId,
           );
       final record = local == null
           ? null
-          : repository.findDownloadRecord(from, comicId);
+          : await repository.findDownloadRecord(from, comicId);
       if (local != null && record != null) {
         useComicInfo = record;
         useType = resolvedEntryType == ComicEntryType.history
@@ -108,6 +108,7 @@ class JumpChapter {
     logicalKey = useChapter.id;
     chapterExtern = ChapterExtern.from(useChapter.extern);
 
+    if (!context.mounted) return;
     router.replace(
       ComicReadRoute(
         key: Key(Uuid().v4()),

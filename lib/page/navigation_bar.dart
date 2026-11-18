@@ -64,15 +64,15 @@ class _NavigationBarState extends State<NavigationBar> {
       checkUpdate(context);
       _autoSync();
       manageCacheSize(context);
-      DownloadQueueManager.instance.resetStuckTasks();
-      DownloadQueueManager.instance.watchTasks(
+      await DownloadQueueManager.instance.resetStuckTasks();
+      await DownloadQueueManager.instance.watchTasks(
         startupResumeDelay: const Duration(minutes: 1),
       );
       if (Platform.isAndroid) {
         await ForegroundTaskService.instance.syncOnAppStart();
       }
     });
-    final globalSetting = objectbox.userSettingBox.get(1)!.globalSetting;
+    final globalSetting = context.read<GlobalSettingCubit>().state;
     _selectedBaseIndex = _normalizeBaseIndex(
       globalSetting.welcomePageNum,
       globalSetting,

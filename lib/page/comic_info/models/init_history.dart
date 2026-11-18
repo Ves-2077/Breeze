@@ -1,26 +1,22 @@
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:zephyr/cubit/string_select.dart';
-import 'package:zephyr/object_box/objectbox.g.dart';
 import 'package:zephyr/page/comic_info/json/normal/normal_comic_all_info.dart';
 import 'package:zephyr/main.dart';
 
-void initHistory(
+Future<void> initHistory(
   BuildContext context,
   String comicId,
   String from, {
   List<Ep>? chapters,
-}) {
-  final history = objectbox.unifiedHistoryBox
-      .query(UnifiedComicHistory_.uniqueKey.equals('${from.trim()}:$comicId'))
-      .build()
-      .findFirst();
+}) async {
+  final stringSelectCubit = context.read<StringSelectCubit>();
+  final history = await database.histories.getByKey('${from.trim()}:$comicId');
 
   if (history?.deleted == true || history == null) {
     return;
   }
 
-  final stringSelectCubit = context.read<StringSelectCubit>();
   final chapterTitle = history.chapterTitle.isNotEmpty
       ? history.chapterTitle
       : '';

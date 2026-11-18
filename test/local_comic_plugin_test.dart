@@ -7,22 +7,22 @@ import 'test_helper.dart';
 
 void main() {
   setUpAll(() async {
-    await TestObjectBoxHelper.setUpTestObjectBox();
+    await TestDatabaseHelper.setUpTestDatabase();
   });
 
   tearDownAll(() async {
-    await TestObjectBoxHelper.tearDownTestObjectBox();
+    await TestDatabaseHelper.tearDownTestDatabase();
   });
 
-  setUp(() {
-    objectbox.pluginInfoBox.removeAll();
+  setUp(() async {
+    await database.plugins.removeAllInfos();
   });
 
   test('幽灵插件只安装一次并带 getInfo 缓存', () async {
     await ensureLocalComicPluginInstalled();
     await ensureLocalComicPluginInstalled();
 
-    final rows = objectbox.pluginInfoBox.getAll();
+    final rows = await database.plugins.listInfos();
     expect(rows, hasLength(1));
     final row = rows.single;
     expect(row.uuid, kLocalComicPluginId);
@@ -34,14 +34,14 @@ void main() {
 
   test('幽灵插件被误删/禁用后会恢复', () async {
     await ensureLocalComicPluginInstalled();
-    final row = objectbox.pluginInfoBox.getAll().single
+    final row = (await database.plugins.listInfos()).single
       ..isDeleted = true
       ..isEnabled = false;
-    objectbox.pluginInfoBox.put(row);
+    await database.plugins.putInfo(row);
 
     await ensureLocalComicPluginInstalled();
 
-    final restored = objectbox.pluginInfoBox.getAll().single;
+    final restored = (await database.plugins.listInfos()).single;
     expect(restored.isDeleted, isFalse);
     expect(restored.isEnabled, isTrue);
   });
