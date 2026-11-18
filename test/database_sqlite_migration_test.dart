@@ -1,8 +1,10 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:zephyr/database/app_database.dart';
+import 'package:zephyr/database/migration/objectbox_import.dart';
 import 'package:zephyr/util/rust_loader.dart';
 
 void main() {
@@ -58,6 +60,70 @@ void main() {
         await change.timeout(const Duration(seconds: 5)),
         contains('PluginConfig'),
       );
+    } finally {
+      await db.close();
+      await temp.delete(recursive: true);
+    }
+  });
+
+  test('archives and verifies legacy ObjectBox data.mdb', () async {
+    final temp = await Directory.systemTemp.createTemp('breeze_archive_');
+    final dataFile = File(p.join(temp.path, 'data.mdb'));
+    final archiveFile = File(p.join(temp.path, 'data.mdb.7z'));
+    final bytes = List<int>.generate(
+      2 * 1024 * 1024,
+      (index) => (index * 31 + index ~/ 97) % 251,
+    );
+    await dataFile.writeAsBytes(bytes, flush: true);
+    try {
+      final first = jsonDecode(
+        await archiveLegacyObjectBoxData(temp.path),
+      ) as Map<String, dynamic>;
+      expect(first['status'], 'archived');
+      expect(await dataFile.exists(), isFalse);
+      expect(await archiveFile.exists(), isTrue);
+      expect(await archiveFile.length(), lessThan(bytes.length));
+
+      final second = jsonDecode(
+        await archiveLegacyObjectBoxData(temp.path),
+      ) as Map<String, dynamic>;
+      expect(second['status'], 'already_archived');
+      expect(second['archiveBytes'], first['archiveBytes']);
+    } finally {
+      await temp.delete(recursive: true);
+    }
+  });
+
+  test('schedules archive after migration is already done', () async {
+    final temp = await Directory.systemTemp.createTemp('breeze_archive_');
+    final oldDir = Directory(p.join(temp.path, 'breeze_db'));
+    final dataFile = File(p.join(oldDir.path, 'data.mdb'));
+    final archiveFile = File(p.join(oldDir.path, 'data.mdb.7z'));
+    final db = await openAppDatabase(
+      path: p.join(temp.path, 'breeze.sqlite3'),
+      legacyObjectBoxDir: p.join(temp.path, 'missing_objectbox'),
+    );
+    try {
+      await oldDir.create();
+      await dataFile.writeAsBytes(
+        List<int>.filled(1024 * 1024, 7),
+        flush: true,
+      );
+      await db.execute(
+        'INSERT INTO app_meta(key, value) VALUES(?, ?) '
+        'ON CONFLICT(key) DO UPDATE SET value = excluded.value',
+        <Object?>['objectbox_import_state', 'done'],
+      );
+
+      await ensureObjectBoxImport(db, oldDir.path, archiveLegacyData: true);
+
+      final deadline = DateTime.now().add(const Duration(seconds: 10));
+      while (DateTime.now().isBefore(deadline) &&
+          (await dataFile.exists() || !await archiveFile.exists())) {
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+      }
+      expect(await archiveFile.exists(), isTrue);
+      expect(await dataFile.exists(), isFalse);
     } finally {
       await db.close();
       await temp.delete(recursive: true);

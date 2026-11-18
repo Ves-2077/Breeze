@@ -331,6 +331,7 @@ Future<(GlobalSettingCubit, PluginRegistryCubit)> _initServices() async {
   database = await Database.open(
     path: '$dbRoot/breeze_db.sqlite3',
     legacyObjectBoxDir: '$dbRoot/breeze_db',
+    archiveLegacyData: true,
   );
   final setting = await database.userSettings.get();
   if (setting == null) {

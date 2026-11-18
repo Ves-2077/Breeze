@@ -40,9 +40,14 @@ class Database {
   static Future<Database> open({
     required String path,
     required String legacyObjectBoxDir,
+    bool archiveLegacyData = false,
   }) async {
     return Database._(
-      await openAppDatabase(path: path, legacyObjectBoxDir: legacyObjectBoxDir),
+      await openAppDatabase(
+        path: path,
+        legacyObjectBoxDir: legacyObjectBoxDir,
+        archiveLegacyData: archiveLegacyData,
+      ),
     );
   }
 

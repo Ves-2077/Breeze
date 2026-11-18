@@ -17,11 +17,16 @@ class DatabaseIncompatibleException implements Exception {
 Future<BreezeDatabase> openAppDatabase({
   required String path,
   required String legacyObjectBoxDir,
+  bool archiveLegacyData = false,
 }) async {
   final db = await BreezeDatabase.open(path);
   try {
     await _ensureSchema(db);
-    await ensureObjectBoxImport(db, legacyObjectBoxDir);
+    await ensureObjectBoxImport(
+      db,
+      legacyObjectBoxDir,
+      archiveLegacyData: archiveLegacyData,
+    );
     return db;
   } catch (_) {
     await db.close();

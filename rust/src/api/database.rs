@@ -3,10 +3,11 @@
 //! Dart 第二层负责建表/索引 SQL、事务边界、模型转换和版本迁移。
 //! 这里只执行 SQL 和广播表变更。
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use flutter_rust_bridge::frb;
 use serde_json::{Map, Value, json};
 
+use crate::db::obx_archive::archive_objectbox_data;
 use crate::db::obx_reader::read_objectbox_database;
 use crate::db::sql;
 use crate::frb_generated::StreamSink;
@@ -86,4 +87,26 @@ pub async fn db_inspect_objectbox(old_dir: String) -> Result<String> {
         "entities": entities,
     })
     .to_string())
+}
+
+/// 压缩迁移完成后的旧 ObjectBox `data.mdb`。
+///
+/// 归档写到同目录的 `data.mdb.7z`；只有完整解压并核对 MD5 与原文件一致后
+/// 才会删除 `data.mdb`。失败时保留原文件，调用方可在下次启动重试。
+#[frb]
+pub async fn db_archive_objectbox_data(old_dir: String) -> Result<String> {
+    tokio::task::spawn_blocking(move || {
+        let outcome = archive_objectbox_data(std::path::Path::new(&old_dir))?;
+        Ok::<_, anyhow::Error>(
+            json!({
+                "status": outcome.status.as_str(),
+                "oldDir": old_dir,
+                "originalBytes": outcome.original_bytes,
+                "archiveBytes": outcome.archive_bytes,
+            })
+            .to_string(),
+        )
+    })
+    .await
+    .context("ObjectBox archive task failed")?
 }

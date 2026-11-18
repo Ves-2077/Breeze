@@ -68,3 +68,10 @@ Stream<List<String>> dbWatchChanges({required PlatformInt64 handle}) =>
 /// 日期为 Unix 毫秒整数，List<String> 为 JSON 数组。
 Future<String> dbInspectObjectbox({required String oldDir}) =>
     RustLib.instance.api.crateApiDatabaseDbInspectObjectbox(oldDir: oldDir);
+
+/// 压缩迁移完成后的旧 ObjectBox `data.mdb`。
+///
+/// 归档写到同目录的 `data.mdb.7z`；只有完整解压并核对 MD5 与原文件一致后
+/// 才会删除 `data.mdb`。失败时保留原文件，调用方可在下次启动重试。
+Future<String> dbArchiveObjectboxData({required String oldDir}) =>
+    RustLib.instance.api.crateApiDatabaseDbArchiveObjectboxData(oldDir: oldDir);

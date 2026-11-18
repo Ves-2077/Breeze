@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
 import 'package:zephyr/database/db.dart';
 import 'package:zephyr/database/migration/legacy_columns.dart';
+import 'package:zephyr/main.dart';
 import 'package:zephyr/src/rust/api/database.dart' as rust;
 
 const String _importStateKey = 'objectbox_import_state';
@@ -13,10 +15,19 @@ const String _importStateKey = 'objectbox_import_state';
 /// - 旧库 schema 从 LMDB meta 行读取，不依赖 objectbox-model.json；
 /// - 只按当前表列白名单插入，旧库缺列交给 SQL DEFAULT；
 /// - 保留原 object id；
-/// - 状态写在 app_meta，失败下次启动会清表重试。
-Future<void> ensureObjectBoxImport(BreezeDatabase db, String oldDir) async {
+/// - 状态写在 app_meta，失败下次启动会清表重试；
+/// - [archiveLegacyData] 为 true 时，导入完成后在后台把旧 `data.mdb`
+///   压缩为 `data.mdb.7z`，校验通过后才删除原文件。
+Future<void> ensureObjectBoxImport(
+  BreezeDatabase db,
+  String oldDir, {
+  bool archiveLegacyData = false,
+}) async {
   final state = await _readState(db);
-  if (state == 'done') return;
+  if (state == 'done') {
+    if (archiveLegacyData) _scheduleLegacyArchive(oldDir);
+    return;
+  }
 
   final dataFile = File(p.join(oldDir, 'data.mdb'));
   if (!await dataFile.exists()) {
@@ -82,6 +93,33 @@ Future<void> ensureObjectBoxImport(BreezeDatabase db, String oldDir) async {
       <Object?>['objectbox_import_report', report],
     );
   });
+
+  if (archiveLegacyData) _scheduleLegacyArchive(oldDir);
+}
+
+/// 归档旧 ObjectBox 数据，返回 Rust 侧的 JSON 状态。
+///
+/// 失败时抛出异常，原 `data.mdb` 保持不变。
+Future<String> archiveLegacyObjectBoxData(String oldDir) =>
+    rust.dbArchiveObjectboxData(oldDir: oldDir);
+
+void _scheduleLegacyArchive(String oldDir) {
+  final dataFile = File(p.join(oldDir, 'data.mdb'));
+  if (!dataFile.existsSync()) return;
+  unawaited(_archiveLegacyDataInBackground(oldDir));
+}
+
+Future<void> _archiveLegacyDataInBackground(String oldDir) async {
+  try {
+    final result = await archiveLegacyObjectBoxData(oldDir);
+    logger.i('旧 ObjectBox 数据已归档: $result');
+  } catch (error, stackTrace) {
+    logger.e(
+      '旧 ObjectBox 数据归档失败，保留 data.mdb',
+      error: error,
+      stackTrace: stackTrace,
+    );
+  }
 }
 
 Future<String?> _readState(BreezeDatabase db) async {
