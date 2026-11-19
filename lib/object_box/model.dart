@@ -808,8 +808,12 @@ class DownloadTask {
   }
 
   set taskInfo(DownloadTaskJson? value) {
+    // fromJson 会先赋值 dbTaskInfoStr、再赋值 taskInfo；SQLite 行里没有
+    // taskInfo 键（只有 dbTaskInfoStr 列），这里必须忽略 null，否则每次
+    // 读库都会把已存的 payload 抹掉。代码里没有“置空 payload”的用法。
+    if (value == null) return;
     _taskInfo = value;
-    dbTaskInfoStr = value == null ? null : jsonEncode(value.toJson());
+    dbTaskInfoStr = jsonEncode(value.toJson());
   }
 
   Map<String, dynamic> toJson() => _$DownloadTaskToJson(this);

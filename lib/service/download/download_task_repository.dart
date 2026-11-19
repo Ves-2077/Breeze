@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import 'package:flutter/foundation.dart' show compute;
 import 'package:zephyr/main.dart';
 import 'package:zephyr/object_box/model.dart';
@@ -335,9 +333,9 @@ Future<void> _applyDownloadTaskWrite(Map<String, dynamic> args) async {
   task.isCompleted = (args['isCompleted'] as bool?) ?? task.isCompleted;
   final payloadJson = args['payloadJson'] as String?;
   if (payloadJson != null) {
-    task.taskInfo = DownloadTaskJson.fromJson(
-      jsonDecode(payloadJson) as Map<String, dynamic>,
-    );
+    // payload 已经是编码好的 JSON 串，直接落到列上；实体刚读出、写完即弃，
+    // 不需要再 decode→model→encode 一遍。
+    task.dbTaskInfoStr = payloadJson;
   }
   await database.downloadTasks.put(task);
 }

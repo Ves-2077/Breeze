@@ -53,6 +53,10 @@ Future<void> unifiedDownloadTask(
 
   Timer? progressTimer;
   bool running = true;
+  // 1s Timer 与逐图 ensureTaskRunning 都会读库；状态未变时跳过写、存活检查
+  // 1s 节流。取消仍走同步的 cancel signal，不依赖这里。
+  String? lastEnqueuedStatus;
+  DateTime? lastLivenessCheck;
 
   Future<DownloadTask?> findCurrentTask() async {
     final current = await taskRepository.findByTaskKey(taskKey);
@@ -61,6 +65,8 @@ Future<void> unifiedDownloadTask(
   }
 
   Future<void> writeTaskStatus(String status) async {
+    if (status == lastEnqueuedStatus) return;
+    lastEnqueuedStatus = status;
     final dbTask = await findCurrentTask();
     if (dbTask == null) return;
     // 高频状态同步走后台写，避免阻塞下载循环。
@@ -98,15 +104,26 @@ Future<void> unifiedDownloadTask(
   }
 
   Future<void> ensureTaskRunning() async {
-    final currentTask = await findCurrentTask();
     final signaled = isDownloadCancelSignaled(taskKey);
-    if (signaled || currentTask == null || !currentTask.isDownloading) {
-      logger.w(
-        'ensureTaskRunning 取消任务: taskKey=$taskKey, signaled=$signaled, currentTask=${currentTask != null}, isDownloading=${currentTask?.isDownloading}',
-      );
-      await cancelTrackedQjsTasks(pluginId: pluginId, taskGroupKey: taskKey);
-      throw const DownloadTaskCancelledException();
+    if (!signaled) {
+      // 每张图都走一次 DB 读（含 payload 解析 + worker isolate spawn）成本高；
+      // 取消有同步信号兜底，库检查 1s 一次即可。
+      final now = DateTime.now();
+      final last = lastLivenessCheck;
+      if (last != null && now.difference(last) < const Duration(seconds: 1)) {
+        return;
+      }
+      final currentTask = await findCurrentTask();
+      if (currentTask != null) {
+        lastLivenessCheck = now;
+        return;
+      }
     }
+    logger.w(
+      'ensureTaskRunning 取消任务: taskKey=$taskKey, signaled=$signaled, 任务不存在或已停止',
+    );
+    await cancelTrackedQjsTasks(pluginId: pluginId, taskGroupKey: taskKey);
+    throw const DownloadTaskCancelledException();
   }
 
   const adapter = DownloadChapterAdapter();
