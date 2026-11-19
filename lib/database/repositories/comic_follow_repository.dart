@@ -1,4 +1,5 @@
 import 'package:zephyr/database/db.dart';
+import 'package:zephyr/database/query_isolate.dart';
 import 'package:zephyr/database/row_codec.dart';
 import 'package:zephyr/object_box/model.dart';
 
@@ -37,39 +38,39 @@ class ComicFollowRepository {
 
   static const String table = 'ComicFollow';
 
-  Future<ComicFollow?> getById(int id) async {
-    final rows = await db.query(
-      'SELECT * FROM "ComicFollow" WHERE "id" = ? LIMIT 1',
-      <Object?>[id],
-    );
-    return rows.isEmpty ? null : _decode(rows.first);
-  }
+  Future<ComicFollow?> getById(int id) => runDbRead(
+    db,
+    sql: 'SELECT * FROM "ComicFollow" WHERE "id" = ? LIMIT 1',
+    params: <Object?>[id],
+    decode: _decodeFirst,
+  );
 
-  Future<ComicFollow?> getByKey(String uniqueKey) async {
-    final rows = await db.query(
-      'SELECT * FROM "ComicFollow" WHERE "uniqueKey" = ? LIMIT 1',
-      <Object?>[uniqueKey],
-    );
-    return rows.isEmpty ? null : _decode(rows.first);
-  }
+  Future<ComicFollow?> getByKey(String uniqueKey) => runDbRead(
+    db,
+    sql: 'SELECT * FROM "ComicFollow" WHERE "uniqueKey" = ? LIMIT 1',
+    params: <Object?>[uniqueKey],
+    decode: _decodeFirst,
+  );
 
-  Future<List<ComicFollow>> getAll() async {
-    final rows = await db.query('SELECT * FROM "ComicFollow" ORDER BY "id"');
-    return rows.map(_decode).toList();
-  }
+  Future<List<ComicFollow>> getAll() => runDbRead(
+    db,
+    sql: 'SELECT * FROM "ComicFollow" ORDER BY "id"',
+    decode: _decodeAll,
+  );
 
-  Future<List<ComicFollow>> listActive() async {
-    final rows = await db.query(
-      'SELECT * FROM "ComicFollow" WHERE "deleted" = 0 '
-      'ORDER BY "hasUpdate" DESC, "updateTime" DESC, "id" DESC',
-    );
-    return rows.map(_decode).toList();
-  }
+  Future<List<ComicFollow>> listActive() => runDbRead(
+    db,
+    sql:
+        'SELECT * FROM "ComicFollow" WHERE "deleted" = 0 '
+        'ORDER BY "hasUpdate" DESC, "updateTime" DESC, "id" DESC',
+    decode: _decodeAll,
+  );
 
-  Future<int> count() async {
-    final rows = await db.query('SELECT COUNT(*) AS c FROM "ComicFollow"');
-    return (rows.single['c'] as num).toInt();
-  }
+  Future<int> count() => runDbRead(
+    db,
+    sql: 'SELECT COUNT(*) AS c FROM "ComicFollow"',
+    decode: countFromRows,
+  );
 
   Future<int> put(ComicFollow value) async {
     if (value.id > 0) {
@@ -137,7 +138,7 @@ class ComicFollowRepository {
     ];
   }
 
-  ComicFollow _decode(Map<String, dynamic> row) {
+  static ComicFollow _decodeRow(Map<String, dynamic> row) {
     return ComicFollow.fromJson(
       normalizeRow(
         withDefaultId(row),
@@ -146,4 +147,10 @@ class ComicFollowRepository {
       ),
     );
   }
+
+  static List<ComicFollow> _decodeAll(List<Map<String, dynamic>> rows) =>
+      rows.map(_decodeRow).toList();
+
+  static ComicFollow? _decodeFirst(List<Map<String, dynamic>> rows) =>
+      rows.isEmpty ? null : _decodeRow(rows.first);
 }

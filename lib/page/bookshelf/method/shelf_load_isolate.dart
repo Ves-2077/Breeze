@@ -1,4 +1,5 @@
 import 'package:zephyr/database/database.dart';
+import 'package:zephyr/database/query_isolate.dart';
 import 'package:zephyr/object_box/model.dart';
 import 'package:zephyr/page/bookshelf/method/comic_search_text.dart';
 import 'package:zephyr/page/bookshelf/models/shelf_page_mode.dart';
@@ -48,6 +49,7 @@ class ShelfLoadResult {
 /// RustLib 需要在本 isolate 内初始化。
 Future<ShelfLoadResult> loadShelfInIsolate(ShelfLoadTask task) async {
   await initRustLib();
+  markDbWorkerIsolate();
   final db = Database.fromHandle(task.handle);
   final mode = ShelfPageMode.values.byName(task.mode);
   final folderType = comicFolderTypeOf(mode);

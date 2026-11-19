@@ -39,6 +39,15 @@ class BreezeDatabase {
 
   bool get inTransaction => Zone.current[_txZoneKey] is DbTransaction;
 
+  /// 当前调用应使用的连接句柄：事务回调内为事务连接，否则为主连接。
+  ///
+  /// worker isolate 无法继承调用方的 Zone，因此把有效句柄显式传给
+  /// [runDbRead]，保证事务内的仓库读取仍走事务连接。
+  int get activeHandle {
+    final tx = Zone.current[_txZoneKey];
+    return tx is DbTransaction ? tx.handle : handle;
+  }
+
   /// 查询并原样返回 JSON 字符串（第一层形态）。
   Future<String> queryJson(String sql, [List<Object?> params = const []]) {
     final tx = Zone.current[_txZoneKey];

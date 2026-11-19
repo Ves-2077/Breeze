@@ -1,4 +1,5 @@
 import 'package:zephyr/database/db.dart';
+import 'package:zephyr/database/query_isolate.dart';
 import 'package:zephyr/database/row_codec.dart';
 import 'package:zephyr/object_box/model.dart';
 
@@ -28,83 +29,86 @@ class ComicFolderRepository {
 
   static const String table = 'ComicFolder';
 
-  Future<ComicFolder?> getById(int id) async {
-    final rows = await db.query(
-      'SELECT * FROM "ComicFolder" WHERE "id" = ? LIMIT 1',
-      <Object?>[id],
-    );
-    return rows.isEmpty ? null : _decode(rows.first);
-  }
+  Future<ComicFolder?> getById(int id) => runDbRead(
+    db,
+    sql: 'SELECT * FROM "ComicFolder" WHERE "id" = ? LIMIT 1',
+    params: <Object?>[id],
+    decode: _decodeFirst,
+  );
 
-  Future<ComicFolder?> getByUniqueKey(String uniqueKey) async {
-    final rows = await db.query(
-      'SELECT * FROM "ComicFolder" WHERE "uniqueKey" = ? LIMIT 1',
-      <Object?>[uniqueKey],
-    );
-    return rows.isEmpty ? null : _decode(rows.first);
-  }
+  Future<ComicFolder?> getByUniqueKey(String uniqueKey) => runDbRead(
+    db,
+    sql: 'SELECT * FROM "ComicFolder" WHERE "uniqueKey" = ? LIMIT 1',
+    params: <Object?>[uniqueKey],
+    decode: _decodeFirst,
+  );
 
-  Future<ComicFolder?> getBySyncId(String syncId) async {
-    final rows = await db.query(
-      'SELECT * FROM "ComicFolder" WHERE "syncId" = ? LIMIT 1',
-      <Object?>[syncId],
-    );
-    return rows.isEmpty ? null : _decode(rows.first);
-  }
+  Future<ComicFolder?> getBySyncId(String syncId) => runDbRead(
+    db,
+    sql: 'SELECT * FROM "ComicFolder" WHERE "syncId" = ? LIMIT 1',
+    params: <Object?>[syncId],
+    decode: _decodeFirst,
+  );
 
-  Future<List<ComicFolder>> getAll() async {
-    final rows = await db.query('SELECT * FROM "ComicFolder" ORDER BY "id"');
-    return rows.map(_decode).toList();
-  }
+  Future<List<ComicFolder>> getAll() => runDbRead(
+    db,
+    sql: 'SELECT * FROM "ComicFolder" ORDER BY "id"',
+    decode: _decodeAll,
+  );
 
   Future<List<ComicFolder>> listByType(
     String typeData, {
     bool ascending = true,
-  }) async {
+  }) {
     final direction = ascending ? 'ASC' : 'DESC';
-    final rows = await db.query(
-      'SELECT * FROM "ComicFolder" WHERE "typeData" = ? '
-      'ORDER BY "name" $direction, "id" $direction',
-      <Object?>[typeData],
+    return runDbRead(
+      db,
+      sql:
+          'SELECT * FROM "ComicFolder" WHERE "typeData" = ? '
+          'ORDER BY "name" $direction, "id" $direction',
+      params: <Object?>[typeData],
+      decode: _decodeAll,
     );
-    return rows.map(_decode).toList();
   }
 
   Future<List<ComicFolder>> listChildren(
     String? parentSyncId,
     String typeData, {
     bool ascending = true,
-  }) async {
+  }) {
     final direction = ascending ? 'ASC' : 'DESC';
-    final rows = parentSyncId == null || parentSyncId.isEmpty
-        ? await db.query(
-            'SELECT * FROM "ComicFolder" WHERE "typeData" = ? '
-            'AND ("parentSyncId" IS NULL OR "parentSyncId" = \'\') '
-            'ORDER BY "name" $direction, "id" $direction',
-            <Object?>[typeData],
-          )
-        : await db.query(
-            'SELECT * FROM "ComicFolder" WHERE "typeData" = ? '
-            'AND "parentSyncId" = ? '
-            'ORDER BY "name" $direction, "id" $direction',
-            <Object?>[typeData, parentSyncId],
-          );
-    return rows.map(_decode).toList();
+    final sql = parentSyncId == null || parentSyncId.isEmpty
+        ? 'SELECT * FROM "ComicFolder" WHERE "typeData" = ? '
+              'AND ("parentSyncId" IS NULL OR "parentSyncId" = \'\') '
+              'ORDER BY "name" $direction, "id" $direction'
+        : 'SELECT * FROM "ComicFolder" WHERE "typeData" = ? '
+              'AND "parentSyncId" = ? '
+              'ORDER BY "name" $direction, "id" $direction';
+    return runDbRead(
+      db,
+      sql: sql,
+      params: parentSyncId == null || parentSyncId.isEmpty
+          ? <Object?>[typeData]
+          : <Object?>[typeData, parentSyncId],
+      decode: _decodeAll,
+    );
   }
 
   /// 某类型下所有未软删除的文件夹，按 createdAt 排序。
   Future<List<ComicFolder>> listActiveByType(
     String typeData, {
     bool ascending = false,
-  }) async {
+  }) {
     final direction = ascending ? 'ASC' : 'DESC';
-    final rows = await db.query(
-      'SELECT * FROM "ComicFolder" WHERE "typeData" = ? '
-      'AND "deletedAt" IS NULL '
-      'ORDER BY "createdAt" $direction, "id" $direction',
-      <Object?>[typeData],
+    return runDbRead(
+      db,
+      sql:
+          'SELECT * FROM "ComicFolder" WHERE "typeData" = ? '
+          'AND "deletedAt" IS NULL '
+          'ORDER BY "createdAt" $direction, "id" $direction',
+      params: <Object?>[typeData],
+      decode: _decodeAll,
     );
-    return rows.map(_decode).toList();
   }
 
   /// 某路径下未软删除的直接子文件夹，按 createdAt 排序。
@@ -112,39 +116,42 @@ class ComicFolderRepository {
     String? parentSyncId,
     String typeData, {
     bool ascending = false,
-  }) async {
+  }) {
     final direction = ascending ? 'ASC' : 'DESC';
-    final rows = parentSyncId == null || parentSyncId.isEmpty
-        ? await db.query(
-            'SELECT * FROM "ComicFolder" WHERE "typeData" = ? '
-            'AND "deletedAt" IS NULL '
-            'AND ("parentSyncId" IS NULL OR "parentSyncId" = \'\') '
-            'ORDER BY "createdAt" $direction, "id" $direction',
-            <Object?>[typeData],
-          )
-        : await db.query(
-            'SELECT * FROM "ComicFolder" WHERE "typeData" = ? '
-            'AND "deletedAt" IS NULL AND "parentSyncId" = ? '
-            'ORDER BY "createdAt" $direction, "id" $direction',
-            <Object?>[typeData, parentSyncId],
-          );
-    return rows.map(_decode).toList();
+    final sql = parentSyncId == null || parentSyncId.isEmpty
+        ? 'SELECT * FROM "ComicFolder" WHERE "typeData" = ? '
+              'AND "deletedAt" IS NULL '
+              'AND ("parentSyncId" IS NULL OR "parentSyncId" = \'\') '
+              'ORDER BY "createdAt" $direction, "id" $direction'
+        : 'SELECT * FROM "ComicFolder" WHERE "typeData" = ? '
+              'AND "deletedAt" IS NULL AND "parentSyncId" = ? '
+              'ORDER BY "createdAt" $direction, "id" $direction';
+    return runDbRead(
+      db,
+      sql: sql,
+      params: parentSyncId == null || parentSyncId.isEmpty
+          ? <Object?>[typeData]
+          : <Object?>[typeData, parentSyncId],
+      decode: _decodeAll,
+    );
   }
 
   Future<List<ComicFolder>> listBySyncIds(List<String> syncIds) async {
     if (syncIds.isEmpty) return const <ComicFolder>[];
     final marks = List.filled(syncIds.length, '?').join(',');
-    final rows = await db.query(
-      'SELECT * FROM "ComicFolder" WHERE "syncId" IN ($marks)',
-      syncIds,
+    return runDbRead(
+      db,
+      sql: 'SELECT * FROM "ComicFolder" WHERE "syncId" IN ($marks)',
+      params: syncIds,
+      decode: _decodeAll,
     );
-    return rows.map(_decode).toList();
   }
 
-  Future<int> count() async {
-    final rows = await db.query('SELECT COUNT(*) AS c FROM "ComicFolder"');
-    return (rows.single['c'] as num).toInt();
-  }
+  Future<int> count() => runDbRead(
+    db,
+    sql: 'SELECT COUNT(*) AS c FROM "ComicFolder"',
+    decode: countFromRows,
+  );
 
   Future<int> put(ComicFolder value) async {
     if (value.id > 0) {
@@ -211,9 +218,15 @@ class ComicFolderRepository {
     ];
   }
 
-  ComicFolder _decode(Map<String, dynamic> row) {
+  static ComicFolder _decodeRow(Map<String, dynamic> row) {
     return ComicFolder.fromJson(withDefaultId(row));
   }
+
+  static List<ComicFolder> _decodeAll(List<Map<String, dynamic>> rows) =>
+      rows.map(_decodeRow).toList();
+
+  static ComicFolder? _decodeFirst(List<Map<String, dynamic>> rows) =>
+      rows.isEmpty ? null : _decodeRow(rows.first);
 }
 
 const _linkInsert =
@@ -240,75 +253,76 @@ class ComicLinkRepository {
 
   static const String table = 'ComicLink';
 
-  Future<ComicLink?> getById(int id) async {
-    final rows = await db.query(
-      'SELECT * FROM "ComicLink" WHERE "id" = ? LIMIT 1',
-      <Object?>[id],
-    );
-    return rows.isEmpty ? null : _decode(rows.first);
-  }
+  Future<ComicLink?> getById(int id) => runDbRead(
+    db,
+    sql: 'SELECT * FROM "ComicLink" WHERE "id" = ? LIMIT 1',
+    params: <Object?>[id],
+    decode: _decodeFirst,
+  );
 
-  Future<ComicLink?> getByUniqueKey(String uniqueKey) async {
-    final rows = await db.query(
-      'SELECT * FROM "ComicLink" WHERE "uniqueKey" = ? LIMIT 1',
-      <Object?>[uniqueKey],
-    );
-    return rows.isEmpty ? null : _decode(rows.first);
-  }
+  Future<ComicLink?> getByUniqueKey(String uniqueKey) => runDbRead(
+    db,
+    sql: 'SELECT * FROM "ComicLink" WHERE "uniqueKey" = ? LIMIT 1',
+    params: <Object?>[uniqueKey],
+    decode: _decodeFirst,
+  );
 
-  Future<List<ComicLink>> getAll() async {
-    final rows = await db.query('SELECT * FROM "ComicLink" ORDER BY "id"');
-    return rows.map(_decode).toList();
-  }
+  Future<List<ComicLink>> getAll() => runDbRead(
+    db,
+    sql: 'SELECT * FROM "ComicLink" ORDER BY "id"',
+    decode: _decodeAll,
+  );
 
-  Future<List<ComicLink>> listByType(
-    String typeData, {
-    bool ascending = true,
-  }) async {
+  Future<List<ComicLink>> listByType(String typeData, {bool ascending = true}) {
     final direction = ascending ? 'ASC' : 'DESC';
-    final rows = await db.query(
-      'SELECT * FROM "ComicLink" WHERE "typeData" = ? '
-      'ORDER BY "createdAt" $direction, "id" $direction',
-      <Object?>[typeData],
+    return runDbRead(
+      db,
+      sql:
+          'SELECT * FROM "ComicLink" WHERE "typeData" = ? '
+          'ORDER BY "createdAt" $direction, "id" $direction',
+      params: <Object?>[typeData],
+      decode: _decodeAll,
     );
-    return rows.map(_decode).toList();
   }
 
   Future<List<ComicLink>> listByFolder(
     String? folderSyncId,
     String typeData, {
     bool ascending = true,
-  }) async {
+  }) {
     final direction = ascending ? 'ASC' : 'DESC';
-    final rows = folderSyncId == null || folderSyncId.isEmpty
-        ? await db.query(
-            'SELECT * FROM "ComicLink" WHERE "typeData" = ? '
-            'AND ("folderSyncId" IS NULL OR "folderSyncId" = \'\') '
-            'ORDER BY "createdAt" $direction, "id" $direction',
-            <Object?>[typeData],
-          )
-        : await db.query(
-            'SELECT * FROM "ComicLink" WHERE "typeData" = ? '
-            'AND "folderSyncId" = ? '
-            'ORDER BY "createdAt" $direction, "id" $direction',
-            <Object?>[typeData, folderSyncId],
-          );
-    return rows.map(_decode).toList();
+    final sql = folderSyncId == null || folderSyncId.isEmpty
+        ? 'SELECT * FROM "ComicLink" WHERE "typeData" = ? '
+              'AND ("folderSyncId" IS NULL OR "folderSyncId" = \'\') '
+              'ORDER BY "createdAt" $direction, "id" $direction'
+        : 'SELECT * FROM "ComicLink" WHERE "typeData" = ? '
+              'AND "folderSyncId" = ? '
+              'ORDER BY "createdAt" $direction, "id" $direction';
+    return runDbRead(
+      db,
+      sql: sql,
+      params: folderSyncId == null || folderSyncId.isEmpty
+          ? <Object?>[typeData]
+          : <Object?>[typeData, folderSyncId],
+      decode: _decodeAll,
+    );
   }
 
   /// 某类型下全部未软删除的链接，按 createdAt 排序。
   Future<List<ComicLink>> listActiveByType(
     String typeData, {
     bool ascending = false,
-  }) async {
+  }) {
     final direction = ascending ? 'ASC' : 'DESC';
-    final rows = await db.query(
-      'SELECT * FROM "ComicLink" WHERE "typeData" = ? '
-      'AND "deletedAt" IS NULL '
-      'ORDER BY "createdAt" $direction, "id" $direction',
-      <Object?>[typeData],
+    return runDbRead(
+      db,
+      sql:
+          'SELECT * FROM "ComicLink" WHERE "typeData" = ? '
+          'AND "deletedAt" IS NULL '
+          'ORDER BY "createdAt" $direction, "id" $direction',
+      params: <Object?>[typeData],
+      decode: _decodeAll,
     );
-    return rows.map(_decode).toList();
   }
 
   /// 某路径下未软删除的链接，按 createdAt 排序。
@@ -316,54 +330,56 @@ class ComicLinkRepository {
     String? folderSyncId,
     String typeData, {
     bool ascending = false,
-  }) async {
+  }) {
     final direction = ascending ? 'ASC' : 'DESC';
-    final rows = folderSyncId == null || folderSyncId.isEmpty
-        ? await db.query(
-            'SELECT * FROM "ComicLink" WHERE "typeData" = ? '
-            'AND "deletedAt" IS NULL '
-            'AND ("folderSyncId" IS NULL OR "folderSyncId" = \'\') '
-            'ORDER BY "createdAt" $direction, "id" $direction',
-            <Object?>[typeData],
-          )
-        : await db.query(
-            'SELECT * FROM "ComicLink" WHERE "typeData" = ? '
-            'AND "deletedAt" IS NULL AND "folderSyncId" = ? '
-            'ORDER BY "createdAt" $direction, "id" $direction',
-            <Object?>[typeData, folderSyncId],
-          );
-    return rows.map(_decode).toList();
+    final sql = folderSyncId == null || folderSyncId.isEmpty
+        ? 'SELECT * FROM "ComicLink" WHERE "typeData" = ? '
+              'AND "deletedAt" IS NULL '
+              'AND ("folderSyncId" IS NULL OR "folderSyncId" = \'\') '
+              'ORDER BY "createdAt" $direction, "id" $direction'
+        : 'SELECT * FROM "ComicLink" WHERE "typeData" = ? '
+              'AND "deletedAt" IS NULL AND "folderSyncId" = ? '
+              'ORDER BY "createdAt" $direction, "id" $direction';
+    return runDbRead(
+      db,
+      sql: sql,
+      params: folderSyncId == null || folderSyncId.isEmpty
+          ? <Object?>[typeData]
+          : <Object?>[typeData, folderSyncId],
+      decode: _decodeAll,
+    );
   }
 
   /// 漫画在某类型下未软删除的全部链接（含根目录）。
   Future<List<ComicLink>> listActiveByComic(
     String comicUniqueKey,
     String typeData,
-  ) async {
-    final rows = await db.query(
-      'SELECT * FROM "ComicLink" WHERE "typeData" = ? '
-      'AND "deletedAt" IS NULL AND "comicUniqueKey" = ? '
-      'ORDER BY "createdAt" ASC, "id" ASC',
-      <Object?>[typeData, comicUniqueKey],
-    );
-    return rows.map(_decode).toList();
-  }
+  ) => runDbRead(
+    db,
+    sql:
+        'SELECT * FROM "ComicLink" WHERE "typeData" = ? '
+        'AND "deletedAt" IS NULL AND "comicUniqueKey" = ? '
+        'ORDER BY "createdAt" ASC, "id" ASC',
+    params: <Object?>[typeData, comicUniqueKey],
+    decode: _decodeAll,
+  );
 
   Future<List<ComicLink>> listByComic(
     String comicUniqueKey, {
     String? typeData,
-  }) async {
-    final rows = typeData == null
-        ? await db.query(
-            'SELECT * FROM "ComicLink" WHERE "comicUniqueKey" = ?',
-            <Object?>[comicUniqueKey],
-          )
-        : await db.query(
-            'SELECT * FROM "ComicLink" WHERE "comicUniqueKey" = ? '
-            'AND "typeData" = ?',
-            <Object?>[comicUniqueKey, typeData],
-          );
-    return rows.map(_decode).toList();
+  }) {
+    final sql = typeData == null
+        ? 'SELECT * FROM "ComicLink" WHERE "comicUniqueKey" = ?'
+        : 'SELECT * FROM "ComicLink" WHERE "comicUniqueKey" = ? '
+              'AND "typeData" = ?';
+    return runDbRead(
+      db,
+      sql: sql,
+      params: typeData == null
+          ? <Object?>[comicUniqueKey]
+          : <Object?>[comicUniqueKey, typeData],
+      decode: _decodeAll,
+    );
   }
 
   Future<List<ComicLink>> listByFolderSyncIds(
@@ -372,23 +388,23 @@ class ComicLinkRepository {
   }) async {
     if (syncIds.isEmpty) return const <ComicLink>[];
     final marks = List.filled(syncIds.length, '?').join(',');
-    final rows = typeData == null
-        ? await db.query(
-            'SELECT * FROM "ComicLink" WHERE "folderSyncId" IN ($marks)',
-            syncIds,
-          )
-        : await db.query(
-            'SELECT * FROM "ComicLink" WHERE "folderSyncId" IN ($marks) '
-            'AND "typeData" = ?',
-            <Object?>[...syncIds, typeData],
-          );
-    return rows.map(_decode).toList();
+    final sql = typeData == null
+        ? 'SELECT * FROM "ComicLink" WHERE "folderSyncId" IN ($marks)'
+        : 'SELECT * FROM "ComicLink" WHERE "folderSyncId" IN ($marks) '
+              'AND "typeData" = ?';
+    return runDbRead(
+      db,
+      sql: sql,
+      params: typeData == null ? syncIds : <Object?>[...syncIds, typeData],
+      decode: _decodeAll,
+    );
   }
 
-  Future<int> count() async {
-    final rows = await db.query('SELECT COUNT(*) AS c FROM "ComicLink"');
-    return (rows.single['c'] as num).toInt();
-  }
+  Future<int> count() => runDbRead(
+    db,
+    sql: 'SELECT COUNT(*) AS c FROM "ComicLink"',
+    decode: countFromRows,
+  );
 
   Future<int> put(ComicLink value) async {
     if (value.id > 0) {
@@ -454,7 +470,13 @@ class ComicLinkRepository {
     ];
   }
 
-  ComicLink _decode(Map<String, dynamic> row) {
+  static ComicLink _decodeRow(Map<String, dynamic> row) {
     return ComicLink.fromJson(withDefaultId(row));
   }
+
+  static List<ComicLink> _decodeAll(List<Map<String, dynamic>> rows) =>
+      rows.map(_decodeRow).toList();
+
+  static ComicLink? _decodeFirst(List<Map<String, dynamic>> rows) =>
+      rows.isEmpty ? null : _decodeRow(rows.first);
 }

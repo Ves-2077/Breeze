@@ -1,4 +1,5 @@
 import 'package:zephyr/database/db.dart';
+import 'package:zephyr/database/query_isolate.dart';
 import 'package:zephyr/database/row_codec.dart';
 import 'package:zephyr/object_box/model.dart';
 
@@ -41,33 +42,31 @@ class PluginRepository {
   static const String infoTable = 'PluginInfo';
   static const String configTable = 'PluginConfig';
 
-  Future<List<PluginInfo>> listInfos() async {
-    final rows = await db.query('SELECT * FROM "PluginInfo" ORDER BY "id"');
-    return rows.map(_decodeInfo).toList();
-  }
+  Future<List<PluginInfo>> listInfos() => runDbRead(
+    db,
+    sql: 'SELECT * FROM "PluginInfo" ORDER BY "id"',
+    decode: _decodeInfos,
+  );
 
-  Future<PluginInfo?> getInfoById(int id) async {
-    final rows = await db.query(
-      'SELECT * FROM "PluginInfo" WHERE "id" = ? LIMIT 1',
-      <Object?>[id],
-    );
-    return rows.isEmpty ? null : _decodeInfo(rows.first);
-  }
+  Future<PluginInfo?> getInfoById(int id) => runDbRead(
+    db,
+    sql: 'SELECT * FROM "PluginInfo" WHERE "id" = ? LIMIT 1',
+    params: <Object?>[id],
+    decode: _decodeInfoFirst,
+  );
 
-  Future<PluginInfo?> getInfoByUuid(String uuid) async {
-    final rows = await db.query(
-      'SELECT * FROM "PluginInfo" WHERE "uuid" = ? LIMIT 1',
-      <Object?>[uuid],
-    );
-    return rows.isEmpty ? null : _decodeInfo(rows.first);
-  }
+  Future<PluginInfo?> getInfoByUuid(String uuid) => runDbRead(
+    db,
+    sql: 'SELECT * FROM "PluginInfo" WHERE "uuid" = ? LIMIT 1',
+    params: <Object?>[uuid],
+    decode: _decodeInfoFirst,
+  );
 
-  Future<List<PluginInfo>> listDeletedInfos() async {
-    final rows = await db.query(
-      'SELECT * FROM "PluginInfo" WHERE "isDeleted" = 1 ORDER BY "id"',
-    );
-    return rows.map(_decodeInfo).toList();
-  }
+  Future<List<PluginInfo>> listDeletedInfos() => runDbRead(
+    db,
+    sql: 'SELECT * FROM "PluginInfo" WHERE "isDeleted" = 1 ORDER BY "id"',
+    decode: _decodeInfos,
+  );
 
   Future<int> putInfo(PluginInfo value) async {
     if (value.id > 0) {
@@ -116,26 +115,25 @@ class PluginRepository {
     return result.changes;
   }
 
-  Future<List<PluginConfig>> listConfigs() async {
-    final rows = await db.query('SELECT * FROM "PluginConfig" ORDER BY "id"');
-    return rows.map(_decodeConfig).toList();
-  }
+  Future<List<PluginConfig>> listConfigs() => runDbRead(
+    db,
+    sql: 'SELECT * FROM "PluginConfig" ORDER BY "id"',
+    decode: _decodeConfigs,
+  );
 
-  Future<PluginConfig?> getConfigById(int id) async {
-    final rows = await db.query(
-      'SELECT * FROM "PluginConfig" WHERE "id" = ? LIMIT 1',
-      <Object?>[id],
-    );
-    return rows.isEmpty ? null : _decodeConfig(rows.first);
-  }
+  Future<PluginConfig?> getConfigById(int id) => runDbRead(
+    db,
+    sql: 'SELECT * FROM "PluginConfig" WHERE "id" = ? LIMIT 1',
+    params: <Object?>[id],
+    decode: _decodeConfigFirst,
+  );
 
-  Future<PluginConfig?> getConfigByName(String name) async {
-    final rows = await db.query(
-      'SELECT * FROM "PluginConfig" WHERE "name" = ? LIMIT 1',
-      <Object?>[name],
-    );
-    return rows.isEmpty ? null : _decodeConfig(rows.first);
-  }
+  Future<PluginConfig?> getConfigByName(String name) => runDbRead(
+    db,
+    sql: 'SELECT * FROM "PluginConfig" WHERE "name" = ? LIMIT 1',
+    params: <Object?>[name],
+    decode: _decodeConfigFirst,
+  );
 
   Future<int> putConfig(PluginConfig value) async {
     if (value.id > 0) {
@@ -238,7 +236,7 @@ class PluginRepository {
     return value.id;
   }
 
-  PluginInfo _decodeInfo(Map<String, dynamic> row) {
+  static PluginInfo _decodeInfo(Map<String, dynamic> row) {
     return PluginInfo.fromJson(
       normalizeRow(
         withDefaultId(row),
@@ -254,7 +252,19 @@ class PluginRepository {
     );
   }
 
-  PluginConfig _decodeConfig(Map<String, dynamic> row) {
+  static List<PluginInfo> _decodeInfos(List<Map<String, dynamic>> rows) =>
+      rows.map(_decodeInfo).toList();
+
+  static PluginInfo? _decodeInfoFirst(List<Map<String, dynamic>> rows) =>
+      rows.isEmpty ? null : _decodeInfo(rows.first);
+
+  static PluginConfig _decodeConfig(Map<String, dynamic> row) {
     return PluginConfig.fromJson(withDefaultId(row));
   }
+
+  static List<PluginConfig> _decodeConfigs(List<Map<String, dynamic>> rows) =>
+      rows.map(_decodeConfig).toList();
+
+  static PluginConfig? _decodeConfigFirst(List<Map<String, dynamic>> rows) =>
+      rows.isEmpty ? null : _decodeConfig(rows.first);
 }

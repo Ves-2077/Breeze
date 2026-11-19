@@ -1,4 +1,5 @@
 import 'package:zephyr/database/db.dart';
+import 'package:zephyr/database/query_isolate.dart';
 import 'package:zephyr/database/row_codec.dart';
 import 'package:zephyr/object_box/model.dart';
 
@@ -29,33 +30,33 @@ class SearchBookmarkRepository {
 
   static const String table = 'SearchBookmark';
 
-  Future<SearchBookmark?> getById(int id) async {
-    final rows = await db.query(
-      'SELECT * FROM "SearchBookmark" WHERE "id" = ? LIMIT 1',
-      <Object?>[id],
-    );
-    return rows.isEmpty ? null : _decode(rows.first);
-  }
+  Future<SearchBookmark?> getById(int id) => runDbRead(
+    db,
+    sql: 'SELECT * FROM "SearchBookmark" WHERE "id" = ? LIMIT 1',
+    params: <Object?>[id],
+    decode: _decodeFirst,
+  );
 
-  Future<SearchBookmark?> getByKey(String uniqueKey) async {
-    final rows = await db.query(
-      'SELECT * FROM "SearchBookmark" WHERE "uniqueKey" = ? LIMIT 1',
-      <Object?>[uniqueKey],
-    );
-    return rows.isEmpty ? null : _decode(rows.first);
-  }
+  Future<SearchBookmark?> getByKey(String uniqueKey) => runDbRead(
+    db,
+    sql: 'SELECT * FROM "SearchBookmark" WHERE "uniqueKey" = ? LIMIT 1',
+    params: <Object?>[uniqueKey],
+    decode: _decodeFirst,
+  );
 
-  Future<List<SearchBookmark>> getAll() async {
-    final rows = await db.query(
-      'SELECT * FROM "SearchBookmark" ORDER BY "updatedAt" DESC, "id" DESC',
-    );
-    return rows.map(_decode).toList();
-  }
+  Future<List<SearchBookmark>> getAll() => runDbRead(
+    db,
+    sql:
+        'SELECT * FROM "SearchBookmark" ORDER BY "updatedAt" DESC, '
+        '"id" DESC',
+    decode: _decodeAll,
+  );
 
-  Future<int> count() async {
-    final rows = await db.query('SELECT COUNT(*) AS c FROM "SearchBookmark"');
-    return (rows.single['c'] as num).toInt();
-  }
+  Future<int> count() => runDbRead(
+    db,
+    sql: 'SELECT COUNT(*) AS c FROM "SearchBookmark"',
+    decode: countFromRows,
+  );
 
   Future<int> put(SearchBookmark value) async {
     if (value.id > 0) {
@@ -100,7 +101,7 @@ class SearchBookmarkRepository {
     ];
   }
 
-  SearchBookmark _decode(Map<String, dynamic> row) {
+  static SearchBookmark _decodeRow(Map<String, dynamic> row) {
     return SearchBookmark.fromJson(
       normalizeRow(
         withDefaultId(row),
@@ -108,4 +109,10 @@ class SearchBookmarkRepository {
       ),
     );
   }
+
+  static List<SearchBookmark> _decodeAll(List<Map<String, dynamic>> rows) =>
+      rows.map(_decodeRow).toList();
+
+  static SearchBookmark? _decodeFirst(List<Map<String, dynamic>> rows) =>
+      rows.isEmpty ? null : _decodeRow(rows.first);
 }

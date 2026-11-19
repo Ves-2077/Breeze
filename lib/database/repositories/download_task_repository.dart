@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:zephyr/database/db.dart';
+import 'package:zephyr/database/query_isolate.dart';
 import 'package:zephyr/database/row_codec.dart';
 import 'package:zephyr/object_box/model.dart';
 
@@ -78,53 +79,50 @@ class DownloadTaskRepository {
 
   static const String table = 'DownloadTask';
 
-  Future<DownloadTask?> getById(int id) async {
-    final rows = await db.query(
-      'SELECT * FROM "DownloadTask" WHERE "id" = ? LIMIT 1',
-      <Object?>[id],
-    );
-    return rows.isEmpty ? null : _decode(rows.first);
-  }
+  Future<DownloadTask?> getById(int id) => runDbRead(
+    db,
+    sql: 'SELECT * FROM "DownloadTask" WHERE "id" = ? LIMIT 1',
+    params: <Object?>[id],
+    decode: _decodeFirst,
+  );
 
-  Future<List<DownloadTask>> getAll() async {
-    final rows = await db.query('SELECT * FROM "DownloadTask" ORDER BY "id"');
-    return rows.map(_decode).toList();
-  }
+  Future<List<DownloadTask>> getAll() => runDbRead(
+    db,
+    sql: 'SELECT * FROM "DownloadTask" ORDER BY "id"',
+    decode: _decodeAll,
+  );
 
-  Future<List<DownloadTask>> listIncomplete() async {
-    final rows = await db.query(
-      'SELECT * FROM "DownloadTask" WHERE "isCompleted" = 0 ORDER BY "id"',
-    );
-    return rows.map(_decode).toList();
-  }
+  Future<List<DownloadTask>> listIncomplete() => runDbRead(
+    db,
+    sql: 'SELECT * FROM "DownloadTask" WHERE "isCompleted" = 0 ORDER BY "id"',
+    decode: _decodeAll,
+  );
 
-  Future<List<DownloadTask>> listCompleted() async {
-    final rows = await db.query(
-      'SELECT * FROM "DownloadTask" WHERE "isCompleted" = 1 ORDER BY "id"',
-    );
-    return rows.map(_decode).toList();
-  }
+  Future<List<DownloadTask>> listCompleted() => runDbRead(
+    db,
+    sql: 'SELECT * FROM "DownloadTask" WHERE "isCompleted" = 1 ORDER BY "id"',
+    decode: _decodeAll,
+  );
 
-  Future<List<DownloadTask>> listByComicId(String comicId) async {
-    final rows = await db.query(
-      'SELECT * FROM "DownloadTask" WHERE "comicId" = ? ORDER BY "id"',
-      <Object?>[comicId],
-    );
-    return rows.map(_decode).toList();
-  }
+  Future<List<DownloadTask>> listByComicId(String comicId) => runDbRead(
+    db,
+    sql: 'SELECT * FROM "DownloadTask" WHERE "comicId" = ? ORDER BY "id"',
+    params: <Object?>[comicId],
+    decode: _decodeAll,
+  );
 
-  Future<int> count() async {
-    final rows = await db.query('SELECT COUNT(*) AS c FROM "DownloadTask"');
-    return (rows.single['c'] as num).toInt();
-  }
+  Future<int> count() => runDbRead(
+    db,
+    sql: 'SELECT COUNT(*) AS c FROM "DownloadTask"',
+    decode: countFromRows,
+  );
 
   /// 未完成任务数（`isCompleted = 0`），下载队列长度用。
-  Future<int> countIncomplete() async {
-    final rows = await db.query(
-      'SELECT COUNT(*) AS c FROM "DownloadTask" WHERE "isCompleted" = 0',
-    );
-    return (rows.single['c'] as num).toInt();
-  }
+  Future<int> countIncomplete() => runDbRead(
+    db,
+    sql: 'SELECT COUNT(*) AS c FROM "DownloadTask" WHERE "isCompleted" = 0',
+    decode: countFromRows,
+  );
 
   Future<int> put(DownloadTask value) async {
     if (value.id > 0) {
@@ -322,7 +320,7 @@ class DownloadTaskRepository {
     ];
   }
 
-  DownloadTask _decode(Map<String, dynamic> row) {
+  static DownloadTask _decodeRow(Map<String, dynamic> row) {
     return DownloadTask.fromJson(
       normalizeRow(
         withDefaultId(row),
@@ -330,6 +328,12 @@ class DownloadTaskRepository {
       ),
     );
   }
+
+  static List<DownloadTask> _decodeAll(List<Map<String, dynamic>> rows) =>
+      rows.map(_decodeRow).toList();
+
+  static DownloadTask? _decodeFirst(List<Map<String, dynamic>> rows) =>
+      rows.isEmpty ? null : _decodeRow(rows.first);
 }
 
 String _bumpLinkVersionVector(String raw, String deviceId) {

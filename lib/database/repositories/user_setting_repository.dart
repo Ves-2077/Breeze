@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:zephyr/database/db.dart';
+import 'package:zephyr/database/query_isolate.dart';
 import 'package:zephyr/object_box/model.dart';
 
 class UserSettingRepository {
@@ -15,13 +16,11 @@ class UserSettingRepository {
     return next;
   }
 
-  Future<UserSetting?> get() async {
-    final rows = await db.query(
-      'SELECT * FROM "UserSetting" WHERE "id" = 1 LIMIT 1',
-    );
-    if (rows.isEmpty) return null;
-    return _decode(rows.first);
-  }
+  Future<UserSetting?> get() => runDbRead(
+    db,
+    sql: 'SELECT * FROM "UserSetting" WHERE "id" = 1 LIMIT 1',
+    decode: _decodeFirst,
+  );
 
   Future<UserSetting> getOrCreate() async {
     final existing = await get();
@@ -55,13 +54,11 @@ class UserSettingRepository {
     );
   }
 
-  Future<String?> getGlobalSettingData() async {
-    final rows = await db.query(
-      'SELECT "globalSettingData" FROM "UserSetting" WHERE "id" = 1',
-    );
-    if (rows.isEmpty) return null;
-    return rows.first['globalSettingData'] as String?;
-  }
+  Future<String?> getGlobalSettingData() => runDbRead(
+    db,
+    sql: 'SELECT "globalSettingData" FROM "UserSetting" WHERE "id" = 1',
+    decode: _decodeGlobalSettingData,
+  );
 
   Future<void> putGlobalSettingData(String data) {
     if (db.inTransaction) return _doPutGlobalSettingData(data);
@@ -78,7 +75,7 @@ class UserSettingRepository {
     );
   }
 
-  UserSetting _decode(Map<String, dynamic> row) {
+  static UserSetting _decode(Map<String, dynamic> row) {
     return UserSetting.fromJson(<String, dynamic>{
       ...row,
       'globalSetting': _settingMap(row['globalSettingData']),
@@ -87,7 +84,13 @@ class UserSettingRepository {
     });
   }
 
-  Map<String, dynamic> _settingMap(Object? raw) {
+  static UserSetting? _decodeFirst(List<Map<String, dynamic>> rows) =>
+      rows.isEmpty ? null : _decode(rows.first);
+
+  static String? _decodeGlobalSettingData(List<Map<String, dynamic>> rows) =>
+      rows.isEmpty ? null : rows.first['globalSettingData'] as String?;
+
+  static Map<String, dynamic> _settingMap(Object? raw) {
     if (raw is String && raw.trim().isNotEmpty) {
       try {
         final decoded = jsonDecode(raw);

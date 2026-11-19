@@ -1,4 +1,5 @@
 import 'package:zephyr/database/db.dart';
+import 'package:zephyr/database/query_isolate.dart';
 import 'package:zephyr/database/row_codec.dart';
 import 'package:zephyr/object_box/model.dart';
 
@@ -29,42 +30,39 @@ class UnifiedComicFavoriteRepository {
 
   static const String table = 'UnifiedComicFavorite';
 
-  Future<UnifiedComicFavorite?> getById(int id) async {
-    final rows = await db.query(
-      'SELECT * FROM "UnifiedComicFavorite" WHERE "id" = ? LIMIT 1',
-      <Object?>[id],
-    );
-    return rows.isEmpty ? null : _decode(rows.first);
-  }
+  Future<UnifiedComicFavorite?> getById(int id) => runDbRead(
+    db,
+    sql: 'SELECT * FROM "UnifiedComicFavorite" WHERE "id" = ? LIMIT 1',
+    params: <Object?>[id],
+    decode: _decodeFirst,
+  );
 
-  Future<UnifiedComicFavorite?> getByKey(String uniqueKey) async {
-    final rows = await db.query(
-      'SELECT * FROM "UnifiedComicFavorite" WHERE "uniqueKey" = ? LIMIT 1',
-      <Object?>[uniqueKey],
-    );
-    return rows.isEmpty ? null : _decode(rows.first);
-  }
+  Future<UnifiedComicFavorite?> getByKey(String uniqueKey) => runDbRead(
+    db,
+    sql: 'SELECT * FROM "UnifiedComicFavorite" WHERE "uniqueKey" = ? LIMIT 1',
+    params: <Object?>[uniqueKey],
+    decode: _decodeFirst,
+  );
 
-  Future<List<UnifiedComicFavorite>> getAll() async {
-    final rows = await db.query(
-      'SELECT * FROM "UnifiedComicFavorite" ORDER BY "id"',
-    );
-    return rows.map(_decode).toList();
-  }
+  Future<List<UnifiedComicFavorite>> getAll() => runDbRead(
+    db,
+    sql: 'SELECT * FROM "UnifiedComicFavorite" ORDER BY "id"',
+    decode: _decodeAll,
+  );
 
-  Future<List<UnifiedComicFavorite>> listActive() async {
-    final rows = await db.query(
-      'SELECT * FROM "UnifiedComicFavorite" WHERE "deleted" = 0 ORDER BY "id"',
-    );
-    return rows.map(_decode).toList();
-  }
+  Future<List<UnifiedComicFavorite>> listActive() => runDbRead(
+    db,
+    sql:
+        'SELECT * FROM "UnifiedComicFavorite" WHERE "deleted" = 0 '
+        'ORDER BY "id"',
+    decode: _decodeAll,
+  );
 
-  Future<int> count() async {
-    final rows = await db.query(
-      'SELECT COUNT(*) AS c FROM "UnifiedComicFavorite"',
-    );
-    return (rows.single['c'] as num).toInt();
-  }
+  Future<int> count() => runDbRead(
+    db,
+    sql: 'SELECT COUNT(*) AS c FROM "UnifiedComicFavorite"',
+    decode: countFromRows,
+  );
 
   Future<int> put(UnifiedComicFavorite value) async {
     if (value.id > 0) {
@@ -142,7 +140,7 @@ class UnifiedComicFavoriteRepository {
     ];
   }
 
-  UnifiedComicFavorite _decode(Map<String, dynamic> row) {
+  static UnifiedComicFavorite _decodeRow(Map<String, dynamic> row) {
     return UnifiedComicFavorite.fromJson(
       normalizeRow(
         withDefaultId(row),
@@ -151,6 +149,13 @@ class UnifiedComicFavoriteRepository {
       ),
     );
   }
+
+  static List<UnifiedComicFavorite> _decodeAll(
+    List<Map<String, dynamic>> rows,
+  ) => rows.map(_decodeRow).toList();
+
+  static UnifiedComicFavorite? _decodeFirst(List<Map<String, dynamic>> rows) =>
+      rows.isEmpty ? null : _decodeRow(rows.first);
 }
 
 const _historyInsert =
@@ -184,28 +189,25 @@ class UnifiedComicHistoryRepository {
 
   static const String table = 'UnifiedComicHistory';
 
-  Future<UnifiedComicHistory?> getById(int id) async {
-    final rows = await db.query(
-      'SELECT * FROM "UnifiedComicHistory" WHERE "id" = ? LIMIT 1',
-      <Object?>[id],
-    );
-    return rows.isEmpty ? null : _decode(rows.first);
-  }
+  Future<UnifiedComicHistory?> getById(int id) => runDbRead(
+    db,
+    sql: 'SELECT * FROM "UnifiedComicHistory" WHERE "id" = ? LIMIT 1',
+    params: <Object?>[id],
+    decode: _decodeFirst,
+  );
 
-  Future<UnifiedComicHistory?> getByKey(String uniqueKey) async {
-    final rows = await db.query(
-      'SELECT * FROM "UnifiedComicHistory" WHERE "uniqueKey" = ? LIMIT 1',
-      <Object?>[uniqueKey],
-    );
-    return rows.isEmpty ? null : _decode(rows.first);
-  }
+  Future<UnifiedComicHistory?> getByKey(String uniqueKey) => runDbRead(
+    db,
+    sql: 'SELECT * FROM "UnifiedComicHistory" WHERE "uniqueKey" = ? LIMIT 1',
+    params: <Object?>[uniqueKey],
+    decode: _decodeFirst,
+  );
 
-  Future<List<UnifiedComicHistory>> getAll() async {
-    final rows = await db.query(
-      'SELECT * FROM "UnifiedComicHistory" ORDER BY "id"',
-    );
-    return rows.map(_decode).toList();
-  }
+  Future<List<UnifiedComicHistory>> getAll() => runDbRead(
+    db,
+    sql: 'SELECT * FROM "UnifiedComicHistory" ORDER BY "id"',
+    decode: _decodeAll,
+  );
 
   static String listActiveSql({bool ascending = false}) {
     final direction = ascending ? 'ASC' : 'DESC';
@@ -213,17 +215,18 @@ class UnifiedComicHistoryRepository {
         'ORDER BY "updatedAt" $direction, "id" $direction';
   }
 
-  Future<List<UnifiedComicHistory>> listActive({bool ascending = false}) async {
-    final rows = await db.query(listActiveSql(ascending: ascending));
-    return rows.map(_decode).toList();
-  }
+  Future<List<UnifiedComicHistory>> listActive({bool ascending = false}) =>
+      runDbRead(
+        db,
+        sql: listActiveSql(ascending: ascending),
+        decode: _decodeAll,
+      );
 
-  Future<int> count() async {
-    final rows = await db.query(
-      'SELECT COUNT(*) AS c FROM "UnifiedComicHistory"',
-    );
-    return (rows.single['c'] as num).toInt();
-  }
+  Future<int> count() => runDbRead(
+    db,
+    sql: 'SELECT COUNT(*) AS c FROM "UnifiedComicHistory"',
+    decode: countFromRows,
+  );
 
   Future<int> put(UnifiedComicHistory value) async {
     if (value.id > 0) {
@@ -308,7 +311,7 @@ class UnifiedComicHistoryRepository {
     ];
   }
 
-  UnifiedComicHistory _decode(Map<String, dynamic> row) {
+  static UnifiedComicHistory _decodeRow(Map<String, dynamic> row) {
     return UnifiedComicHistory.fromJson(
       normalizeRow(
         withDefaultId(row),
@@ -317,6 +320,13 @@ class UnifiedComicHistoryRepository {
       ),
     );
   }
+
+  static List<UnifiedComicHistory> _decodeAll(
+    List<Map<String, dynamic>> rows,
+  ) => rows.map(_decodeRow).toList();
+
+  static UnifiedComicHistory? _decodeFirst(List<Map<String, dynamic>> rows) =>
+      rows.isEmpty ? null : _decodeRow(rows.first);
 }
 
 const _downloadInsert =
@@ -359,52 +369,49 @@ class UnifiedComicDownloadRepository {
 
   static const String table = 'UnifiedComicDownload';
 
-  Future<UnifiedComicDownload?> getById(int id) async {
-    final rows = await db.query(
-      'SELECT * FROM "UnifiedComicDownload" WHERE "id" = ? LIMIT 1',
-      <Object?>[id],
-    );
-    return rows.isEmpty ? null : _decode(rows.first);
-  }
+  Future<UnifiedComicDownload?> getById(int id) => runDbRead(
+    db,
+    sql: 'SELECT * FROM "UnifiedComicDownload" WHERE "id" = ? LIMIT 1',
+    params: <Object?>[id],
+    decode: _decodeFirst,
+  );
 
-  Future<UnifiedComicDownload?> getByKey(String uniqueKey) async {
-    final rows = await db.query(
-      'SELECT * FROM "UnifiedComicDownload" WHERE "uniqueKey" = ? LIMIT 1',
-      <Object?>[uniqueKey],
-    );
-    return rows.isEmpty ? null : _decode(rows.first);
-  }
+  Future<UnifiedComicDownload?> getByKey(String uniqueKey) => runDbRead(
+    db,
+    sql: 'SELECT * FROM "UnifiedComicDownload" WHERE "uniqueKey" = ? LIMIT 1',
+    params: <Object?>[uniqueKey],
+    decode: _decodeFirst,
+  );
 
   /// 按 comicId 取第一条下载记录（用于来源不一致时的兜底查找）。
-  Future<UnifiedComicDownload?> getFirstByComicId(String comicId) async {
-    final rows = await db.query(
-      'SELECT * FROM "UnifiedComicDownload" WHERE "comicId" = ? '
-      'ORDER BY "id" LIMIT 1',
-      <Object?>[comicId],
-    );
-    return rows.isEmpty ? null : _decode(rows.first);
-  }
+  Future<UnifiedComicDownload?> getFirstByComicId(String comicId) => runDbRead(
+    db,
+    sql:
+        'SELECT * FROM "UnifiedComicDownload" WHERE "comicId" = ? '
+        'ORDER BY "id" LIMIT 1',
+    params: <Object?>[comicId],
+    decode: _decodeFirst,
+  );
 
-  Future<List<UnifiedComicDownload>> getAll() async {
-    final rows = await db.query(
-      'SELECT * FROM "UnifiedComicDownload" ORDER BY "id"',
-    );
-    return rows.map(_decode).toList();
-  }
+  Future<List<UnifiedComicDownload>> getAll() => runDbRead(
+    db,
+    sql: 'SELECT * FROM "UnifiedComicDownload" ORDER BY "id"',
+    decode: _decodeAll,
+  );
 
-  Future<List<UnifiedComicDownload>> listActive() async {
-    final rows = await db.query(
-      'SELECT * FROM "UnifiedComicDownload" WHERE "deleted" = 0 ORDER BY "id"',
-    );
-    return rows.map(_decode).toList();
-  }
+  Future<List<UnifiedComicDownload>> listActive() => runDbRead(
+    db,
+    sql:
+        'SELECT * FROM "UnifiedComicDownload" WHERE "deleted" = 0 '
+        'ORDER BY "id"',
+    decode: _decodeAll,
+  );
 
-  Future<int> count() async {
-    final rows = await db.query(
-      'SELECT COUNT(*) AS c FROM "UnifiedComicDownload"',
-    );
-    return (rows.single['c'] as num).toInt();
-  }
+  Future<int> count() => runDbRead(
+    db,
+    sql: 'SELECT COUNT(*) AS c FROM "UnifiedComicDownload"',
+    decode: countFromRows,
+  );
 
   Future<int> put(UnifiedComicDownload value) async {
     if (value.id > 0) {
@@ -497,7 +504,7 @@ class UnifiedComicDownloadRepository {
     ];
   }
 
-  UnifiedComicDownload _decode(Map<String, dynamic> row) {
+  static UnifiedComicDownload _decodeRow(Map<String, dynamic> row) {
     return UnifiedComicDownload.fromJson(
       normalizeRow(
         withDefaultId(row),
@@ -514,4 +521,11 @@ class UnifiedComicDownloadRepository {
       ),
     );
   }
+
+  static List<UnifiedComicDownload> _decodeAll(
+    List<Map<String, dynamic>> rows,
+  ) => rows.map(_decodeRow).toList();
+
+  static UnifiedComicDownload? _decodeFirst(List<Map<String, dynamic>> rows) =>
+      rows.isEmpty ? null : _decodeRow(rows.first);
 }

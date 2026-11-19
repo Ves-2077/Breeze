@@ -9,6 +9,7 @@ import 'package:flutter/foundation.dart' show compute;
 import 'package:uuid/uuid.dart';
 import 'package:zephyr/config/global/global.dart';
 import 'package:zephyr/database/database.dart';
+import 'package:zephyr/database/query_isolate.dart';
 import 'package:zephyr/main.dart';
 import 'package:zephyr/network/sync/sync_device_id.dart';
 import 'package:zephyr/object_box/model.dart';
@@ -1350,11 +1351,13 @@ class _SyncMergeTask {
 
 Future<List<int>> _buildCompressedPayloadInIsolate(int handle) async {
   await initRustLib();
+  markDbWorkerIsolate();
   return ComicSyncCore._buildCompressedPayload(Database.fromHandle(handle));
 }
 
 Future<int> _mergeUnifiedDataInIsolate(_SyncMergeTask task) async {
   await initRustLib();
+  markDbWorkerIsolate();
   return ComicSyncCore._mergeUnifiedData(
     Database.fromHandle(task.handle),
     task.data,

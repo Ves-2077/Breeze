@@ -19,11 +19,7 @@ static ANTI_OBFUSCATION_SEMAPHORE: Semaphore =
 
 #[frb(init)]
 pub fn init_app() {
-    if cfg!(debug_assertions) {
-        println!("Debug model");
-    } else {
-        println!("Release model");
-    }
+    // 每个 isolate 调用一次 RustLib.init()，这里不要再打印任何东西。
     INIT_ONCE.call_once(|| {
         crate::api::user_utils::setup_default_user_utils();
         let mut config = current_http_client_config();

@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart' show compute;
 import 'package:path/path.dart' as p;
 import 'package:zephyr/database/database.dart';
+import 'package:zephyr/database/query_isolate.dart';
 import 'package:zephyr/main.dart' as app;
 import 'package:zephyr/src/rust/api/simple.dart';
 import 'package:zephyr/util/get_path.dart';
@@ -39,6 +40,7 @@ Future<void> saveStartupDatabaseSnapshot() async {
 
 Future<void> _writeSnapshotInIsolate(_SnapshotTask task) async {
   await initRustLib();
+  markDbWorkerIsolate();
   final json = await Database.fromHandle(task.handle).collectAllDataJson();
   final compressed = await compressExtreme(data: utf8.encode(json));
   await File(task.path).writeAsBytes(compressed, flush: true);

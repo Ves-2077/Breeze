@@ -1,5 +1,6 @@
 import 'package:zephyr/database/db.dart';
 import 'package:zephyr/database/migration/legacy_columns.dart';
+import 'package:zephyr/database/query_isolate.dart';
 import 'package:zephyr/database/row_codec.dart';
 import 'package:zephyr/object_box/model.dart';
 
@@ -9,34 +10,35 @@ class LegacyComicRepository {
 
   const LegacyComicRepository(this.db);
 
-  Future<List<BikaComicHistory>> listBikaHistories() async {
-    final rows = await db.query(
-      'SELECT * FROM "BikaComicHistory" ORDER BY "id"',
-    );
-    return rows.map(_decodeBikaHistory).toList();
-  }
+  Future<List<BikaComicHistory>> listBikaHistories() => runDbRead(
+    db,
+    sql: 'SELECT * FROM "BikaComicHistory" ORDER BY "id"',
+    decode: _decodeBikaHistories,
+  );
 
-  Future<List<BikaComicDownload>> listBikaDownloads() async {
-    final rows = await db.query(
-      'SELECT * FROM "BikaComicDownload" ORDER BY "id"',
-    );
-    return rows.map(_decodeBikaDownload).toList();
-  }
+  Future<List<BikaComicDownload>> listBikaDownloads() => runDbRead(
+    db,
+    sql: 'SELECT * FROM "BikaComicDownload" ORDER BY "id"',
+    decode: _decodeBikaDownloads,
+  );
 
-  Future<List<JmFavorite>> listJmFavorites() async {
-    final rows = await db.query('SELECT * FROM "JmFavorite" ORDER BY "id"');
-    return rows.map(_decodeJmFavorite).toList();
-  }
+  Future<List<JmFavorite>> listJmFavorites() => runDbRead(
+    db,
+    sql: 'SELECT * FROM "JmFavorite" ORDER BY "id"',
+    decode: _decodeJmFavorites,
+  );
 
-  Future<List<JmHistory>> listJmHistories() async {
-    final rows = await db.query('SELECT * FROM "JmHistory" ORDER BY "id"');
-    return rows.map(_decodeJmHistory).toList();
-  }
+  Future<List<JmHistory>> listJmHistories() => runDbRead(
+    db,
+    sql: 'SELECT * FROM "JmHistory" ORDER BY "id"',
+    decode: _decodeJmHistories,
+  );
 
-  Future<List<JmDownload>> listJmDownloads() async {
-    final rows = await db.query('SELECT * FROM "JmDownload" ORDER BY "id"');
-    return rows.map(_decodeJmDownload).toList();
-  }
+  Future<List<JmDownload>> listJmDownloads() => runDbRead(
+    db,
+    sql: 'SELECT * FROM "JmDownload" ORDER BY "id"',
+    decode: _decodeJmDownloads,
+  );
 
   Future<int> clearBikaHistories() async =>
       (await db.execute('DELETE FROM "BikaComicHistory"')).changes;
@@ -200,7 +202,7 @@ class LegacyComicRepository {
     return value;
   }
 
-  BikaComicHistory _decodeBikaHistory(Map<String, dynamic> row) {
+  static BikaComicHistory _decodeBikaHistory(Map<String, dynamic> row) {
     return BikaComicHistory.fromJson(
       normalizeRow(
         withDefaultId(row),
@@ -219,7 +221,7 @@ class LegacyComicRepository {
     );
   }
 
-  BikaComicDownload _decodeBikaDownload(Map<String, dynamic> row) {
+  static BikaComicDownload _decodeBikaDownload(Map<String, dynamic> row) {
     return BikaComicDownload.fromJson(
       normalizeRow(
         withDefaultId(row),
@@ -242,7 +244,7 @@ class LegacyComicRepository {
     );
   }
 
-  JmFavorite _decodeJmFavorite(Map<String, dynamic> row) {
+  static JmFavorite _decodeJmFavorite(Map<String, dynamic> row) {
     return JmFavorite.fromJson(
       normalizeRow(
         withDefaultId(row),
@@ -253,7 +255,7 @@ class LegacyComicRepository {
     );
   }
 
-  JmHistory _decodeJmHistory(Map<String, dynamic> row) {
+  static JmHistory _decodeJmHistory(Map<String, dynamic> row) {
     return JmHistory.fromJson(
       normalizeRow(
         withDefaultId(row),
@@ -264,7 +266,7 @@ class LegacyComicRepository {
     );
   }
 
-  JmDownload _decodeJmDownload(Map<String, dynamic> row) {
+  static JmDownload _decodeJmDownload(Map<String, dynamic> row) {
     return JmDownload.fromJson(
       normalizeRow(
         withDefaultId(row),
@@ -280,4 +282,21 @@ class LegacyComicRepository {
       ),
     );
   }
+
+  static List<BikaComicHistory> _decodeBikaHistories(
+    List<Map<String, dynamic>> rows,
+  ) => rows.map(_decodeBikaHistory).toList();
+
+  static List<BikaComicDownload> _decodeBikaDownloads(
+    List<Map<String, dynamic>> rows,
+  ) => rows.map(_decodeBikaDownload).toList();
+
+  static List<JmFavorite> _decodeJmFavorites(List<Map<String, dynamic>> rows) =>
+      rows.map(_decodeJmFavorite).toList();
+
+  static List<JmHistory> _decodeJmHistories(List<Map<String, dynamic>> rows) =>
+      rows.map(_decodeJmHistory).toList();
+
+  static List<JmDownload> _decodeJmDownloads(List<Map<String, dynamic>> rows) =>
+      rows.map(_decodeJmDownload).toList();
 }

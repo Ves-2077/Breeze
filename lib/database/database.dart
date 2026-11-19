@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:zephyr/database/app_database.dart';
 import 'package:zephyr/database/db.dart';
+import 'package:zephyr/database/query_isolate.dart';
 import 'package:zephyr/database/repositories/comic_folder_repository.dart';
 import 'package:zephyr/database/repositories/comic_follow_repository.dart';
 import 'package:zephyr/database/repositories/download_task_repository.dart';
@@ -187,6 +188,7 @@ Future<void> _writeAllDataJsonFileInIsolate(
   _DatabaseBackupFileTask task,
 ) async {
   await initRustLib();
+  markDbWorkerIsolate();
   final json = await Database.fromHandle(task.handle)
       .collectAllDataJson(removeIds: task.removeIds);
   await File(task.path).writeAsString(json);
