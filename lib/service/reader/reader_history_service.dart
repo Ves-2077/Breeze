@@ -1,8 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart' show compute;
+import 'package:zephyr/database/database.dart';
+import 'package:zephyr/database/query_isolate.dart';
 import 'package:zephyr/main.dart';
 import 'package:zephyr/object_box/model.dart';
+import 'package:zephyr/util/rust_loader.dart';
 import 'package:zephyr/page/comic_info/json/normal/normal_comic_all_info.dart'
     as normal;
 import 'package:zephyr/page/comic_info/method/get_plugin_detail.dart';
@@ -62,7 +66,11 @@ class ReaderHistoryService {
   }) async {
     _source = source;
     _comicId = comicId;
-    _comicInfo = _resolveNormalComicInfo(comicInfo);
+    _comicInfo = await _resolveComicInfo(
+      source: source,
+      comicId: comicId,
+      comicInfo: comicInfo,
+    );
     _isLoading = true;
     _markedChapterId = null;
 
@@ -83,7 +91,9 @@ class ReaderHistoryService {
     final source = _source;
     final comicId = _comicId;
     if (source == null || comicId == null) return;
-    final download = await database.downloads.getByKey('$source:$comicId');
+    // 只取覆盖字段相关的轻量列：不把 chapters/detailJson 拉进 UI isolate。
+    final rows = await database.downloads.getShelfByKeys(['$source:$comicId']);
+    final download = rows.isEmpty ? null : rows.first;
     final active = download != null && !download.deleted;
     final titleOverride = active ? (download.titleOverride?.trim() ?? '') : '';
     final coverOverride = active ? (download.coverOverride?.trim() ?? '') : '';
@@ -235,15 +245,32 @@ class ReaderHistoryService {
     }
   }
 
+  /// 下载记录只取 detailJson，并在 worker isolate 内解析成 ComicInfo。
+  Future<normal.ComicInfo> _resolveComicInfo({
+    required String source,
+    required String comicId,
+    required dynamic comicInfo,
+  }) async {
+    if (comicInfo is UnifiedComicDownload) {
+      final info = await compute(
+        _resolveDownloadComicInfoInIsolate,
+        _HistoryDetailTask(
+          handle: database.db.handle,
+          downloadKey: '$source:$comicId',
+        ),
+      );
+      if (info == null) {
+        throw StateError('本地下载信息不存在: $source:$comicId');
+      }
+      return info;
+    }
+    return _resolveNormalComicInfo(comicInfo);
+  }
+
   normal.ComicInfo _resolveNormalComicInfo(dynamic comicInfo) {
     if (comicInfo is PluginComicDetailSource) {
       return comicInfo.normalInfo.comicInfo;
     }
-    if (comicInfo is UnifiedComicDownload) {
-      final detail = jsonDecode(comicInfo.detailJson) as Map<String, dynamic>;
-      return normal.NormalComicAllInfo.fromJson(detail).comicInfo;
-    }
-
     final map = _toDynamicMap(comicInfo);
     final comicInfoMap = _toDynamicMap(map['comicInfo']);
     if (comicInfoMap.isNotEmpty) {
@@ -278,6 +305,26 @@ class ReaderHistoryService {
         map['cover'] is Map &&
         map['creator'] is Map;
   }
+}
+
+class _HistoryDetailTask {
+  const _HistoryDetailTask({required this.handle, required this.downloadKey});
+
+  final int handle;
+  final String downloadKey;
+}
+
+/// 只读 detailJson 并解析：阅读页打开时那次 2ms 的同步解析移到这里。
+Future<normal.ComicInfo?> _resolveDownloadComicInfoInIsolate(
+  _HistoryDetailTask task,
+) async {
+  await initRustLib();
+  markDbWorkerIsolate();
+  final detailJson = await Database.fromHandle(task.handle).downloads
+      .getDetailJson(task.downloadKey);
+  if (detailJson == null || detailJson.isEmpty) return null;
+  final detail = jsonDecode(detailJson) as Map<String, dynamic>;
+  return normal.NormalComicAllInfo.fromJson(detail).comicInfo;
 }
 
 bool _isLocalCover(String raw) {

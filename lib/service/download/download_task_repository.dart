@@ -1,10 +1,10 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart' show compute;
 import 'package:zephyr/main.dart';
 import 'package:zephyr/object_box/model.dart';
-import 'package:zephyr/page/download/adapters/download_chapter_matcher.dart';
 import 'package:zephyr/page/download/models/download_chapter.dart';
-import 'package:zephyr/page/download/models/unified_comic_download.dart';
+import 'package:zephyr/service/download/download_chapter_isolate.dart';
 import 'package:zephyr/service/download/models/download_task_json.dart';
 
 /// DownloadTask 的唯一读写入口。
@@ -114,22 +114,45 @@ class DownloadTaskRepository {
   ///
   /// [chapterKey] 可以是逻辑 id / requestId / order 字符串中的任意一个。
   /// 阅读入口统一用它判断“该章是否已下载”，命中则直接读本地。
+  /// 查找已下载章节（章节 JSON 解析在 worker isolate 完成）。
   Future<DownloadChapter?> findDownloadedChapter({
     required String from,
     required String comicId,
     required String chapterKey,
   }) async {
-    final record = await findDownloadRecord(from, comicId);
-    if (record == null || chapterKey.trim().isEmpty) return null;
-    const matcher = DownloadChapterMatcher();
+    if (chapterKey.trim().isEmpty) return null;
     try {
-      for (final chapter in resolveDownloadChapters(record)) {
-        if (matcher.matches(chapter, chapterKey.trim())) return chapter;
-      }
+      final lookup = await lookupDownloadedChapter(
+        from: from,
+        comicId: comicId,
+        chapterKeys: <String>[chapterKey],
+      );
+      return lookup.chapter;
     } catch (_) {
       return null;
     }
-    return null;
+  }
+
+  /// 一次 worker 调用完成：读下载记录、解析章节、匹配目标章节，可选返回记录本体。
+  Future<DownloadChapterLookup> lookupDownloadedChapter({
+    required String from,
+    required String comicId,
+    List<String> chapterKeys = const <String>[],
+    int? order,
+    bool fallbackFirst = false,
+    bool includeRecord = false,
+  }) {
+    return compute(
+      lookupDownloadedChapterInIsolate,
+      DownloadChapterLookupTask(
+        handle: database.db.handle,
+        downloadKey: buildDownloadTaskKey(from, comicId),
+        chapterKeys: chapterKeys,
+        order: order,
+        fallbackFirst: fallbackFirst,
+        includeRecord: includeRecord,
+      ),
+    );
   }
 
   /// 按章节查找未完成任务。章节 key 必须是逻辑身份

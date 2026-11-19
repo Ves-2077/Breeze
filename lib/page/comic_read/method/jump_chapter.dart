@@ -7,7 +7,6 @@ import 'package:zephyr/page/comic_info/comic_info.dart';
 import 'package:zephyr/page/download/adapters/download_chapter_adapter.dart';
 import 'package:zephyr/page/download/adapters/download_chapter_matcher.dart';
 import 'package:zephyr/page/download/models/download_chapter.dart';
-import 'package:zephyr/page/download/models/unified_comic_download.dart';
 import 'package:zephyr/service/download/download_task_repository.dart';
 import 'package:zephyr/config/router/router.gr.dart';
 import 'package:zephyr/page/comic_read/type/chapter_extern.dart';
@@ -78,26 +77,20 @@ class JumpChapter {
     if (resolvedEntryType == ComicEntryType.normal ||
         resolvedEntryType == ComicEntryType.history) {
       const repository = DownloadTaskRepository();
-      final local =
-          await repository.findDownloadedChapter(
-            from: from,
-            comicId: comicId,
-            chapterKey: chapter.id,
-          ) ??
-          await repository.findDownloadedChapter(
-            from: from,
-            comicId: comicId,
-            chapterKey: chapter.effectiveRequestId,
-          );
-      final record = local == null
-          ? null
-          : await repository.findDownloadRecord(from, comicId);
+      final lookup = await repository.lookupDownloadedChapter(
+        from: from,
+        comicId: comicId,
+        chapterKeys: <String>[chapter.id, chapter.effectiveRequestId],
+        includeRecord: true,
+      );
+      final local = lookup.chapter;
+      final record = lookup.record;
       if (local != null && record != null) {
         useComicInfo = record;
         useType = resolvedEntryType == ComicEntryType.history
             ? ComicEntryType.historyAndDownload
             : ComicEntryType.download;
-        useEpsNumber = resolveStoredDownloadChapters(record).length;
+        useEpsNumber = lookup.chapterCount;
         useChapter = local;
       }
     }

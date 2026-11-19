@@ -7,8 +7,7 @@ import 'package:zephyr/page/comic_info/method/get_plugin_detail.dart';
 import 'package:zephyr/page/download/adapters/download_chapter_adapter.dart';
 import 'package:zephyr/page/download/adapters/download_chapter_matcher.dart';
 import 'package:zephyr/page/download/models/download_chapter.dart';
-import 'package:zephyr/page/download/models/unified_comic_download.dart';
-import 'package:zephyr/service/download/models/download_task_json.dart';
+import 'package:zephyr/service/download/download_task_repository.dart';
 import 'package:zephyr/page/comic_read/type/chapter_extern.dart';
 import 'package:zephyr/type/enum.dart';
 import 'package:zephyr/config/router/router.gr.dart' show ComicReadRoute;
@@ -44,7 +43,23 @@ Future<void> _goToComicRead(
       type == ComicEntryType.download ||
       type == ComicEntryType.historyAndDownload;
   final historyForChapter = await database.histories.getByKey('$from:$comicId');
-  final chapter = _resolveChapter(allInfo, from, historyForChapter);
+  const repository = DownloadTaskRepository();
+  DownloadChapter? chapter;
+  int? downloadChapterCount;
+  if (isDownload && allInfo is UnifiedComicDownload) {
+    // 下载入口：章节解析全部在 worker isolate，命中逻辑与 _resolveChapter 一致。
+    final lookup = await repository.lookupDownloadedChapter(
+      from: from,
+      comicId: comicId,
+      chapterKeys: <String>[historyForChapter?.chapterId ?? ''],
+      order: historyForChapter?.chapterOrder ?? 0,
+      fallbackFirst: true,
+    );
+    chapter = lookup.chapter;
+    downloadChapterCount = lookup.chapterCount;
+  } else {
+    chapter = _resolveChapter(allInfo, from, historyForChapter);
+  }
 
   // 在线入口统一查库：目标章节已下载则直接读本地，不再看来源 type。
   dynamic readInfo = allInfo;
@@ -53,26 +68,29 @@ Future<void> _goToComicRead(
   DownloadChapter? readChapter = chapter;
   var readEpsCount = 0;
   if (!isDownload && chapter != null) {
-    final record = await database.downloads.getByKey(
-      buildDownloadTaskKey(from, comicId),
+    final lookup = await repository.lookupDownloadedChapter(
+      from: from,
+      comicId: comicId,
+      chapterKeys: <String>[chapter.id, chapter.effectiveRequestId],
+      includeRecord: true,
     );
-    final local = record == null
-        ? null
-        : _findStoredChapter(record, chapter.id) ??
-              _findStoredChapter(record, chapter.effectiveRequestId);
+    final local = lookup.chapter;
+    final record = lookup.record;
     if (local != null && record != null) {
       readInfo = record;
       readIsDownload = true;
       readComicId = record.comicId;
       readChapter = local;
-      readEpsCount = resolveStoredDownloadChapters(record).length;
+      readEpsCount = lookup.chapterCount;
     }
   }
   if (!readIsDownload) {
     readEpsCount = resolveReadEpsCount(allInfo, from, isDownload: false);
     readComicId = resolveReadComicId(allInfo, from, isDownload: false);
   } else if (readInfo == allInfo) {
-    readEpsCount = resolveReadEpsCount(allInfo, from, isDownload: true);
+    readEpsCount =
+        downloadChapterCount ??
+        resolveReadEpsCount(allInfo, from, isDownload: true);
     readComicId = resolveReadComicId(allInfo, from, isDownload: true);
   }
   if (!context.mounted) return;
@@ -103,24 +121,6 @@ Future<void> _goToComicRead(
       stringSelectCubit: context.read<StringSelectCubit>(),
     ),
   );
-}
-
-/// 在本地下载记录里按章节 key（id / requestId）查找章节。
-DownloadChapter? _findStoredChapter(
-  UnifiedComicDownload record,
-  String chapterKey,
-) {
-  final key = chapterKey.trim();
-  if (key.isEmpty) return null;
-  const matcher = DownloadChapterMatcher();
-  try {
-    for (final candidate in resolveDownloadChapters(record)) {
-      if (matcher.matches(candidate, key)) return candidate;
-    }
-  } catch (_) {
-    return null;
-  }
-  return null;
 }
 
 DownloadChapter? _resolveChapter(

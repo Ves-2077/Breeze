@@ -1,79 +1,24 @@
+import 'package:flutter/foundation.dart' show compute;
 import 'package:zephyr/main.dart';
-import 'package:zephyr/page/comic_read/json/common_ep_info_json/common_ep_info_json.dart'
-    show Doc;
 import 'package:zephyr/page/comic_read/model/normal_comic_ep_info.dart';
-import 'package:zephyr/page/download/adapters/download_chapter_matcher.dart';
-import 'package:zephyr/page/download/models/download_chapter.dart';
-import 'package:zephyr/page/download/models/unified_comic_download.dart';
+import 'package:zephyr/service/download/download_chapter_isolate.dart';
 
-void _logLocalInfo(
-  int epsId,
-  DownloadChapter chapter,
-  List<DownloadImage> images,
-) {
-  logger.d(
-    'getPluginInfoFromLocal: epsId=$epsId, '
-    'chapter.id=${chapter.id}, order=${chapter.order}, '
-    'requestId=${chapter.effectiveRequestId}, '
-    'storageId=${chapter.effectiveStorageId}, '
-    'imageCount=${images.length}, '
-    'firstPath=${images.isNotEmpty ? images.first.path : ''}',
-  );
-}
-
+/// 读取本地（已下载）章节的图片列表。
+///
+/// 下载记录读取与 `chapters` JSON 解析全部在 worker isolate 完成，UI 只拿
+/// 目标章节的 docs（章节切换时每章调用一次）。
 Future<NormalComicEpInfo> getPluginInfoFromLocal(
   String pluginId,
   String comicId,
   int epsId,
-) async {
-  final resolvedPluginId = pluginId.trim();
-  if (resolvedPluginId.isEmpty) {
-    throw StateError('pluginId 不能为空');
-  }
-
-  final download = await database.downloads.getByKey(
-    '$resolvedPluginId:$comicId',
-  );
-  if (download == null) {
-    throw StateError('本地下载信息不存在: $resolvedPluginId:$comicId');
-  }
-
-  final chapters = resolveDownloadChapters(download);
-  if (chapters.isEmpty) {
-    throw StateError('本地下载没有章节数据: $resolvedPluginId:$comicId');
-  }
-
-  const matcher = DownloadChapterMatcher();
-  final targetId = epsId.toString();
-
-  // 优先按 order 查找；再按 id / requestId 查找；最后 fallback 到第一章。
-  final chapter =
-      matcher.findByOrder(chapters, epsId) ??
-      matcher.find(chapters, targetId) ??
-      chapters.first;
-
-  final orderedDocs = chapter.images
-      .map(
-        (image) => Doc(
-          originalName: image.name,
-          path: image.path,
-          fileServer: image.url,
-          id: image.id.isNotEmpty
-              ? image.id
-              : (image.path.isNotEmpty ? image.path : image.name),
-          storageChapterId: chapter.effectiveStorageId,
-          extern: Map<String, dynamic>.from(image.extern),
-        ),
-      )
-      .toList();
-
-  _logLocalInfo(epsId, chapter, chapter.images);
-
-  return NormalComicEpInfo(
-    length: orderedDocs.length,
-    epPages: orderedDocs.length.toString(),
-    docs: orderedDocs,
-    epId: chapter.id,
-    epName: chapter.displayName,
+) {
+  return compute(
+    readLocalChapterInIsolate,
+    LocalChapterReadTask(
+      handle: database.db.handle,
+      pluginId: pluginId,
+      comicId: comicId,
+      epsId: epsId,
+    ),
   );
 }
