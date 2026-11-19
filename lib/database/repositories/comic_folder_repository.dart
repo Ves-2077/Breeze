@@ -350,6 +350,87 @@ class ComicLinkRepository {
     );
   }
 
+  /// 书架分页查询：按目录与排序取一页未软删除的链接。
+  ///
+  /// [allFolders] 为 true 时不限制目录（搜索）；否则 [folderSyncId] 为空
+  /// 表示根目录。`vd`/`va` 按观看时间排序（LEFT JOIN 历史表，未观看的
+  /// 条目恒在已观看之后），其余按 createdAt。
+  Future<List<ComicLink>> listShelfLinks({
+    required String typeData,
+    String? folderSyncId,
+    bool allFolders = false,
+    String sort = 'dd',
+    int offset = 0,
+    int limit = 200,
+  }) {
+    final direction = sort == 'da' || sort == 'va' ? 'ASC' : 'DESC';
+    final byViewTime = sort == 'vd' || sort == 'va';
+    final where = StringBuffer('l."typeData" = ? AND l."deletedAt" IS NULL');
+    final params = <Object?>[typeData];
+    if (!allFolders) {
+      if (folderSyncId == null || folderSyncId.isEmpty) {
+        where.write(
+          ' AND (l."folderSyncId" IS NULL OR l."folderSyncId" = \'\')',
+        );
+      } else {
+        where.write(' AND l."folderSyncId" = ?');
+        params.add(folderSyncId);
+      }
+    }
+    var joins = '';
+    var order = 'l."createdAt" $direction, l."id" $direction';
+    if (byViewTime) {
+      joins =
+          ' LEFT JOIN "UnifiedComicHistory" AS h '
+          'ON h."uniqueKey" = l."comicUniqueKey" AND h."deleted" = 0';
+      var itemTime = 'l."createdAt"';
+      if (typeData == ComicFolderType.favorite.name) {
+        joins +=
+            ' LEFT JOIN "UnifiedComicFavorite" AS f '
+            'ON f."uniqueKey" = l."comicUniqueKey"';
+        itemTime = 'COALESCE(f."createdAt", l."createdAt")';
+      } else if (typeData == ComicFolderType.download.name) {
+        joins +=
+            ' LEFT JOIN "UnifiedComicDownload" AS d '
+            'ON d."uniqueKey" = l."comicUniqueKey"';
+        itemTime = 'COALESCE(d."downloadedAt", l."createdAt")';
+      }
+      order =
+          '(h."lastReadAt" IS NULL) ASC, h."lastReadAt" $direction, '
+          '$itemTime $direction, l."id" $direction';
+    }
+    params
+      ..add(limit)
+      ..add(offset);
+    return runDbRead(
+      db,
+      sql:
+          'SELECT l.* FROM "ComicLink" AS l$joins '
+          'WHERE $where '
+          'ORDER BY $order LIMIT ? OFFSET ?',
+      params: params,
+      decode: _decodeAll,
+    );
+  }
+
+  /// 各文件夹下未软删除链接数，键为文件夹 syncId（空串表示根目录）。
+  Future<Map<String, int>> countActiveByFolder(String typeData) => runDbRead(
+    db,
+    sql:
+        'SELECT "folderSyncId", COUNT(*) AS c FROM "ComicLink" '
+        'WHERE "typeData" = ? AND "deletedAt" IS NULL '
+        'GROUP BY "folderSyncId"',
+    params: <Object?>[typeData],
+    decode: _decodeFolderCounts,
+  );
+
+  static Map<String, int> _decodeFolderCounts(
+    List<Map<String, dynamic>> rows,
+  ) => <String, int>{
+    for (final row in rows)
+      (row['folderSyncId'] as String? ?? ''): (row['c'] as num).toInt(),
+  };
+
   /// 漫画在某类型下未软删除的全部链接（含根目录）。
   Future<List<ComicLink>> listActiveByComic(
     String comicUniqueKey,

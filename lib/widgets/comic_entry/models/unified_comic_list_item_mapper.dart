@@ -65,8 +65,11 @@ UnifiedComicListItem unifiedComicFromUnifiedHistory(UnifiedComicHistory comic) {
 }
 
 UnifiedComicListItem unifiedComicFromUnifiedDownload(
-  UnifiedComicDownload comic,
-) {
+  UnifiedComicDownload comic, {
+
+  /// 书架只需要列表字段；`chapters` 里带全部图片信息，跳过可省大量解析。
+  bool includeRaw = true,
+}) {
   final cover = _coverFromStored(comic.source, comic.comicId, comic.cover);
   final extern = Map<String, dynamic>.from(cover.extern);
   return UnifiedComicListItem(
@@ -85,7 +88,7 @@ UnifiedComicListItem unifiedComicFromUnifiedDownload(
       extern: extern,
     ),
     metadata: _metadataFromString(comic.metadata),
-    raw: _buildDownloadRaw(comic),
+    raw: includeRaw ? _buildDownloadRaw(comic) : const <String, dynamic>{},
     extern: const <String, dynamic>{},
   );
 }

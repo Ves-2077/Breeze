@@ -44,6 +44,26 @@ class UnifiedComicFavoriteRepository {
     decode: _decodeFirst,
   );
 
+  /// 批量按 uniqueKey 取行（`IN` 分块，避免 SQLite 变量上限）。
+  Future<List<UnifiedComicFavorite>> getByKeys(List<String> uniqueKeys) async {
+    if (uniqueKeys.isEmpty) return const <UnifiedComicFavorite>[];
+    final rows = <UnifiedComicFavorite>[];
+    for (final chunk in chunkParams(uniqueKeys)) {
+      final marks = List.filled(chunk.length, '?').join(',');
+      rows.addAll(
+        await runDbRead(
+          db,
+          sql:
+              'SELECT * FROM "UnifiedComicFavorite" '
+              'WHERE "uniqueKey" IN ($marks)',
+          params: chunk,
+          decode: _decodeAll,
+        ),
+      );
+    }
+    return rows;
+  }
+
   Future<List<UnifiedComicFavorite>> getAll() => runDbRead(
     db,
     sql: 'SELECT * FROM "UnifiedComicFavorite" ORDER BY "id"',
@@ -203,6 +223,26 @@ class UnifiedComicHistoryRepository {
     decode: _decodeFirst,
   );
 
+  /// 批量按 uniqueKey 取行（`IN` 分块，避免 SQLite 变量上限）。
+  Future<List<UnifiedComicHistory>> getByKeys(List<String> uniqueKeys) async {
+    if (uniqueKeys.isEmpty) return const <UnifiedComicHistory>[];
+    final rows = <UnifiedComicHistory>[];
+    for (final chunk in chunkParams(uniqueKeys)) {
+      final marks = List.filled(chunk.length, '?').join(',');
+      rows.addAll(
+        await runDbRead(
+          db,
+          sql:
+              'SELECT * FROM "UnifiedComicHistory" '
+              'WHERE "uniqueKey" IN ($marks)',
+          params: chunk,
+          decode: _decodeAll,
+        ),
+      );
+    }
+    return rows;
+  }
+
   Future<List<UnifiedComicHistory>> getAll() => runDbRead(
     db,
     sql: 'SELECT * FROM "UnifiedComicHistory" ORDER BY "id"',
@@ -215,12 +255,18 @@ class UnifiedComicHistoryRepository {
         'ORDER BY "updatedAt" $direction, "id" $direction';
   }
 
-  Future<List<UnifiedComicHistory>> listActive({bool ascending = false}) =>
-      runDbRead(
-        db,
-        sql: listActiveSql(ascending: ascending),
-        decode: _decodeAll,
-      );
+  Future<List<UnifiedComicHistory>> listActive({
+    bool ascending = false,
+    int? limit,
+    int? offset,
+  }) => runDbRead(
+    db,
+    sql: limit == null
+        ? listActiveSql(ascending: ascending)
+        : '${listActiveSql(ascending: ascending)} LIMIT ? OFFSET ?',
+    params: limit == null ? const <Object?>[] : <Object?>[limit, offset ?? 0],
+    decode: _decodeAll,
+  );
 
   Future<int> count() => runDbRead(
     db,
@@ -382,6 +428,79 @@ class UnifiedComicDownloadRepository {
     params: <Object?>[uniqueKey],
     decode: _decodeFirst,
   );
+
+  /// 批量按 uniqueKey 取行（`IN` 分块，避免 SQLite 变量上限）。
+  Future<List<UnifiedComicDownload>> getByKeys(List<String> uniqueKeys) async {
+    if (uniqueKeys.isEmpty) return const <UnifiedComicDownload>[];
+    final rows = <UnifiedComicDownload>[];
+    for (final chunk in chunkParams(uniqueKeys)) {
+      final marks = List.filled(chunk.length, '?').join(',');
+      rows.addAll(
+        await runDbRead(
+          db,
+          sql:
+              'SELECT * FROM "UnifiedComicDownload" '
+              'WHERE "uniqueKey" IN ($marks)',
+          params: chunk,
+          decode: _decodeAll,
+        ),
+      );
+    }
+    return rows;
+  }
+
+  /// 只取 `chapters`（阅读器 worker 用；大字段分开取可少一半 JSON 往返）。
+  Future<String?> getChaptersJson(String uniqueKey) => runDbRead(
+    db,
+    sql:
+        'SELECT "chapters" FROM "UnifiedComicDownload" '
+        'WHERE "uniqueKey" = ? LIMIT 1',
+    params: <Object?>[uniqueKey],
+    decode: _decodeFirstString('chapters'),
+  );
+
+  /// 只取 `detailJson`（chapters 无图片时兜底，或历史页解析 ComicInfo）。
+  Future<String?> getDetailJson(String uniqueKey) => runDbRead(
+    db,
+    sql:
+        'SELECT "detailJson" FROM "UnifiedComicDownload" '
+        'WHERE "uniqueKey" = ? LIMIT 1',
+    params: <Object?>[uniqueKey],
+    decode: _decodeFirstString('detailJson'),
+  );
+
+  static String? Function(List<Map<String, dynamic>>) _decodeFirstString(
+    String column,
+  ) => (rows) {
+    if (rows.isEmpty) return null;
+    return rows.first[column] as String? ?? '';
+  };
+
+  /// 书架用轻量行：不读 `chapters`/`detailJson`（章节含全部图片信息，量很大）。
+  Future<List<UnifiedComicDownload>> getShelfByKeys(
+    List<String> uniqueKeys,
+  ) async {
+    if (uniqueKeys.isEmpty) return const <UnifiedComicDownload>[];
+    final rows = <UnifiedComicDownload>[];
+    for (final chunk in chunkParams(uniqueKeys)) {
+      final marks = List.filled(chunk.length, '?').join(',');
+      rows.addAll(
+        await runDbRead(
+          db,
+          sql:
+              'SELECT "id","uniqueKey","source","comicId","title",'
+              '"description","cover","creator","titleMeta","metadata",'
+              '"totalViews","totalLikes","totalComments","storageRoot",'
+              '"createdAt","updatedAt","downloadedAt","deleted",'
+              '"schemaVersion","titleOverride","coverOverride" '
+              'FROM "UnifiedComicDownload" WHERE "uniqueKey" IN ($marks)',
+          params: chunk,
+          decode: _decodeAll,
+        ),
+      );
+    }
+    return rows;
+  }
 
   /// 按 comicId 取第一条下载记录（用于来源不一致时的兜底查找）。
   Future<UnifiedComicDownload?> getFirstByComicId(String comicId) => runDbRead(

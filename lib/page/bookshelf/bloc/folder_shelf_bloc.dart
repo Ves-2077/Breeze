@@ -6,6 +6,7 @@ import 'package:zephyr/main.dart';
 import 'package:zephyr/object_box/model.dart';
 import 'package:zephyr/page/bookshelf/method/shelf_load_isolate.dart';
 import 'package:zephyr/page/bookshelf/models/shelf_page_mode.dart';
+import 'package:zephyr/widgets/comic_simplify_entry/comic_simplify_entry_info.dart';
 import 'package:zephyr/page/bookshelf/service/comic_folder_service.dart';
 import 'package:zephyr/page/bookshelf/service/comic_link_service.dart';
 import 'package:zephyr/page/bookshelf/bloc/folder_shelf_event.dart';
@@ -18,6 +19,10 @@ class FolderShelfBloc extends Bloc<FolderShelfEvent, FolderShelfState> {
     : super(FolderShelfState(mode: mode)) {
     // 刷新可能和旧 load 并发；restartable 让最新一次结果生效。
     on<FolderShelfLoadRequested>(_onLoadRequested, transformer: restartable());
+    on<FolderShelfLoadMoreRequested>(
+      _onLoadMoreRequested,
+      transformer: droppable(),
+    );
     on<FolderShelfEnterFolder>(_onEnterFolder);
     on<FolderShelfGoBack>(_onGoBack);
     on<FolderShelfGoHome>(_onGoHome);
@@ -61,6 +66,7 @@ class FolderShelfBloc extends Bloc<FolderShelfEvent, FolderShelfState> {
           keyword: search?.keyword ?? '',
           sort: search?.sort ?? 'dd',
           sources: search?.sources ?? const <String>[],
+          limit: shelfPageSize(state.mode),
         ),
       );
       emit(
@@ -72,12 +78,83 @@ class FolderShelfBloc extends Bloc<FolderShelfEvent, FolderShelfState> {
           search: search,
           sortAscending: search?.sort == 'da',
           isLoading: false,
+          isLoadingMore: false,
+          nextOffset: result.nextOffset,
+          hasMore: result.hasMore,
           error: null,
         ),
       );
     } catch (e) {
       logger.e(e);
-      emit(state.copyWith(isLoading: false, error: e.toString()));
+      emit(
+        state.copyWith(
+          isLoading: false,
+          isLoadingMore: false,
+          error: e.toString(),
+        ),
+      );
+    }
+  }
+
+  Future<void> _onLoadMoreRequested(
+    FolderShelfLoadMoreRequested event,
+    Emitter<FolderShelfState> emit,
+  ) async {
+    if (isClosed || state.isLoading || state.isLoadingMore || !state.hasMore) {
+      return;
+    }
+    final offset = state.nextOffset;
+    final mode = state.mode;
+    final currentPath = state.currentPath;
+    final search = state.search;
+    emit(state.copyWith(isLoadingMore: true, error: null));
+    try {
+      final result = await compute(
+        loadShelfInIsolate,
+        ShelfLoadTask(
+          handle: database.db.handle,
+          mode: mode.name,
+          currentPath: currentPath,
+          keyword: search?.keyword ?? '',
+          sort: search?.sort ?? 'dd',
+          sources: search?.sources ?? const <String>[],
+          offset: offset,
+          limit: shelfPageSize(mode),
+        ),
+      );
+      if (isClosed) return;
+      // 加载期间发生了刷新/切目录/换排序：丢弃这一页。
+      if (state.nextOffset != offset ||
+          state.mode != mode ||
+          state.currentPath != currentPath ||
+          state.search != search) {
+        return;
+      }
+      // 跨页去重（搜索时同一漫画可能出现在多条链接里）。
+      final existing = <String>{
+        for (final comic in state.comics) '${comic.from.trim()}:${comic.id}',
+      };
+      final added = <ComicSimplifyEntryInfo>[
+        for (final comic in result.comics)
+          if (existing.add('${comic.from.trim()}:${comic.id}')) comic,
+      ];
+      emit(
+        state.copyWith(
+          comics: <ComicSimplifyEntryInfo>[...state.comics, ...added],
+          comicSearchTexts: <String, String>{
+            ...state.comicSearchTexts,
+            ...result.searchTexts,
+          },
+          nextOffset: result.nextOffset,
+          hasMore: result.hasMore,
+          isLoadingMore: false,
+          error: null,
+        ),
+      );
+    } catch (e) {
+      logger.e(e);
+      if (isClosed) return;
+      emit(state.copyWith(isLoadingMore: false, error: e.toString()));
     }
   }
 

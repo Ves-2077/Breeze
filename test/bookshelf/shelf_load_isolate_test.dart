@@ -5,15 +5,22 @@ import 'package:zephyr/page/bookshelf/method/shelf_load_isolate.dart';
 
 import '../test_helper.dart';
 
-Future<ShelfLoadResult> _load(String mode) {
+Future<ShelfLoadResult> _load(
+  String mode, {
+  String currentPath = '',
+  int offset = 0,
+  int limit = 2000,
+}) {
   return loadShelfInIsolate(
     ShelfLoadTask(
       handle: database.db.handle,
       mode: mode,
-      currentPath: '',
+      currentPath: currentPath,
       keyword: '',
       sort: 'dd',
       sources: const <String>[],
+      offset: offset,
+      limit: limit,
     ),
   );
 }
@@ -65,5 +72,120 @@ void main() {
     final result = await _load('download');
     expect(result.comics, hasLength(1));
     expect(result.comics.single.id, download.comicId);
+  });
+
+  test('同一漫画的多条链接去重，缺失与软删的漫画跳过', () async {
+    final favorite = createTestFavorite('test:dup');
+    final deleted = createTestFavorite('test:deleted', deleted: true);
+    await database.favorites.putMany([favorite, deleted]);
+    final now = DateTime.now().toUtc().millisecondsSinceEpoch;
+    ComicLink link(String uniqueKey, String comicUniqueKey) => ComicLink(
+      uniqueKey: uniqueKey,
+      comicUniqueKey: comicUniqueKey,
+      typeData: ComicFolderType.favorite.name,
+      versionVectorJson: '{}',
+      createdAt: now,
+      updatedAt: now,
+    );
+    await database.links.putMany([
+      link('dup|1', favorite.uniqueKey),
+      link('dup|2', favorite.uniqueKey),
+      link('missing|1', 'test:missing'),
+      link('deleted|1', deleted.uniqueKey),
+    ]);
+
+    final result = await _load('favorite');
+    expect(result.comics, hasLength(1));
+    expect(result.comics.single.id, favorite.comicId);
+    expect(result.searchTexts, hasLength(1));
+  });
+
+  test('分页按原始行推进并返回 hasMore/nextOffset', () async {
+    for (var i = 0; i < 5; i++) {
+      final favorite = createTestFavorite('test:page$i');
+      await database.favorites.put(favorite);
+      await _addLink(favorite.uniqueKey, ComicFolderType.favorite.name);
+    }
+
+    final first = await _load('favorite', limit: 2);
+    expect(first.comics, hasLength(2));
+    expect(first.hasMore, isTrue);
+    expect(first.nextOffset, 2);
+
+    final second = await _load('favorite', offset: first.nextOffset, limit: 2);
+    expect(second.comics, hasLength(2));
+    expect(second.hasMore, isTrue);
+    expect(second.nextOffset, 4);
+
+    final third = await _load('favorite', offset: second.nextOffset, limit: 2);
+    expect(third.comics, hasLength(1));
+    expect(third.hasMore, isFalse);
+    expect(third.nextOffset, 5);
+  });
+
+  test('书架下载行不读取章节明细', () async {
+    final download = createTestDownload('test:lean');
+    download.chapters = '{"chapters":[{"images":["a.jpg","b.jpg"]}]}';
+    download.detailJson = '{"big":"payload"}';
+    await database.downloads.put(download);
+    await _addLink(download.uniqueKey, ComicFolderType.download.name);
+
+    final rows = await database.downloads.getShelfByKeys([download.uniqueKey]);
+    expect(rows, hasLength(1));
+    expect(rows.single.title, download.title);
+    expect(rows.single.chapters, isEmpty);
+    expect(rows.single.detailJson, isEmpty);
+
+    final result = await _load('download');
+    expect(result.comics, hasLength(1));
+    expect(result.searchTexts, hasLength(1));
+  });
+
+  test('进入子文件夹后能看到其中的漫画与子文件夹', () async {
+    final now = DateTime.now().toUtc().millisecondsSinceEpoch;
+    await database.folders.putMany([
+      ComicFolder(
+        syncId: 'sync-a',
+        parentSyncId: '',
+        uniqueKey: '|A|favorite',
+        name: 'A',
+        typeData: ComicFolderType.favorite.name,
+        versionVectorJson: '{}',
+        createdAt: now,
+        updatedAt: now,
+      ),
+      ComicFolder(
+        syncId: 'sync-b',
+        parentSyncId: 'sync-a',
+        uniqueKey: 'sync-a|B|favorite',
+        name: 'B',
+        typeData: ComicFolderType.favorite.name,
+        versionVectorJson: '{}',
+        createdAt: now,
+        updatedAt: now,
+      ),
+    ]);
+    final favorite = createTestFavorite('test:inA');
+    await database.favorites.put(favorite);
+    await database.links.put(
+      ComicLink(
+        uniqueKey: '${favorite.uniqueKey}|sync-a|favorite',
+        comicUniqueKey: favorite.uniqueKey,
+        folderSyncId: 'sync-a',
+        typeData: ComicFolderType.favorite.name,
+        versionVectorJson: '{}',
+        createdAt: now,
+        updatedAt: now,
+      ),
+    );
+
+    final root = await _load('favorite');
+    expect(root.folders.map((f) => f.name), contains('A'));
+    expect(root.folderComicCounts['/A'], 1);
+
+    final inside = await _load('favorite', currentPath: '/A');
+    expect(inside.folders.map((f) => f.name), contains('B'));
+    expect(inside.comics, hasLength(1));
+    expect(inside.comics.single.id, favorite.comicId);
   });
 }

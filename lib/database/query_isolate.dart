@@ -64,3 +64,11 @@ Future<R> _executeDbRead<R>(DbReadTask<R> task) async {
 /// `SELECT COUNT(*) AS c ...` 的通用解码。
 int countFromRows(List<Map<String, dynamic>> rows) =>
     (rows.single['c'] as num).toInt();
+
+/// 按 SQLite 参数上限把列表切成小块（默认 400 个占位符）。
+Iterable<List<T>> chunkParams<T>(List<T> values, {int size = 400}) sync* {
+  for (var start = 0; start < values.length; start += size) {
+    final end = start + size < values.length ? start + size : values.length;
+    yield values.sublist(start, end);
+  }
+}

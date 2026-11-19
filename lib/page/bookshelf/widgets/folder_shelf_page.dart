@@ -501,6 +501,8 @@ class _FolderShelfPageContentState extends State<_FolderShelfPageContent>
               prev.folderComicCounts != curr.folderComicCounts ||
               prev.search != curr.search ||
               prev.isLoading != curr.isLoading ||
+              prev.isLoadingMore != curr.isLoadingMore ||
+              prev.hasMore != curr.hasMore ||
               prev.error != curr.error ||
               prev.sortAscending != curr.sortAscending ||
               prev.selectionMode != curr.selectionMode,
@@ -621,6 +623,23 @@ class _FolderShelfPageContentState extends State<_FolderShelfPageContent>
                     itemCount: totalCount,
                     itemBuilder: shelfItemBuilder,
                   );
+            // 滚到底部附近时自动加载下一页；droppable 保证并发触发只跑一次。
+            final scrollable = NotificationListener<ScrollNotification>(
+              onNotification: (notification) {
+                if (!state.hasMore || state.isLoading || state.isLoadingMore) {
+                  return false;
+                }
+                final metrics = notification.metrics;
+                if (metrics.axis != Axis.vertical) return false;
+                if (metrics.maxScrollExtent - metrics.pixels <= 600) {
+                  context.read<FolderShelfBloc>().add(
+                    const FolderShelfLoadMoreRequested(),
+                  );
+                }
+                return false;
+              },
+              child: shelfList,
+            );
             return RefreshIndicator(
               onRefresh: () async {
                 context.read<FolderShelfBloc>().add(
@@ -629,8 +648,8 @@ class _FolderShelfPageContentState extends State<_FolderShelfPageContent>
               },
               child: Stack(
                 children: [
-                  shelfList,
-                  if (state.isLoading)
+                  scrollable,
+                  if (state.isLoading || state.isLoadingMore)
                     const Positioned(
                       top: 0,
                       left: 0,
