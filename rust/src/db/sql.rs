@@ -218,8 +218,11 @@ impl DbHandle {
 fn open_connection(path: &str) -> Result<(Connection, Arc<Mutex<HashSet<String>>>)> {
     let mut conn = Connection::open(path).with_context(|| format!("open SQLite {path}"))?;
     conn.busy_timeout(std::time::Duration::from_secs(5))?;
+    // auto_vacuum 必须在建第一张表之前设置；对已有表的库是 no-op。
+    // 新库统一使用 INCREMENTAL，之后可用 PRAGMA incremental_vacuum 回收空闲页。
     conn.execute_batch(
-        "PRAGMA journal_mode=WAL;
+        "PRAGMA auto_vacuum=INCREMENTAL;
+         PRAGMA journal_mode=WAL;
          PRAGMA synchronous=NORMAL;
          PRAGMA foreign_keys=ON;
          PRAGMA busy_timeout=5000;",
@@ -327,6 +330,19 @@ pub fn get(handle: i64) -> Result<Arc<DbHandle>> {
         .with_context(|| format!("unknown DB handle {handle}"))
 }
 
+/// 当前打开的应用主库（非事务连接）句柄。
+///
+/// 应用运行期只有一个主连接；进程内测试可能同时打开多个临时库，
+/// 这里取最早打开的主连接，保证在单库场景下稳定。
+pub fn main_handle() -> Result<i64> {
+    lock_registry()?
+        .iter()
+        .filter(|(_, handle)| matches!(handle.kind, HandleKind::Main))
+        .map(|(id, _)| *id)
+        .min()
+        .context("no open SQLite main database")
+}
+
 pub fn commit(handle: i64) -> Result<()> {
     let tx = get(handle)?;
     tx.commit()?;
@@ -373,6 +389,24 @@ mod tests {
         ));
         let _ = std::fs::remove_file(&path);
         path.to_string_lossy().into_owned()
+    }
+
+    #[test]
+    fn fresh_database_uses_incremental_auto_vacuum() {
+        let path = temp_db("auto_vacuum");
+        let handle = open(&path).unwrap();
+        let db = get(handle).unwrap();
+        let read = |db: &DbHandle| -> i64 {
+            let rows: Value =
+                serde_json::from_str(&db.query_json("PRAGMA auto_vacuum", "[]").unwrap()).unwrap();
+            rows[0]["auto_vacuum"].as_i64().unwrap()
+        };
+        assert_eq!(read(&db), 2);
+        db.execute_script("CREATE TABLE t(id INTEGER PRIMARY KEY, v TEXT)")
+            .unwrap();
+        assert_eq!(read(&db), 2, "建表后仍保持 INCREMENTAL");
+        close(handle).unwrap();
+        let _ = std::fs::remove_file(path);
     }
 
     #[test]

@@ -6,7 +6,6 @@ import 'package:zephyr/main.dart';
 import 'package:zephyr/object_box/model.dart';
 import 'package:zephyr/page/comic_follow/cubit/comic_follow_cubit.dart';
 import 'package:zephyr/plugin/plugin_registry_service.dart';
-import 'package:zephyr/plugin/bridge/plugin_config_bridge.dart';
 
 import 'package:zephyr/network/sync/comic_sync_core.dart';
 import 'package:zephyr/network/sync/s3_sync_service.dart';
@@ -910,7 +909,6 @@ Future<void> _applyPluginBlockData(Map<String, dynamic> pluginBlockData) async {
   if (localConfigByName.isNotEmpty) {
     await database.plugins.putConfigs(localConfigByName.values.toList());
   }
-  await preloadPluginConfigs();
   logger.d(
     '[sync][plugins] apply_remote_db '
     'upsertInfos=${infoUpserts.length} totalLocalInfos=${localPluginByUuid.length} '

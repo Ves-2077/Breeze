@@ -21,7 +21,7 @@ import 'package:zephyr/util/event/event.dart';
 import 'package:zephyr/util/event/webview_observe_bus.dart';
 import 'package:zephyr/util/json/json_value.dart';
 import 'package:zephyr/config/router/router.gr.dart';
-import 'package:zephyr/plugin/bridge/plugin_config_bridge.dart';
+import 'package:zephyr/database/plugin_config.dart';
 import 'package:zephyr/widgets/toast.dart';
 
 @RoutePage()

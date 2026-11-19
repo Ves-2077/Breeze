@@ -26,6 +26,7 @@ pub fn init_app() {
         config.allow_private_network = true;
         configure_http_client(config)
             .expect(&rquickjs_playground::tr!("failed-to-update-http-config"));
+        crate::qjs::init_rust_functions().expect("register Rust bridge routes");
     });
 }
 

@@ -11,7 +11,6 @@ import 'package:zephyr/i18n/strings.g.dart';
 import 'package:zephyr/main.dart';
 import 'package:zephyr/network/sync/sync_device_id.dart';
 import 'package:zephyr/object_box/model.dart';
-import 'package:zephyr/plugin/bridge/plugin_config_bridge.dart';
 import 'package:zephyr/src/rust/api/data_backup.dart';
 import 'package:zephyr/util/get_path.dart';
 import 'package:zephyr/widgets/toast.dart';
@@ -228,7 +227,6 @@ Future<void> applyBreezeBackupImport(BackupConfig config) async {
     if (restoredGlobal != null) {
       _applyRestoredGlobalSetting(restoredGlobal!);
     }
-    await preloadPluginConfigs();
 
     // 4. 恢复下载文件
     if (includeDownloads) {

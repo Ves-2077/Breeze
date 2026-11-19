@@ -9,6 +9,7 @@ use serde_json::{Map, Value, json};
 
 use crate::db::obx_archive::archive_objectbox_data;
 use crate::db::obx_reader::read_objectbox_database;
+use crate::db::plugin_config;
 use crate::db::sql;
 use crate::frb_generated::StreamSink;
 
@@ -20,6 +21,30 @@ pub async fn db_open(path: String) -> Result<i64> {
 #[frb]
 pub async fn db_close(handle: i64) -> Result<()> {
     sql::close(handle)
+}
+
+/// 合并写入插件配置，返回与旧 Dart 实现一致的 `{"ok":true}`。
+#[frb]
+pub async fn db_plugin_config_save(
+    handle: i64,
+    name: String,
+    key: String,
+    value: String,
+) -> Result<String> {
+    plugin_config::save_value(handle, &name, &key, &value)?;
+    Ok(plugin_config::save_response_string())
+}
+
+/// 读取插件配置，返回 `{"ok":true,"value":...}`（value 为 JSON 文本内嵌）。
+#[frb]
+pub async fn db_plugin_config_load(
+    handle: i64,
+    name: String,
+    key: String,
+    fallback: String,
+) -> Result<String> {
+    let value = plugin_config::load_value(handle, &name, &key, &fallback)?;
+    Ok(plugin_config::load_response_string(value))
 }
 
 /// 查询返回 JSON 数组：`[{"col": value, ...}, ...]`。

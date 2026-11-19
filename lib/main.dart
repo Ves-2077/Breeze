@@ -37,7 +37,6 @@ import 'package:zephyr/network/sync/sync_device_id.dart';
 import 'package:zephyr/database/database.dart';
 import 'package:zephyr/database/app_database.dart';
 import 'package:zephyr/object_box/model.dart';
-import 'package:zephyr/plugin/bridge/plugin_config_bridge.dart';
 import 'package:zephyr/page/comic_follow/cubit/comic_follow_cubit.dart';
 import 'package:zephyr/platform/desktop/desktop_window.dart';
 import 'package:zephyr/platform/desktop/system_tray.dart';
@@ -334,12 +333,10 @@ Future<(GlobalSettingCubit, PluginRegistryCubit)> _initServices() async {
     archiveLegacyData: true,
   );
   final settingFuture = database.userSettings.get();
-  final pluginConfigsFuture = preloadPluginConfigs();
   final setting = await settingFuture;
   if (setting == null) {
     await database.userSettings.put(UserSetting());
   }
-  await pluginConfigsFuture;
 
   final globalSettingCubit = GlobalSettingCubit();
   await globalSettingCubit.initBox();

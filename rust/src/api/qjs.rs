@@ -256,11 +256,6 @@ pub fn register_function(
 }
 
 #[frb(sync)]
-pub fn init_rust_functions() -> Result<()> {
-    crate::qjs::init_rust_functions()
-}
-
-#[frb(sync)]
 pub fn opencc_convert(text: String, config: String) -> Result<String> {
     crate::qjs::opencc_convert(text, config)
 }

@@ -13,6 +13,32 @@ Future<PlatformInt64> dbOpen({required String path}) =>
 Future<void> dbClose({required PlatformInt64 handle}) =>
     RustLib.instance.api.crateApiDatabaseDbClose(handle: handle);
 
+/// 合并写入插件配置，返回与旧 Dart 实现一致的 `{"ok":true}`。
+Future<String> dbPluginConfigSave({
+  required PlatformInt64 handle,
+  required String name,
+  required String key,
+  required String value,
+}) => RustLib.instance.api.crateApiDatabaseDbPluginConfigSave(
+  handle: handle,
+  name: name,
+  key: key,
+  value: value,
+);
+
+/// 读取插件配置，返回 `{"ok":true,"value":...}`（value 为 JSON 文本内嵌）。
+Future<String> dbPluginConfigLoad({
+  required PlatformInt64 handle,
+  required String name,
+  required String key,
+  required String fallback,
+}) => RustLib.instance.api.crateApiDatabaseDbPluginConfigLoad(
+  handle: handle,
+  name: name,
+  key: key,
+  fallback: fallback,
+);
+
 /// 查询返回 JSON 数组：`[{"col": value, ...}, ...]`。
 Future<String> dbQuery({
   required PlatformInt64 handle,

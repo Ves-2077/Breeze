@@ -6,4 +6,5 @@
 
 pub mod obx_archive;
 pub mod obx_reader;
+pub mod plugin_config;
 pub mod sql;

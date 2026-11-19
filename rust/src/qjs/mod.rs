@@ -83,6 +83,8 @@ const BRIDGE_ROUTE_CACHE_COMPARE_AND_SET: &str = "cache.compare_and_set";
 const BRIDGE_ROUTE_CACHE_DELETE: &str = "cache.delete";
 const BRIDGE_ROUTE_RUNTIME_GC: &str = "runtime.gc";
 const BRIDGE_ROUTE_RUNTIME_IS_TASK_GROUP_CANCELLED: &str = "runtime.is_task_group_cancelled";
+const BRIDGE_ROUTE_SAVE_PLUGIN_CONFIG: &str = "save_plugin_config";
+const BRIDGE_ROUTE_LOAD_PLUGIN_CONFIG: &str = "load_plugin_config";
 const HOST_CACHE_VALUE_MAX_BYTES: usize = 500 * 1024;
 const CANCELLED_GROUP_TTL: Duration = Duration::from_secs(120);
 const REGISTERED_DART_CALLBACK_TIMEOUT: Duration = Duration::from_secs(15);
@@ -1952,7 +1954,59 @@ pub fn init_rust_functions() -> Result<()> {
         },
     )?;
 
+    register_bridge_route_async_handler(
+        BRIDGE_ROUTE_SAVE_PLUGIN_CONFIG,
+        |runtime, args| async move {
+            let handle = crate::db::plugin_config::app_handle()?;
+            rquickjs_playground::global_handle()
+                .spawn_blocking(move || plugin_config_save_route(handle, &runtime, &args))
+                .await
+                .map_err(|err| anyhow!("save_plugin_config 任务失败: {err}"))?
+        },
+    )?;
+
+    register_bridge_route_async_handler(
+        BRIDGE_ROUTE_LOAD_PLUGIN_CONFIG,
+        |runtime, args| async move {
+            let handle = crate::db::plugin_config::app_handle()?;
+            rquickjs_playground::global_handle()
+                .spawn_blocking(move || plugin_config_load_route(handle, &runtime, &args))
+                .await
+                .map_err(|err| anyhow!("load_plugin_config 任务失败: {err}"))?
+        },
+    )?;
+
     Ok(())
+}
+
+fn plugin_config_save_route(handle: i64, runtime: &str, args: &[Value]) -> Result<Value> {
+    let key = args
+        .first()
+        .and_then(Value::as_str)
+        .context("save_plugin_config 参数无效: 缺少 key")?;
+    let value = args
+        .get(1)
+        .and_then(Value::as_str)
+        .context("save_plugin_config 参数无效: 缺少 value")?;
+    crate::db::plugin_config::save_value(handle, runtime, key, value)?;
+    Ok(Value::String(
+        crate::db::plugin_config::save_response_string(),
+    ))
+}
+
+fn plugin_config_load_route(handle: i64, runtime: &str, args: &[Value]) -> Result<Value> {
+    let key = args
+        .first()
+        .and_then(Value::as_str)
+        .context("load_plugin_config 参数无效: 缺少 key")?;
+    let fallback = args
+        .get(1)
+        .and_then(Value::as_str)
+        .context("load_plugin_config 参数无效: 缺少 fallback")?;
+    let value = crate::db::plugin_config::load_value(handle, runtime, key, fallback)?;
+    Ok(Value::String(
+        crate::db::plugin_config::load_response_string(value),
+    ))
 }
 
 pub fn opencc_convert(text: String, config: String) -> Result<String> {
@@ -1964,7 +2018,8 @@ mod tests {
     use super::{
         HostCacheEntry, QjsFetchImageResult, QjsFetchImageResultCbor, handle_cache_compare_and_set,
         handle_cache_get, handle_cache_set_if_absent, host_cache_store_cell,
-        is_cancelled_error_text, scoped_route_key,
+        is_cancelled_error_text, plugin_config_load_route, plugin_config_save_route,
+        scoped_route_key,
     };
     use ciborium::de::from_reader;
     use image::{DynamicImage, ImageFormat, RgbaImage};
@@ -2290,6 +2345,48 @@ mod tests {
             cache.get(&scoped_key).map(|entry| entry.clone().value),
             Some(json!("stale"))
         );
+    }
+
+    #[test]
+    fn plugin_config_routes_return_json_strings_for_legacy_plugins() {
+        let dir = std::env::temp_dir().join("breeze_qjs_plugin_config_route_tests");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(format!("route_{}.sqlite3", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let handle = crate::db::sql::open(path.to_str().unwrap()).unwrap();
+        crate::db::sql::get(handle)
+            .unwrap()
+            .execute_script(
+                r#"CREATE TABLE "PluginConfig" (
+                    "id" INTEGER PRIMARY KEY AUTOINCREMENT,
+                    "name" TEXT NOT NULL DEFAULT '',
+                    "config" TEXT NOT NULL DEFAULT ''
+                )"#,
+            )
+            .unwrap();
+
+        // 旧 Dart bridge 返回的是 JSON 字符串，JM 插件只做 JSON.parse(String(r))，
+        // 因此这里必须保持 Value::String 而不是对象。
+        let saved = plugin_config_save_route(handle, "rt", &[json!("k"), json!(r#"{"v":1}"#)])
+            .expect("save route");
+        let Value::String(saved_text) = saved else {
+            panic!("save route must return a JSON string");
+        };
+        assert_eq!(saved_text, r#"{"ok":true}"#);
+
+        let loaded = plugin_config_load_route(handle, "rt", &[json!("k"), json!("null")])
+            .expect("load route");
+        let Value::String(loaded_text) = loaded else {
+            panic!("load route must return a JSON string");
+        };
+        assert_eq!(loaded_text, r#"{"ok":true,"value":{"v":1}}"#);
+        assert_eq!(
+            plugin_config_load_route(handle, "rt", &[json!("missing"), json!("7")]).unwrap(),
+            Value::String(r#"{"ok":true,"value":7}"#.to_string())
+        );
+
+        crate::db::sql::close(handle).unwrap();
+        let _ = std::fs::remove_file(path);
     }
 
     #[test]

@@ -7,7 +7,6 @@ import 'package:zephyr/main.dart';
 import 'package:zephyr/network/http/plugin/qjs_call_exception.dart';
 import 'package:zephyr/object_box/model.dart';
 import 'package:zephyr/page/bookshelf/service/comic_link_service.dart';
-import 'package:zephyr/plugin/bridge/plugin_config_bridge.dart';
 import 'package:zephyr/plugin/local_comic_plugin.dart';
 import 'package:zephyr/plugin/models/plugin_runtime_state.dart';
 import 'package:zephyr/plugin/plugin_bytecode_cache.dart';
@@ -680,8 +679,6 @@ class PluginRegistryService {
       return;
     }
     await database.plugins.removeConfigByIds(idsToDelete);
-    // 配置缓存由 plugin_config_bridge 持有，删除后重新载入避免读到已删配置。
-    await preloadPluginConfigs();
   }
 
   Set<String> _buildPluginConfigNameCandidates(String uuid) {

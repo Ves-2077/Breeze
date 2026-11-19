@@ -182,8 +182,6 @@ void registerFunction({
   dartCallback: dartCallback,
 );
 
-void initRustFunctions() => RustLib.instance.api.crateApiQjsInitRustFunctions();
-
 String openccConvert({required String text, required String config}) =>
     RustLib.instance.api.crateApiQjsOpenccConvert(text: text, config: config);
 
