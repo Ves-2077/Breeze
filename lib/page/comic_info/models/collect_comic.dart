@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:material_ui/material_ui.dart';
@@ -22,7 +23,14 @@ Future<bool> isLocalComicCollected({
   final unified = await database.favorites.getByKey(key);
   final collected = unified != null && unified.deleted == false;
   if (collected) {
-    await _repairFavoriteCoverPathIfNeeded(unified);
+    // 封面路径修复只是后台自愈，不阻塞收藏状态的首帧判定。
+    unawaited(() async {
+      try {
+        await _repairFavoriteCoverPathIfNeeded(unified);
+      } catch (e, s) {
+        logger.e(e, stackTrace: s);
+      }
+    }());
   }
   return collected;
 }

@@ -24,6 +24,10 @@ class ComicOperationWidget extends StatefulWidget {
   final String? collectionTargetName;
   final dynamic comicInfo;
 
+  /// 页面首帧的本地收藏状态，由详情 bloc 与详情一起读出；
+  /// 不再由本组件异步查库，避免先显示「未收藏」再跳变。
+  final bool initialCollected;
+
   const ComicOperationWidget({
     super.key,
     required this.normalInfo,
@@ -31,6 +35,7 @@ class ComicOperationWidget extends StatefulWidget {
     this.collectionTargetId,
     this.collectionTargetName,
     required this.comicInfo,
+    required this.initialCollected,
   });
 
   @override
@@ -41,29 +46,24 @@ class _ComicOperationWidgetState extends State<ComicOperationWidget> {
   dynamic get comicInfo => widget.comicInfo;
   NormalComicAllInfo get normalInfo => widget.normalInfo;
   ComicInfo get comicInfoView => normalInfo.comicInfo;
-  bool isCollected = false;
+  late bool isCollected = widget.initialCollected;
   bool isLiked = false;
   bool isCloudCollected = false;
 
   @override
   void initState() {
     super.initState();
-    _syncLocalCollectStatus();
     isLiked = normalInfo.isLiked;
     isCloudCollected = normalInfo.isFavourite;
   }
 
-  Future<void> _syncLocalCollectStatus() async {
-    final localCollected = await isLocalComicCollected(
-      from: widget.from,
-      comicId: comicInfoView.id,
-    );
-    if (!mounted) {
-      return;
+  @override
+  void didUpdateWidget(ComicOperationWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // 刷新/重进后 bloc 会给出新的收藏快照；本组件未销毁时需要跟上。
+    if (oldWidget.initialCollected != widget.initialCollected) {
+      isCollected = widget.initialCollected;
     }
-    setState(() {
-      isCollected = localCollected;
-    });
   }
 
   Future<void> _autoFollowIfEnabled() async {

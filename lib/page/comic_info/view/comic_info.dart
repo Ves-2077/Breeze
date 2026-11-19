@@ -59,18 +59,18 @@ class ComicInfoPage extends StatelessWidget {
     final resolvedFrom = from.trim();
     return MultiBlocProvider(
       providers: [
-        BlocProvider(
-          create: (_) => GetComicInfoBloc()
-            ..add(
-              GetComicInfoEvent(
-                comicId: comicId,
-                from: resolvedFrom,
-                type: type,
-                extern: extern,
-              ),
-            ),
-        ),
         BlocProvider(create: (_) => StringSelectCubit()),
+        BlocProvider(
+          create: (context) =>
+              GetComicInfoBloc(context.read<StringSelectCubit>())..add(
+                GetComicInfoEvent(
+                  comicId: comicId,
+                  from: resolvedFrom,
+                  type: type,
+                  extern: extern,
+                ),
+              ),
+        ),
       ],
       child: _ComicInfo(
         comicId: comicId,
@@ -124,9 +124,9 @@ class _ComicInfoState extends State<_ComicInfo>
   final Set<String> _collapsedGroups = {};
   String _collapsedForComic = '';
   NormalComicAllInfo? _currentInfo;
-  // 已读章节 id 集合：与当前漫画绑定，阅读器写库后经 repository 变更流刷新。
+  // 已读章节 id 集合：与当前漫画绑定，首次由详情 bloc 随详情返回；
+  // 阅读器写库后经 repository 变更流刷新。
   Set<String> _readChapterIds = const {};
-  String _readChapterKey = '';
   StreamSubscription<String>? _readChapterSubscription;
   // 追更线上总数同步护栏：记住已同步到的章节数。数字变大才再同步一次，
   // 下拉刷新后长出的新话不会被吞；下载入口的 comicInfoDyn 是本地快照
@@ -202,28 +202,6 @@ class _ComicInfoState extends State<_ComicInfo>
     );
     if (!mounted || key != _readChapterComicKey) return;
     setState(() {
-      _readChapterKey = key;
-      _readChapterIds = ids;
-    });
-  }
-
-  /// 首次进入/切换漫画时异步加载已读集合；build 期只读，结果回来后 setState。
-  void _loadReadChaptersIfNeeded() {
-    final key = _readChapterComicKey;
-    if (key == _readChapterKey) return;
-    _readChapterKey = key;
-    _loadReadChapters(key);
-  }
-
-  Future<void> _loadReadChapters(String key) async {
-    final comicId = _comicId;
-    final ids = await ComicReadChapterRepository.instance.readChapterIds(
-      source: widget.from,
-      comicId: comicId,
-    );
-    if (!mounted || key != _readChapterComicKey) return;
-    setState(() {
-      _readChapterKey = key;
       _readChapterIds = ids;
     });
   }
@@ -367,15 +345,10 @@ class _ComicInfoState extends State<_ComicInfo>
                   comicInfoDyn = state.comicInfo;
                   _currentInfo = state.allInfo;
                   _comicId = state.comicId ?? _comicId;
-                  _loadReadChaptersIfNeeded();
+                  // 已读集合与历史摘要随详情返回；这里只同步，不再异步查库。
+                  _readChapterIds = state.readChapterIds;
                   _syncFollowFromOnlineDetail(state.comicInfo, state.allInfo!);
-                  initHistory(
-                    context,
-                    _comicId,
-                    widget.from,
-                    chapters: state.allInfo!.eps,
-                  );
-                  return _infoView(state.allInfo!);
+                  return _infoView(state.allInfo!, state.localCollected);
               }
             },
           ),
@@ -422,7 +395,7 @@ class _ComicInfoState extends State<_ComicInfo>
     );
   }
 
-  Widget _infoView(NormalComicAllInfo normalComicAllInfo) {
+  Widget _infoView(NormalComicAllInfo normalComicAllInfo, bool localCollected) {
     final comicInfo = normalComicAllInfo.comicInfo;
     _title = comicInfo.title;
     final clickCoverToStartReading = context
@@ -524,6 +497,7 @@ class _ComicInfoState extends State<_ComicInfo>
                           collectionTargetId: widget.collectionTargetId,
                           collectionTargetName: widget.collectionTargetName,
                           comicInfo: comicInfoDyn,
+                          initialCollected: localCollected,
                         ),
                         if (comicInfo.metadata.isNotEmpty ||
                             comicInfo.description.trim().isNotEmpty) ...[
