@@ -23,6 +23,17 @@ const _favoriteUpsert =
     '"creator"=excluded."creator","titleMeta"=excluded."titleMeta",'
     '"metadata"=excluded."metadata"';
 
+/// 收藏软删除：同一份 SQL 供单条与批量使用，立墓碑并清空展示字段。
+///
+/// `%KEYS%` 替换成对应数量的 `?`。
+const _favoriteMarkDeleted = r'''
+UPDATE "UnifiedComicFavorite"
+SET "deleted" = 1, "updatedAt" = ?,
+    "description" = '', "cover" = '', "creator" = '',
+    "titleMeta" = '', "metadata" = ''
+WHERE "uniqueKey" IN (%KEYS%) AND "deleted" = 0
+''';
+
 class UnifiedComicFavoriteRepository {
   final BreezeDatabase db;
 
@@ -106,6 +117,31 @@ class UnifiedComicFavoriteRepository {
       }
       return ids;
     });
+  }
+
+  /// 软删除（同步墓碑）：单条入口，复用 [markDeletedByKeys] 的同一份 SQL。
+  Future<int> markDeletedByKey(String uniqueKey) =>
+      markDeletedByKeys([uniqueKey]);
+
+  /// 批量软删除收藏，按 SQLite 变量上限分块，整个批次在一个事务内完成。
+  ///
+  /// 删除统一刷新 updatedAt，并清空不再需要的展示字段；复活时会重新写入。
+  Future<int> markDeletedByKeys(Iterable<String> uniqueKeys) async {
+    final keys = uniqueKeys.toList(growable: false);
+    if (keys.isEmpty) return 0;
+    final ts = dateToDb(DateTime.now().toUtc());
+    var changes = 0;
+    await db.transaction((tx) async {
+      for (final chunk in chunkParams(keys)) {
+        final marks = List.filled(chunk.length, '?').join(',');
+        final result = await tx.execute(
+          _favoriteMarkDeleted.replaceFirst('%KEYS%', marks),
+          <Object?>[ts, ...chunk],
+        );
+        changes += result.changes;
+      }
+    });
+    return changes;
   }
 
   Future<int> removeById(int id) async {
@@ -202,6 +238,18 @@ const _historyUpsert =
     '"cover"=excluded."cover","creator"=excluded."creator",'
     '"titleMeta"=excluded."titleMeta","metadata"=excluded."metadata"';
 
+/// 历史软删除：同一份 SQL 供单条与批量使用。
+///
+/// `%KEYS%` 替换成对应数量的 `?`。删除即刷新 updatedAt 与 lastReadAt，
+/// 不区分单条还是批量。
+const _historyMarkDeleted = r'''
+UPDATE "UnifiedComicHistory"
+SET "deleted" = 1, "updatedAt" = ?, "lastReadAt" = ?,
+    "description" = '', "cover" = '', "creator" = '',
+    "titleMeta" = '', "metadata" = ''
+WHERE "uniqueKey" IN (%KEYS%) AND "deleted" = 0
+''';
+
 class UnifiedComicHistoryRepository {
   final BreezeDatabase db;
 
@@ -296,6 +344,32 @@ class UnifiedComicHistoryRepository {
       }
       return ids;
     });
+  }
+
+  /// 软删除（同步墓碑）：单条入口，复用 [markDeletedByKeys] 的同一份 SQL。
+  Future<int> markDeletedByKey(String uniqueKey) =>
+      markDeletedByKeys([uniqueKey]);
+
+  /// 批量软删除历史，按 SQLite 变量上限分块，整个批次在一个事务内完成。
+  ///
+  /// 删除统一刷新 updatedAt/lastReadAt。章节定位字段（chapterId/chapterOrder）
+  /// 保留，避免删除后仍从旧入口打开阅读器时行为变化。
+  Future<int> markDeletedByKeys(Iterable<String> uniqueKeys) async {
+    final keys = uniqueKeys.toList(growable: false);
+    if (keys.isEmpty) return 0;
+    final ts = dateToDb(DateTime.now().toUtc());
+    var changes = 0;
+    await db.transaction((tx) async {
+      for (final chunk in chunkParams(keys)) {
+        final marks = List.filled(chunk.length, '?').join(',');
+        final result = await tx.execute(
+          _historyMarkDeleted.replaceFirst('%KEYS%', marks),
+          <Object?>[ts, ts, ...chunk],
+        );
+        changes += result.changes;
+      }
+    });
+    return changes;
   }
 
   Future<int> removeById(int id) async {

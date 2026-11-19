@@ -624,8 +624,6 @@ class PluginRegistryService {
         .where((comic) => comic.source == uuid)
         .toList();
 
-    final now = DateTime.now().toUtc();
-
     // 收藏/历史属于同步数据，应当软删除（标记 deleted），让同步能把删除传播出去。
     for (final comic in favorites) {
       await ComicLinkService.removeComicFromAll(
@@ -634,15 +632,12 @@ class PluginRegistryService {
       );
     }
 
-    for (final comic in histories) {
-      if (!comic.deleted) {
-        comic
-          ..deleted = true
-          ..updatedAt = now;
-        await database.histories.put(comic);
-      }
-      // 历史记录目前没有 ComicLink，只需要软删除本体即可。
-    }
+    // 历史记录没有 ComicLink，只需要软删除本体。
+    await database.histories.markDeletedByKeys(
+      histories
+          .where((comic) => !comic.deleted)
+          .map((comic) => comic.uniqueKey),
+    );
 
     // 下载记录不参与同步，直接物理删除。
     for (final comic in downloads) {

@@ -233,25 +233,12 @@ class ComicEntryWidget extends StatelessWidget {
 
   Future<void> _deleteFavorite() async {
     final uniqueKey = '${comic.from.trim()}:${comic.id}';
-    final temp = await database.favorites.getByKey(uniqueKey);
-
-    if (temp != null) {
-      temp.deleted = true;
-      temp.updatedAt = DateTime.now().toUtc();
-      await database.favorites.put(temp);
-    }
+    await database.favorites.markDeletedByKey(uniqueKey);
   }
 
   Future<void> _deleteHistory() async {
     final uniqueKey = '${comic.from.trim()}:${comic.id}';
-    final temp = await database.histories.getByKey(uniqueKey);
-
-    if (temp != null) {
-      temp.deleted = true;
-      temp.updatedAt = DateTime.now().toUtc();
-      temp.lastReadAt = temp.updatedAt;
-      await database.histories.put(temp);
-    }
+    await database.histories.markDeletedByKey(uniqueKey);
   }
 
   Future<void> _deleteDownload() async {

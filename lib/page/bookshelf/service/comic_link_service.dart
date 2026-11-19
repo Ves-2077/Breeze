@@ -204,13 +204,7 @@ class ComicLinkService {
   }
 
   static Future<void> _markFavoriteDeleted(String comicUniqueKey) async {
-    final comic = await database.favorites.getByKey(comicUniqueKey);
-    if (comic != null && !comic.deleted) {
-      comic
-        ..deleted = true
-        ..updatedAt = DateTime.now().toUtc();
-      await database.favorites.put(comic);
-    }
+    await database.favorites.markDeletedByKey(comicUniqueKey);
   }
 
   /// 移动漫画从一个路径到另一个路径

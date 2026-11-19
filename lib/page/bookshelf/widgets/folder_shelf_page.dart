@@ -1034,13 +1034,7 @@ class _FolderShelfPageContentState extends State<_FolderShelfPageContent>
       final state = context.read<FolderShelfBloc>().state;
       // 历史无 ComicLink：直接软删除历史本体（与旧 LocalShelfPage 一致）。
       if (state.mode == ShelfPageMode.history) {
-        final history = await database.histories.getByKey(uniqueKey);
-        if (history != null) {
-          history
-            ..deleted = true
-            ..updatedAt = DateTime.now().toUtc();
-          await database.histories.put(history);
-        }
+        await database.histories.markDeletedByKey(uniqueKey);
         if (!context.mounted) return;
         context.read<FolderShelfBloc>().add(const FolderShelfLoadRequested());
         return;

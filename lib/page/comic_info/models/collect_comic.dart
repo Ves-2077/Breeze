@@ -42,13 +42,10 @@ Future<bool> toggleLocalComicFavorite({
 }) async {
   final pluginId = (from).trim();
   final key = '$pluginId:${normalInfo.comicInfo.id}';
-  final now = DateTime.now().toUtc();
   final unified = await database.favorites.getByKey(key);
 
-  if (unified != null && unified.deleted == false) {
-    unified.deleted = true;
-    unified.updatedAt = now;
-    await database.favorites.put(unified);
+  if (unified != null && !unified.deleted) {
+    await database.favorites.markDeletedByKey(key);
     await ComicLinkService.removeComicFromAll(key, ComicFolderType.favorite);
     if (showToast) {
       // showSuccessToast('已取消本地收藏');

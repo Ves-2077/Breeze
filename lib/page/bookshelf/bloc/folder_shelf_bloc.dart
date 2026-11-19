@@ -432,16 +432,7 @@ class FolderShelfBloc extends Bloc<FolderShelfEvent, FolderShelfState> {
   /// 批量软删除历史记录。调用方保证只传历史 uniqueKey。
   Future<void> _deleteHistoryComics(Set<String> comicUniqueKeys) async {
     if (comicUniqueKeys.isEmpty) return;
-    final now = DateTime.now().toUtc();
-    for (final uniqueKey in comicUniqueKeys) {
-      final history = await database.histories.getByKey(uniqueKey);
-      if (history != null) {
-        history
-          ..deleted = true
-          ..updatedAt = now;
-        await database.histories.put(history);
-      }
-    }
+    await database.histories.markDeletedByKeys(comicUniqueKeys);
   }
 
   void _exitSelectionAndRefresh() {
