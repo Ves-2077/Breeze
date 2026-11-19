@@ -4,6 +4,7 @@ import 'package:file_selector/file_selector.dart';
 import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 import 'package:zephyr/util/get_path.dart';
+import 'package:zephyr/util/ohos.dart';
 
 const MethodChannel _filePickerChannel = MethodChannel(
   'com.zephyr.breeze/file_picker',
@@ -81,6 +82,9 @@ Future<LocalComicPickResult?> pickLocalComicArchive() async {
 
 Future<LocalComicPickResult?> pickLocalComicDirectory() async {
   if (Platform.isIOS) return null;
+
+  // OHOS(非 PC/2in1)不支持目录选择，文件夹导入入口在上层隐藏；这里防御性返回。
+  if (isOhos) return null;
 
   if (Platform.isAndroid) {
     final destDir = await _createAndroidPickCacheDir();

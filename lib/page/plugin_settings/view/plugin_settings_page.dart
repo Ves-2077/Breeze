@@ -5,7 +5,6 @@ import 'package:auto_route/auto_route.dart';
 import 'package:zephyr/plugin/utils/plugin_local_file_picker.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:zephyr/cubit/plugin_registry_cubit.dart';
 import 'package:zephyr/i18n/strings.g.dart';
 import 'package:zephyr/main.dart';
@@ -18,6 +17,7 @@ import 'package:zephyr/plugin/plugin_install_service.dart';
 import 'package:zephyr/plugin/plugin_registry_service.dart';
 import 'package:zephyr/plugin/utils/plugin_cloud_download_utils.dart';
 import 'package:zephyr/util/event/event.dart';
+import 'package:zephyr/util/external_link.dart';
 import 'package:zephyr/util/event/webview_observe_bus.dart';
 import 'package:zephyr/util/json/json_value.dart';
 import 'package:zephyr/config/router/router.gr.dart';
@@ -269,9 +269,8 @@ class _PluginSettingsPageViewState extends State<_PluginSettingsPageView> {
       logger.d('[WebLoginFallback] session start failed, open chrome download');
       showErrorToast(t.plugin.chromiumNotFound);
       unawaited(
-        launchUrl(
+        openExternalUrl(
           Uri.parse(ExternalChromiumLoginSession.chromeDownloadUrl),
-          mode: LaunchMode.externalApplication,
         ),
       );
       return;

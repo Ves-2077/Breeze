@@ -2,9 +2,9 @@ import 'package:auto_route/auto_route.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:markdown_widget/markdown_widget.dart';
 import 'package:material_ui/material_ui.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:zephyr/i18n/strings.g.dart';
 import 'package:zephyr/network/http/plugin/unified_comic_plugin.dart';
+import 'package:zephyr/util/external_link.dart';
 import 'package:zephyr/page/plugin_settings/models/plugin_detail.dart';
 import 'package:zephyr/cubit/plugin_registry_cubit.dart';
 import 'package:zephyr/util/error_filter.dart';
@@ -91,7 +91,7 @@ class _PluginDetailPageState extends State<PluginDetailPage> {
       showErrorToast(t.plugin.invalidLink(url: url.trim()));
       return;
     }
-    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    final opened = await openExternalUrl(uri);
     if (!opened) {
       showErrorToast(t.plugin.cannotOpenLink(url: url.trim()));
     }

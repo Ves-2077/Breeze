@@ -4,8 +4,8 @@ import 'dart:io';
 import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path/path.dart' as p;
+import 'package:zephyr/service/update/check_update.dart';
 import 'package:zephyr/config/global/global_setting.dart';
 import 'package:zephyr/i18n/strings.g.dart';
 import 'package:zephyr/main.dart';
@@ -62,9 +62,9 @@ Future<String> exportBreezeBackup({
 
   try {
     // 1. 写入 config.json
-    final packageInfo = await PackageInfo.fromPlatform();
+    final version = await getAppVersion();
     final config = <String, dynamic>{
-      'version': packageInfo.version,
+      'version': version,
       'includeDownloads': includeDownloads,
       'exportedAt': DateTime.now().toIso8601String(),
     };

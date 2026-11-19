@@ -131,7 +131,10 @@ class _ColumnModeWidgetState extends State<ColumnModeWidget> {
             onTransitionAction: widget.onTransitionAction,
             transitionStyle: transitionStyle,
           ),
-          scrollCacheExtent: ScrollCacheExtent.pixels(context.screenHeight * 2),
+          // Flutter 3.50 推荐 scrollCacheExtent，但 OHOS fork(3.47) 没有；
+          // cacheExtent 两端都可用，保留并忽略弃用提示。
+          // ignore: deprecated_member_use
+          cacheExtent: context.screenHeight * 2,
           controller: widget.scrollController,
           addRepaintBoundaries: false,
         );

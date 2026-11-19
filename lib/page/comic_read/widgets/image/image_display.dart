@@ -262,7 +262,8 @@ class _ImageDisplayState extends State<ImageDisplay> {
             // 按屏幕密度解码（useLogicalCacheSize 内部乘 devicePixelRatio），
             // 避免超大扫描图整张解码进 ImageCache 挤占内存。
             cacheWidth: width.isFinite && width >= 1 ? width.round() : null,
-            useLogicalCacheSize: true,
+            // useLogicalCacheSize 是 Flutter 3.50 新增参数；OHOS fork(3.47)
+            // 没有，先去掉以保持两端可编译。
             fit: isColumn ? BoxFit.fill : BoxFit.contain,
             alignment: widget.imageAlignment,
             gaplessPlayback: true,

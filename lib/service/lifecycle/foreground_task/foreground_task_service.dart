@@ -35,6 +35,7 @@ class ForegroundTaskService {
 
   /// 初始化前台任务配置。应用启动时调用一次即可。
   void init() {
+    if (!Platform.isAndroid) return;
     if (_initialized) return;
     FlutterForegroundTask.init(
       androidNotificationOptions: AndroidNotificationOptions(

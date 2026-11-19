@@ -9,6 +9,8 @@ import 'package:zephyr/src/rust/api/qjs.dart';
 import 'package:zephyr/src/rust/api/simple.dart';
 import 'package:zephyr/src/rust/qjs.dart';
 import 'package:zephyr/util/get_path.dart';
+import 'package:zephyr/util/ohos.dart';
+import 'package:zephyr/util/ohos_file_bridge.dart';
 
 /// 字节码缓存的宿主能力（默认走 Rust；测试可注入替身）。
 abstract class PluginBytecodeBackend {
@@ -143,10 +145,19 @@ class PluginBytecodeCache {
     return _configuration ??= () async {
       var version = 'unknown';
       try {
-        final info = await PackageInfo.fromPlatform();
-        final build = info.buildNumber.trim();
+        String appVersion;
+        String build;
+        if (isOhos) {
+          final info = await getOhosPackageInfo();
+          appVersion = info?.version ?? 'unknown';
+          build = info?.buildNumber.trim() ?? '';
+        } else {
+          final info = await PackageInfo.fromPlatform();
+          appVersion = info.version;
+          build = info.buildNumber.trim();
+        }
         version =
-            '${info.version}${build.isEmpty ? '' : '+$build'}'
+            '$appVersion${build.isEmpty ? '' : '+$build'}'
             '${kDebugMode ? '+debug' : ''}';
       } catch (e) {
         // 拿不到应用版本时用固定值：同一进程内编译与加载仍然一致。

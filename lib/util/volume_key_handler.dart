@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:zephyr/main.dart';
+import 'package:zephyr/util/ohos.dart';
 
 class VolumeKeyHandler {
   static const MethodChannel _channel = MethodChannel('volume_key_handler');
@@ -11,7 +12,7 @@ class VolumeKeyHandler {
 
   /// 启用音量键拦截
   static Future<void> enableVolumeKeyInterception() async {
-    if (!Platform.isAndroid) return;
+    if (!Platform.isAndroid && !isOhos) return;
     try {
       await _channel.invokeMethod('enableInterception');
     } catch (e) {
@@ -21,7 +22,7 @@ class VolumeKeyHandler {
 
   /// 禁用音量键拦截
   static Future<void> disableVolumeKeyInterception() async {
-    if (!Platform.isAndroid) return;
+    if (!Platform.isAndroid && !isOhos) return;
     try {
       await _channel.invokeMethod('disableInterception');
     } catch (e) {

@@ -49,6 +49,9 @@ import 'package:zephyr/src/rust/api/simple.dart';
 import 'package:zephyr/src/rust/api/system.dart' as rust_system;
 import 'package:zephyr/util/debouncer.dart';
 import 'package:zephyr/util/error_filter.dart';
+import 'package:zephyr/util/ohos.dart';
+import 'package:zephyr/util/ohos_file_bridge.dart';
+import 'package:zephyr/util/ohos_platform_plugins.dart';
 import 'package:zephyr/util/font/font_profile.dart';
 import 'package:zephyr/util/get_path.dart';
 import 'package:zephyr/util/manage_cache.dart';
@@ -127,6 +130,7 @@ class MyAlwaysLogFilter extends LogFilter {
 Future<void> main(List<String> args) async {
   // 1. 基础初始化
   WidgetsFlutterBinding.ensureInitialized();
+  installOhosPlatformPlugins();
 
   // 先生成本地同步设备 ID，后续文件夹/链接的版本向量会使用它
   await ensureSyncDeviceId();
@@ -139,9 +143,10 @@ Future<void> main(List<String> args) async {
 
   const sentryDsn = String.fromEnvironment('sentry_dsn', defaultValue: '');
 
-  if (sentryDsn.isEmpty) {
+  // OHOS 上 Sentry 的 native 侧不可用，直接跳过初始化（Dart 事件也没有传输通道）。
+  if (sentryDsn.isEmpty || isOhos) {
     // 1. 如果是调试模式，配置 logger 捕获全局错误
-    if (kDebugMode || sentryDsn.isEmpty) {
+    if (kDebugMode || sentryDsn.isEmpty || isOhos) {
       // 捕获 Flutter 框架层错误（如 Widget 构建中的异常）
       FlutterError.onError = (FlutterErrorDetails details) {
         logger.e(
@@ -180,7 +185,7 @@ Future<void> main(List<String> args) async {
       await _runDatabaseIncompatibleApp();
     } catch (e, stack) {
       // 捕获初始化阶段（_initServices）可能抛出的异常
-      if (kDebugMode || sentryDsn.isEmpty) {
+      if (kDebugMode || sentryDsn.isEmpty || isOhos) {
         logger.e("App Setup Failed", error: e, stackTrace: stack);
       }
     }
@@ -282,7 +287,9 @@ Future<(GlobalSettingCubit, PluginRegistryCubit)> _initServices() async {
   // 关掉rust端，主要是anyhow的堆栈调用信息
   enableStacktrace(enabled: false);
 
-  enableRustLog(enabled: kDebugMode);
+  // release 下可用 --dart-define=rust_log=true 打开 Rust 日志；
+  // 级别仍可被 RUST_LOG 覆盖（默认 debug，DNS/HTTP 噪音已静音）。
+  enableRustLog(enabled: kDebugMode || const bool.fromEnvironment('rust_log'));
 
   if (kDebugMode) {
     setQjsErrorStackEnabled(enabled: true);
@@ -296,8 +303,10 @@ Future<(GlobalSettingCubit, PluginRegistryCubit)> _initServices() async {
     setSimplifyPluginErrorDisplay(enabled: false);
   }
 
-  // 初始化前台任务
-  FlutterForegroundTask.initCommunicationPort();
+  // 初始化前台任务（Android 专用）
+  if (Platform.isAndroid) {
+    FlutterForegroundTask.initCommunicationPort();
+  }
 
   // 重采样触控刷新率
   GestureBinding.instance.resamplingEnabled = true;
@@ -457,6 +466,16 @@ Future<bool> _probeProxyWithTimeout(String proxyUrl) async {
   }
 }
 
+Widget _buildDynamicColor({
+  required Widget Function(ColorScheme? light, ColorScheme? dark) builder,
+}) {
+  if (isOhos) {
+    // OHOS 没有 dynamic_color 平台实现，直接跳过插件调用。
+    return builder(null, null);
+  }
+  return DynamicColorBuilder(builder: builder);
+}
+
 Future<void> addArchitectureTagsToSentry() async {
   try {
     final is64Bit = sizeOf<Pointer>() == 8;
@@ -470,6 +489,9 @@ Future<void> addArchitectureTagsToSentry() async {
     } else if (Platform.isIOS) {
       final iosInfo = await DeviceInfoPlugin().iosInfo;
       deviceSupportedAbis = 'arm64 (${iosInfo.utsname.machine})';
+    } else if (isOhos) {
+      final info = await getOhosDeviceInfo();
+      deviceSupportedAbis = info?.abis.join(', ') ?? 'unknown';
     } else if (Platform.isWindows) {
       deviceSupportedAbis =
           Platform.environment['PROCESSOR_ARCHITECTURE'] ?? 'unknown';
@@ -592,6 +614,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       case WindowCloseRequestedEvent(:final request):
         request.cancel();
         _handleCloseRequest();
+      // ignore: unreachable_switch_case
       case _:
         break;
     }
@@ -732,12 +755,12 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         builder: (context, _) {
           final globalSettingState = context.watch<GlobalSettingCubit>().state;
 
-          return DynamicColorBuilder(
+          return _buildDynamicColor(
             builder: (ColorScheme? lightDynamic, ColorScheme? darkDynamic) {
               ColorScheme lightColorScheme;
               ColorScheme darkColorScheme;
 
-              if (globalSettingState.dynamicColor == true) {
+              if (globalSettingState.dynamicColor && !isOhos) {
                 lightColorScheme =
                     lightDynamic ??
                     ColorScheme.fromSeed(

@@ -3,16 +3,15 @@ import 'dart:typed_data';
 
 import 'package:auto_route/auto_route.dart';
 import 'package:material_ui/material_ui.dart';
-import 'package:zephyr/main.dart';
-import 'package:zephyr/network/http/plugin/unified_plugin_envelope.dart';
-import 'package:zephyr/network/http/plugin/unified_comic_plugin.dart';
-import 'package:zephyr/page/login/slider_captcha_dialog.dart';
-import 'package:zephyr/i18n/strings.g.dart';
-import 'package:zephyr/widgets/toast.dart';
-
 import 'package:zephyr/config/router/router.gr.dart';
+import 'package:zephyr/i18n/strings.g.dart';
+import 'package:zephyr/main.dart';
+import 'package:zephyr/network/http/plugin/unified_comic_plugin.dart';
+import 'package:zephyr/network/http/plugin/unified_plugin_envelope.dart';
+import 'package:zephyr/page/login/slider_captcha_dialog.dart';
 import 'package:zephyr/util/error_filter.dart';
 import 'package:zephyr/util/json/json_value.dart';
+import 'package:zephyr/widgets/toast.dart';
 
 @RoutePage()
 class LoginPage extends StatefulWidget {

@@ -1,5 +1,7 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:zephyr/main.dart';
+import 'package:zephyr/util/ohos.dart';
+import 'package:zephyr/util/ohos_notification.dart';
 import 'package:zephyr/object_box/model.dart';
 import 'package:zephyr/page/comic_info/method/get_plugin_detail.dart';
 import 'package:zephyr/i18n/strings.g.dart';
@@ -96,12 +98,17 @@ class ComicFollowService {
         : t.comicFollow.updatedComicsMultiple(count: updateCount);
 
     try {
-      await flutterLocalNotificationsPlugin.show(
-        id: DateTime.now().millisecondsSinceEpoch % 2147483647,
-        title: title,
-        body: body,
-        notificationDetails: _notificationDetails(),
-      );
+      final id = DateTime.now().millisecondsSinceEpoch % 2147483647;
+      if (isOhos) {
+        await publishOhosNotification(id: id, title: title, body: body);
+      } else {
+        await flutterLocalNotificationsPlugin.show(
+          id: id,
+          title: title,
+          body: body,
+          notificationDetails: _notificationDetails(),
+        );
+      }
     } catch (e, s) {
       logger.e('追更通知发送失败', error: e, stackTrace: s);
     }

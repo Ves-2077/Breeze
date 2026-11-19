@@ -7,6 +7,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_reorderable_grid_view/widgets/widgets.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:pool/pool.dart';
+import 'package:zephyr/util/ohos.dart';
 import 'package:zephyr/i18n/strings.g.dart';
 import 'package:zephyr/network/http/picture/picture.dart';
 import 'package:zephyr/page/comic_edit/cubit/comic_edit_cubit.dart';
@@ -1451,7 +1452,7 @@ Future<void> _importChapters(BuildContext context, ComicEditCubit cubit) async {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (!Platform.isIOS)
+          if (!Platform.isIOS && !isOhos)
             ListTile(
               leading: const Icon(Icons.folder_open_outlined),
               title: Text(t.bookshelf.importExternalFolder),

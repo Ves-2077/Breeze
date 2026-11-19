@@ -206,7 +206,12 @@ class PluginHomeCubit extends Cubit<PluginHomeState> {
     if (id.isEmpty || id == state.pluginId) {
       return;
     }
-    await writeMemory(id);
+    try {
+      await writeMemory(id);
+    } catch (e) {
+      // 记忆只是偏好：写失败不能让切换流程停在这里。
+      logger.e('[plugin_home] writeMemory($id) failed: $e');
+    }
     if (isClosed) {
       return;
     }

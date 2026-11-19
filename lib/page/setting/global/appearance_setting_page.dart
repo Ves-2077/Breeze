@@ -8,6 +8,7 @@ import 'package:zephyr/i18n/system_locale_service.dart';
 import 'package:zephyr/page/font_setting/view/font_setting_page.dart';
 import 'package:zephyr/page/setting/common/setting_ui.dart';
 import 'package:zephyr/page/setting/global/widgets.dart';
+import 'package:zephyr/util/ohos.dart';
 import 'package:zephyr/widgets/fluent_dropdown.dart';
 import 'package:zephyr/widgets/toast.dart';
 
@@ -31,8 +32,8 @@ class AppearanceSettingPage extends StatelessWidget {
           ),
           _languageTile(context, state, cubit),
           _systemTheme(state, cubit),
-          _dynamicColor(state, cubit),
-          if (!state.dynamicColor) changeThemeColor(context),
+          if (!isOhos) _dynamicColor(state, cubit),
+          if (isOhos || !state.dynamicColor) changeThemeColor(context),
           _comicReadTopContainer(state, cubit),
           _isAMOLED(state, cubit),
           _detailLayout(state, cubit),

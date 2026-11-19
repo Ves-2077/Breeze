@@ -6,8 +6,9 @@ import 'package:file_selector/file_selector.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_sticky_header/flutter_sticky_header.dart';
 import 'package:material_ui/material_ui.dart';
-import 'package:open_file/open_file.dart';
 import 'package:path/path.dart' as p;
+import 'package:zephyr/util/ohos.dart';
+import 'package:zephyr/util/ohos_file_bridge.dart';
 import 'package:zephyr/config/global/global_setting.dart';
 import 'package:zephyr/config/router/router.dart';
 import 'package:zephyr/config/router/router.gr.dart' show ComicEditRoute;
@@ -668,7 +669,7 @@ class _ComicInfoState extends State<_ComicInfo>
   }
 
   Future<ExportType?> _pickExportType() async {
-    if (Platform.isIOS) return ExportType.zip;
+    if (Platform.isIOS || isOhos) return ExportType.zip;
 
     return showDialog<ExportType>(
       context: context,
@@ -698,8 +699,8 @@ class _ComicInfoState extends State<_ComicInfo>
   Future<String?> _pickExportDirectory() async => getDirectoryPath();
 
   Future<String?> _resolveExportDirectory() async {
-    // iOS 无目录选择器，导出到缓存后通过系统分享面板保存
-    if (Platform.isIOS) {
+    // iOS / OHOS 无可用目录选择器，导出到缓存后再系统保存/分享。
+    if (Platform.isIOS || isOhos) {
       return getCachePath();
     }
     final customPath = globalSetting.customExportPath.trim();
@@ -796,6 +797,20 @@ class _ComicInfoState extends State<_ComicInfo>
       final zipFileName = _buildZipFileName();
       final targetZipPath = p.join(exportDir, zipFileName);
 
+      if (isOhos) {
+        final saved = await saveOhosFileToPicker(
+          targetZipPath,
+          suggestedName: zipFileName,
+        );
+        if (saved) {
+          showSuccessToast(t.comicInfo.exportSuccess);
+          try {
+            await File(targetZipPath).delete();
+          } catch (_) {}
+        }
+        return;
+      }
+
       if (Platform.isIOS) {
         // 不写入 cacheZipPath：open_file 在分享面板弹出后即返回，
         // finally 里删除会导致用户还没保存文件就被删掉。
@@ -813,7 +828,7 @@ class _ComicInfoState extends State<_ComicInfo>
         );
 
         // 弹出系统分享面板，用户可「存储到文件」
-        await OpenFile.open(iosZipPath);
+        await openFileWithSystem(iosZipPath);
         showSuccessToast(t.comicInfo.exportSuccess);
         _logExportPath(iosZipPath);
         return;

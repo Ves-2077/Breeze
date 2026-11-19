@@ -9,6 +9,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_speed_dial/flutter_speed_dial.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:path/path.dart' as p;
+import 'package:zephyr/util/ohos.dart';
 import 'package:zephyr/config/global/global_setting.dart';
 import 'package:zephyr/main.dart';
 import 'package:zephyr/i18n/strings.g.dart';
@@ -1117,7 +1118,7 @@ Future<void> _importExternalComic(BuildContext context) async {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (!Platform.isIOS)
+          if (!Platform.isIOS && !isOhos)
             ListTile(
               leading: const Icon(Icons.folder_open_outlined),
               title: Text(t.bookshelf.importExternalFolder),
