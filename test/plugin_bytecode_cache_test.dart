@@ -131,6 +131,33 @@ void main() {
     ]);
   });
 
+  test('缓存目录不存在时自动创建并落盘', () async {
+    // 生产路径 getFilePath()/plugin_bytecode 首次使用时并不存在。
+    final nested = p.join(tempDir.path, PluginBytecodeCache.directoryName);
+    expect(Directory(nested).existsSync(), isFalse);
+    final cache = PluginBytecodeCache(
+      directory: () async => nested,
+      backend: backend,
+    );
+
+    await cache.afterLoad(
+      pluginId: _pluginA,
+      bundleName: _pluginA,
+      source: 'module.exports = {};',
+      pluginDebug: false,
+      result: const QjsBundleInstallResult(usedBytecode: false),
+    );
+
+    final file = File(p.join(nested, '26_${_hash(_pluginA)}.bc'));
+    expect(file.existsSync(), isTrue);
+    expect(await cache.load(pluginId: _pluginA, pluginDebug: false), <int>[
+      1,
+      2,
+      3,
+      4,
+    ]);
+  });
+
   test('编译前删除同插件其它版本的缓存，且不误删其它插件', () async {
     final cache = buildCache();
     final staleA1 = File(p.join(tempDir.path, '25_${_hash(_pluginA)}.bc'))

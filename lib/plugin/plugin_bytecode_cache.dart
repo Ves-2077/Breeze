@@ -196,7 +196,11 @@ class PluginBytecodeCache {
     }
     try {
       await _ensureConfigured();
-      final target = File(await _filePath(pluginId));
+      final directory = await _directory();
+      // 首次使用时 `plugin_bytecode` 目录还不存在。Dart 的 writeAsBytes 不会
+      // 递归创建父目录，缺了这一步缓存会静默写入失败（只留下一条 warning）。
+      await Directory(directory).create(recursive: true);
+      final target = File(p.join(directory, _fileName(pluginId)));
       // 先清掉同一插件其它版本/残留缓存，再编译。
       await _sweep(pluginId: pluginId, keep: p.basename(target.path));
 
