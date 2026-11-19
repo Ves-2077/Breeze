@@ -294,7 +294,7 @@ Future<void> _seedBuiltinPlugins(Database database) async {
     );
   }
 
-  if (upserts.isNotEmpty) await database.plugins.putInfos(upserts);
+  if (upserts.isNotEmpty) await database.plugins.putInfosWithScripts(upserts);
 }
 
 PluginInfo _buildBuiltinPluginInfo(

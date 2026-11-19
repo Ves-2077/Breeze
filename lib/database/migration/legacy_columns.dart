@@ -199,7 +199,6 @@ const Map<String, List<String>> legacyTableColumns = <String, List<String>>{
     'deletedAt',
     'debug',
     'debugUrl',
-    'originScript',
     'getInfoJson',
     'sortOrder',
   ],

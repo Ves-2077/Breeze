@@ -671,7 +671,8 @@ Map<String, Map<String, dynamic>> _extractSyncableSettingsBlocks(
 }
 
 Future<Map<String, dynamic>> _buildPluginBlockData() async {
-  final infos = await database.plugins.listInfos();
+  // 同步负载必须带脚本，只有这条路径使用 with-scripts 查询。
+  final infos = await database.plugins.listInfosWithScripts();
   final configs = await database.plugins.listConfigs();
 
   final deletedUuids = infos
@@ -778,7 +779,8 @@ Future<void> _applyPluginBlockData(Map<String, dynamic> pluginBlockData) async {
     'previousRegistry=${previousSnapshot.length}',
   );
 
-  final localPluginInfos = await database.plugins.listInfos();
+  // 冲突判定与写回都需要脚本，sync apply 是少数确实需要脚本的路径。
+  final localPluginInfos = await database.plugins.listInfosWithScripts();
   final localPluginByUuid = <String, PluginInfo>{
     for (final item in localPluginInfos)
       if (item.uuid.trim().isNotEmpty) item.uuid.trim(): item,
@@ -821,6 +823,7 @@ Future<void> _applyPluginBlockData(Map<String, dynamic> pluginBlockData) async {
   }
 
   final infoUpserts = <PluginInfo>[];
+  final changedScriptUuids = <String>{};
   var skippedDeletedLocal = 0;
   for (final incoming in remotePluginInfos) {
     final uuid = incoming.uuid.trim();
@@ -832,6 +835,9 @@ Future<void> _applyPluginBlockData(Map<String, dynamic> pluginBlockData) async {
     if (existing != null &&
         !_shouldApplyIncomingPluginInfo(existing, incoming)) {
       continue;
+    }
+    if (existing == null || existing.originScript != incoming.originScript) {
+      changedScriptUuids.add(uuid);
     }
     final upsert = PluginInfo(
       id: existing?.id ?? 0,
@@ -856,7 +862,7 @@ Future<void> _applyPluginBlockData(Map<String, dynamic> pluginBlockData) async {
     localPluginByUuid[uuid] = upsert;
   }
   if (infoUpserts.isNotEmpty) {
-    await database.plugins.putInfos(infoUpserts);
+    await database.plugins.putInfosWithScripts(infoUpserts);
   }
 
   final blockedConfigNames = <String>{
@@ -918,6 +924,7 @@ Future<void> _applyPluginBlockData(Map<String, dynamic> pluginBlockData) async {
 
   await PluginRegistryService.I.reconcileAfterExternalSync(
     previousSnapshot: previousSnapshot,
+    changedScriptUuids: changedScriptUuids,
   );
 }
 

@@ -215,11 +215,17 @@ CREATE TABLE IF NOT EXISTS "PluginInfo" (
   "deletedAt" INTEGER,
   "debug" INTEGER NOT NULL DEFAULT 0,
   "debugUrl" TEXT,
-  "originScript" TEXT NOT NULL DEFAULT '',
   "getInfoJson" TEXT NOT NULL DEFAULT '',
   "sortOrder" INTEGER
 );
 CREATE UNIQUE INDEX IF NOT EXISTS "ux_PluginInfo_uuid" ON "PluginInfo" ("uuid");
+
+-- 插件脚本单独存表：列表/状态更新等只读 PluginInfo，不把大段 JS 带进查询。
+CREATE TABLE IF NOT EXISTS "PluginScript" (
+  "uuid" TEXT PRIMARY KEY,
+  "originScript" TEXT NOT NULL DEFAULT '',
+  "revision" TEXT NOT NULL DEFAULT ''
+);
 
 CREATE TABLE IF NOT EXISTS "UnifiedComicDownload" (
   "id" INTEGER PRIMARY KEY AUTOINCREMENT,

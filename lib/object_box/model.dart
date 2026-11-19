@@ -856,6 +856,8 @@ class PluginInfo {
 
   String version;
 
+  /// 插件脚本。PluginInfo 表不存这一列：
+  /// 默认查询返回空串，只有安装/同步/备份或显式 with-script 查询才填充。
   String originScript;
 
   bool lastLoadSuccess;

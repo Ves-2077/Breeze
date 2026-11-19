@@ -29,7 +29,11 @@ void main() {
     expect(row.isEnabled, isTrue);
     expect(row.isDeleted, isFalse);
     expect(row.getInfoJson, contains(kLocalComicPluginName));
-    expect(row.originScript, contains('module.exports'));
+    expect(row.originScript, isEmpty);
+    expect(
+      await database.plugins.getScriptByUuid(kLocalComicPluginId),
+      contains('module.exports'),
+    );
   });
 
   test('幽灵插件被误删/禁用后会恢复', () async {

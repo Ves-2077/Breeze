@@ -48,6 +48,7 @@ Future<void> ensureObjectBoxImport(
     for (final table in legacyTableColumns.keys) {
       await tx.execute('DELETE FROM ${_quote(table)}');
     }
+    await tx.execute('DELETE FROM "PluginScript"');
 
     for (final entry in entities.entries) {
       final table = entry.key;
@@ -69,6 +70,18 @@ Future<void> ensureObjectBoxImport(
         await tx.execute(sql, <Object?>[
           for (final column in present) record[column],
         ]);
+        if (table == 'PluginInfo') {
+          final uuid = record['uuid']?.toString().trim() ?? '';
+          final script = record['originScript']?.toString() ?? '';
+          if (uuid.isNotEmpty && script.trim().isNotEmpty) {
+            await tx.execute(
+              'INSERT INTO "PluginScript" ("uuid","originScript") VALUES (?,?) '
+              'ON CONFLICT("uuid") DO UPDATE SET '
+              '"originScript"=excluded."originScript"',
+              <Object?>[uuid, script],
+            );
+          }
+        }
         imported++;
         count++;
       }

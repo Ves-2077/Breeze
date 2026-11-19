@@ -349,7 +349,11 @@ Future<GlobalSettingState?> _restoreAllData(Map<String, dynamic> json) async {
     PluginConfig.fromJson,
     database.plugins.putConfigs,
   );
-  await putAll('pluginInfo', PluginInfo.fromJson, database.plugins.putInfos);
+  await putAll(
+    'pluginInfo',
+    PluginInfo.fromJson,
+    database.plugins.putInfosWithScripts,
+  );
   await putAll('comicFolder', (j) {
     final folder = ComicFolder.fromJson(j);
     folder.versionVectorJson = bumpVersionVector(folder.versionVectorJson);

@@ -137,7 +137,10 @@ class Database {
         }(),
         'downloadTask': await read(downloadTasks.getAll(), (e) => e.toJson()),
         'pluginConfig': await read(plugins.listConfigs(), (e) => e.toJson()),
-        'pluginInfo': await read(plugins.listInfos(), (e) => e.toJson()),
+        'pluginInfo': await read(
+          plugins.listInfosWithScripts(),
+          (e) => e.toJson(),
+        ),
         'comicFolder': await read(folders.getAll(), (e) => e.toJson()),
         'comicLink': await read(links.getAll(), (e) => e.toJson()),
         'comicReadPreference': await read(

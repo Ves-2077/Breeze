@@ -75,17 +75,19 @@ class PluginBytecodeCache {
     return p.join(await getFilePath(), directoryName);
   }
 
-  /// 读取该插件的字节码缓存；不存在、读取失败或插件处于调试模式时返回 null。
+  /// 读取该插件的字节码缓存；不存在、读取失败、插件调试模式或
+  /// [revision] 为空时返回 null。
   Future<Uint8List?> load({
     required String pluginId,
     required bool pluginDebug,
+    required String revision,
   }) async {
-    if (pluginDebug) {
+    if (pluginDebug || revision.trim().isEmpty) {
       return null;
     }
     try {
       await _ensureConfigured();
-      final file = File(await _filePath(pluginId));
+      final file = File(await _filePath(pluginId, revision));
       if (!await file.exists()) {
         return null;
       }
@@ -110,9 +112,10 @@ class PluginBytecodeCache {
     required String bundleName,
     required String source,
     required bool pluginDebug,
+    required String revision,
     required QjsBundleInstallResult result,
   }) {
-    if (pluginDebug || result.usedBytecode) {
+    if (pluginDebug || result.usedBytecode || revision.trim().isEmpty) {
       return Future<void>.value();
     }
     final bytecodeError = result.bytecodeError?.trim();
@@ -123,6 +126,7 @@ class PluginBytecodeCache {
       pluginId: pluginId,
       bundleName: bundleName,
       source: source,
+      revision: revision,
     );
   }
 
@@ -153,22 +157,24 @@ class PluginBytecodeCache {
     }();
   }
 
-  Future<String> _filePath(String pluginId) async {
+  Future<String> _filePath(String pluginId, String revision) async {
     final directory = await _directory();
-    return p.join(directory, _fileName(pluginId));
+    return p.join(directory, _fileName(pluginId, revision));
   }
 
-  String _fileName(String pluginId) {
+  String _fileName(String pluginId, String revision) {
     final version = _bytecodeVersion ?? backend.bytecodeVersion();
-    return '${version}_${backend.hashPluginId(pluginId)}.bc';
+    return '${version}_${backend.hashPluginId(pluginId)}_$revision.bc';
   }
 
   Future<void> _scheduleCompile({
     required String pluginId,
     required String bundleName,
     required String source,
+    required String revision,
   }) {
-    final existing = _inFlight[pluginId];
+    final key = '$pluginId::$revision';
+    final existing = _inFlight[key];
     if (existing != null) {
       return existing;
     }
@@ -177,12 +183,13 @@ class PluginBytecodeCache {
           pluginId: pluginId,
           bundleName: bundleName,
           source: source,
+          revision: revision,
         ).whenComplete(() {
           // 注意：这里必须用块体。箭头函数会返回 `Map.remove` 的结果（正是当前
           // future 自身），whenComplete 会去 await 它，导致永远不完成。
-          _inFlight.remove(pluginId);
+          _inFlight.remove(key);
         });
-    _inFlight[pluginId] = future;
+    _inFlight[key] = future;
     return future;
   }
 
@@ -190,8 +197,9 @@ class PluginBytecodeCache {
     required String pluginId,
     required String bundleName,
     required String source,
+    required String revision,
   }) async {
-    if (source.trim().isEmpty) {
+    if (source.trim().isEmpty || revision.trim().isEmpty) {
       return;
     }
     try {
@@ -200,7 +208,7 @@ class PluginBytecodeCache {
       // 首次使用时 `plugin_bytecode` 目录还不存在。Dart 的 writeAsBytes 不会
       // 递归创建父目录，缺了这一步缓存会静默写入失败（只留下一条 warning）。
       await Directory(directory).create(recursive: true);
-      final target = File(p.join(directory, _fileName(pluginId)));
+      final target = File(p.join(directory, _fileName(pluginId, revision)));
       // 先清掉同一插件其它版本/残留缓存，再编译。
       await _sweep(pluginId: pluginId, keep: p.basename(target.path));
 
@@ -230,7 +238,9 @@ class PluginBytecodeCache {
     if (!await directory.exists()) {
       return;
     }
-    final suffix = '_${backend.hashPluginId(pluginId)}.bc';
+    final hash = backend.hashPluginId(pluginId);
+    final legacySuffix = '_$hash.bc';
+    final revisionMarker = '_${hash}_';
     await for (final entity in directory.list(followLinks: false)) {
       if (entity is! File) {
         continue;
@@ -239,7 +249,12 @@ class PluginBytecodeCache {
       if (keep != null && name == keep) {
         continue;
       }
-      if (!name.endsWith(suffix) && !name.endsWith('$suffix.tmp')) {
+      final isRevisioned =
+          name.contains(revisionMarker) &&
+          (name.endsWith('.bc') || name.endsWith('.bc.tmp'));
+      if (!isRevisioned &&
+          !name.endsWith(legacySuffix) &&
+          !name.endsWith('$legacySuffix.tmp')) {
         continue;
       }
       await _deleteQuietly(entity);

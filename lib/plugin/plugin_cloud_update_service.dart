@@ -208,8 +208,7 @@ class PluginCloudUpdateService {
     );
 
     if (info == null) {
-      final local = PluginRegistryService.I.getByUuid(uuid);
-      final script = local?.originScript.trim() ?? '';
+      final script = (await database.plugins.getScriptByUuid(uuid)).trim();
       if (script.isNotEmpty) {
         try {
           info = await callGetInfoByGlobalQjs(script);

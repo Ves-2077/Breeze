@@ -16,6 +16,8 @@
 //! 加载时执行这段程序拿到包装函数，再用同样的三个参数调用。
 
 use std::ffi::{CString, c_void};
+use std::sync::LazyLock;
+use std::sync::mpsc;
 
 use rquickjs::qjs;
 use rquickjs::{AsyncContext, AsyncRuntime, Ctx, Value as JsValue};
@@ -122,10 +124,11 @@ pub async fn compile_bundle(
     Ok(encode(&header, &payload))
 }
 
-/// 校验 blob 是否可用于当前源码，返回裸 JS 字节码。
-///
-/// 任一维度不符都返回具体原因，调用方据此回退源码并重新编译。
-pub fn validate<'a>(blob: &'a [u8], source: &str, app_version: &str) -> Result<&'a [u8], String> {
+/// 校验 blob 头（格式 / 引擎字节码版本 / 引擎版本 / 应用版本）。
+fn validate_header<'a>(
+    blob: &'a [u8],
+    app_version: &str,
+) -> Result<(BundleBytecodeHeader, &'a [u8]), String> {
     let (header, payload) = decode(blob)?;
 
     let expected_version = engine_bytecode_version();
@@ -157,6 +160,15 @@ pub fn validate<'a>(blob: &'a [u8], source: &str, app_version: &str) -> Result<&
         .to_string());
     }
 
+    Ok((header, payload))
+}
+
+/// 校验 blob 是否可用于当前源码，返回裸 JS 字节码。
+///
+/// 任一维度不符都返回具体原因，调用方据此回退源码并重新编译。
+pub fn validate<'a>(blob: &'a [u8], source: &str, app_version: &str) -> Result<&'a [u8], String> {
+    let (header, payload) = validate_header(blob, app_version)?;
+
     let expected_hash = source_fingerprint(source);
     if header.source_hash != expected_hash {
         return Err(crate::tr!(
@@ -168,6 +180,14 @@ pub fn validate<'a>(blob: &'a [u8], source: &str, app_version: &str) -> Result<&
     }
 
     Ok(payload)
+}
+
+/// 不比对源码指纹的校验。
+///
+/// 只有宿主用脚本 revision 给字节码命名、能保证文件对应当前脚本时才可用；
+/// 引擎与应用版本仍然强校验。返回裸 JS 字节码。
+pub fn validate_without_source<'a>(blob: &'a [u8], app_version: &str) -> Result<&'a [u8], String> {
+    validate_header(blob, app_version).map(|(_, payload)| payload)
 }
 
 /// 用字节码加载 bundle。
@@ -285,40 +305,75 @@ impl<'a> Cursor<'a> {
     }
 }
 
-/// 在独立线程 + 独立 runtime 里编译，避免占用调用方的 tokio worker。
-async fn compile_script(filename: &str, script: &str) -> Result<Vec<u8>, String> {
-    let script = script.to_owned();
-    let filename = filename.to_owned();
-    let (tx, rx) = tokio::sync::oneshot::channel::<Result<Vec<u8>, String>>();
+struct CompileJob {
+    filename: String,
+    script: String,
+    reply: tokio::sync::oneshot::Sender<Result<Vec<u8>, String>>,
+}
 
+/// 全局单 worker 编译池：所有插件共用同一个操作系统线程，同一时刻最多编译一个。
+///
+/// 编译任务通过 channel 排队，worker 线程持有独立的 current-thread tokio runtime；
+/// 每个任务内部仍创建独立的 QuickJS runtime，任务之间不共享 JS 状态。
+static COMPILE_WORKER: LazyLock<Result<mpsc::Sender<CompileJob>, String>> = LazyLock::new(|| {
+    let (tx, rx) = mpsc::channel::<CompileJob>();
     std::thread::Builder::new()
         .name("qjs-bytecode-compile".to_string())
-        .spawn(move || {
-            let outcome = (|| -> Result<Vec<u8>, String> {
-                let rt = tokio::runtime::Builder::new_current_thread()
-                    .enable_all()
-                    .build()
-                    .map_err(|e| {
-                        crate::tr!("failed-to-create-bytecode-compile-runtime", e = e).to_string()
-                    })?;
-                rt.block_on(async move {
-                    let runtime = AsyncRuntime::new().map_err(|e| {
-                        crate::tr!("failed-to-initialize-asyncruntime", e = e).to_string()
-                    })?;
-                    let context = AsyncContext::full(&runtime).await.map_err(|e| {
-                        crate::tr!("failed-to-initialize-asynccontext", e = e).to_string()
-                    })?;
-                    let bytecode = context
-                        .with(|ctx| write_compiled_bytecode(&ctx, &script, &filename))
-                        .await;
-                    drop(context);
-                    drop(runtime);
-                    bytecode
-                })
-            })();
-            let _ = tx.send(outcome);
+        .spawn(move || run_compile_worker(rx))
+        .map(|_| tx)
+        .map_err(|e| crate::tr!("failed-to-spawn-bytecode-compile-thread", e = e).to_string())
+});
+
+fn compile_worker_sender() -> Result<&'static mpsc::Sender<CompileJob>, String> {
+    COMPILE_WORKER.as_ref().map_err(|err| err.clone())
+}
+
+fn run_compile_worker(rx: mpsc::Receiver<CompileJob>) {
+    let rt = match tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+    {
+        Ok(rt) => rt,
+        Err(e) => {
+            let message =
+                crate::tr!("failed-to-create-bytecode-compile-runtime", e = e).to_string();
+            for job in rx {
+                let _ = job.reply.send(Err(message.clone()));
+            }
+            return;
+        }
+    };
+
+    while let Ok(job) = rx.recv() {
+        let outcome = rt.block_on(compile_job(&job.filename, &job.script));
+        let _ = job.reply.send(outcome);
+    }
+}
+
+async fn compile_job(filename: &str, script: &str) -> Result<Vec<u8>, String> {
+    let runtime = AsyncRuntime::new()
+        .map_err(|e| crate::tr!("failed-to-initialize-asyncruntime", e = e).to_string())?;
+    let context = AsyncContext::full(&runtime)
+        .await
+        .map_err(|e| crate::tr!("failed-to-initialize-asynccontext", e = e).to_string())?;
+    let bytecode = context
+        .with(|ctx| write_compiled_bytecode(&ctx, script, filename))
+        .await;
+    drop(context);
+    drop(runtime);
+    bytecode
+}
+
+/// 把编译任务投递给全局单 worker，并等待结果。
+async fn compile_script(filename: &str, script: &str) -> Result<Vec<u8>, String> {
+    let (tx, rx) = tokio::sync::oneshot::channel::<Result<Vec<u8>, String>>();
+    compile_worker_sender()?
+        .send(CompileJob {
+            filename: filename.to_owned(),
+            script: script.to_owned(),
+            reply: tx,
         })
-        .map_err(|e| crate::tr!("failed-to-spawn-bytecode-compile-thread", e = e).to_string())?;
+        .map_err(|_| crate::tr!("bytecode-compile-thread-exited").to_string())?;
 
     rx.await
         .map_err(|_| crate::tr!("bytecode-compile-thread-exited").to_string())?

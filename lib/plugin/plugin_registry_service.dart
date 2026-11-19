@@ -10,6 +10,7 @@ import 'package:zephyr/page/bookshelf/service/comic_link_service.dart';
 import 'package:zephyr/plugin/local_comic_plugin.dart';
 import 'package:zephyr/plugin/models/plugin_runtime_state.dart';
 import 'package:zephyr/plugin/plugin_bytecode_cache.dart';
+import 'package:zephyr/plugin/plugin_runtime_loader.dart';
 import 'package:zephyr/src/rust/api/qjs.dart';
 import 'package:zephyr/src/rust/qjs.dart';
 import 'package:zephyr/util/get_path.dart';
@@ -141,6 +142,7 @@ class PluginRegistryService {
 
   Future<void> reconcileAfterExternalSync({
     Map<String, PluginRuntimeState>? previousSnapshot,
+    Set<String> changedScriptUuids = const <String>{},
   }) async {
     final previous = Map<String, PluginRuntimeState>.from(
       previousSnapshot ?? snapshot,
@@ -157,7 +159,8 @@ class PluginRegistryService {
         return true;
       }
       return before.version != after.version ||
-          before.originScript != after.originScript ||
+          before.updatedAt != after.updatedAt ||
+          changedScriptUuids.contains(uuid) ||
           before.isEnabled != after.isEnabled ||
           before.isDeleted != after.isDeleted ||
           before.debug != after.debug ||
@@ -288,13 +291,18 @@ class PluginRegistryService {
     final onceRuntimeName = 'plugin_info_${uuid.replaceAll('-', '_')}';
     Map<String, dynamic> decoded;
     try {
-      final bundleJs = await _resolveBundleJs(plugin);
+      // getInfo 预热也走常驻 runtime：字节码命中时不读完整脚本。
+      await installPluginRuntimeBundle(
+        pluginId: uuid,
+        runtimeName: onceRuntimeName,
+        pluginDebug: plugin.debug,
+        loadSource: () => _resolveBundleJs(plugin),
+      );
       final result = await qjsTaskCall(
         runtimeName: onceRuntimeName,
         source: uuid,
         taskGroupKey: '',
-        isOnce: true,
-        bundleJs: bundleJs,
+        isOnce: false,
         fnPath: 'getInfo',
         argsJson: '{}',
       );
@@ -466,7 +474,7 @@ class PluginRegistryService {
   }
 
   Future<void> upsert(PluginInfo info) async {
-    await database.plugins.putInfo(info);
+    await database.plugins.putInfoWithScript(info);
     _persistedInfoJson[info.uuid] = info.getInfoJson.trim();
     _states[info.uuid] = _toState(info);
     _dropInfoCache(info.uuid);
@@ -565,14 +573,17 @@ class PluginRegistryService {
     }
 
     final runtimeName = resolveRuntimeName(uuid);
-    try {
-      final runtimeReady = await isQjsRuntimeInitialized(name: runtimeName);
-      if (runtimeReady) {
-        await qjsDropRuntime(runtimeName: runtimeName);
+    final infoRuntimeName = 'plugin_info_${uuid.replaceAll('-', '_')}';
+    for (final name in <String>[runtimeName, infoRuntimeName]) {
+      try {
+        final runtimeReady = await isQjsRuntimeInitialized(name: name);
+        if (runtimeReady) {
+          await qjsDropRuntime(runtimeName: name);
+        }
+      } catch (e, st) {
+        logger.e(e, stackTrace: st);
+        // runtime 失败不阻断删除主流程
       }
-    } catch (e, st) {
-      logger.e(e, stackTrace: st);
-      // runtime 失败不阻断删除主流程
     }
 
     await PluginBytecodeCache.instance.delete(runtimeName);
@@ -590,7 +601,8 @@ class PluginRegistryService {
       ..updatedAt = now
       ..lastLoadSuccess = false
       ..lastLoadError = null;
-    await database.plugins.putInfo(found);
+    // 空脚本会让 putInfoWithScript 在同一事务里删除 PluginScript 行。
+    await database.plugins.putInfoWithScript(found);
     _states[uuid] = _toState(found);
     _dropInfoCache(uuid);
     _pluginInitDone.remove(uuid);
@@ -717,30 +729,11 @@ class PluginRegistryService {
     PluginRuntimeState plugin, {
     required String runtimeName,
   }) async {
-    final bundleJs = await _resolveBundleJs(plugin);
-    final bytecode = await PluginBytecodeCache.instance.load(
-      pluginId: runtimeName,
+    await installPluginRuntimeBundle(
+      pluginId: plugin.uuid,
+      runtimeName: runtimeName,
       pluginDebug: plugin.debug,
-    );
-    final installResult = await buildQjsRuntime(
-      request: QjsRuntimeBuildRequest(
-        runtimeName: runtimeName,
-        injectFilesystem: false,
-        bundle: QjsRuntimeBundleBuild(
-          bundleName: runtimeName,
-          bundleJs: bundleJs,
-          bytecode: bytecode,
-        ),
-      ),
-    );
-    unawaited(
-      PluginBytecodeCache.instance.afterLoad(
-        pluginId: runtimeName,
-        bundleName: runtimeName,
-        source: bundleJs,
-        pluginDebug: plugin.debug,
-        result: installResult,
-      ),
+      loadSource: () => _resolveBundleJs(plugin),
     );
     _pluginInitDone.remove(plugin.uuid);
     _clearInitOk(plugin.uuid);
@@ -812,7 +805,7 @@ class PluginRegistryService {
       }
     }
 
-    final dbBundle = _loadPluginBundleFromDb(plugin.uuid);
+    final dbBundle = await _loadPluginBundleFromDb(plugin.uuid);
     if (dbBundle != null) {
       logger.d('[plugin-bundle] source=db plugin=${plugin.uuid}');
       return dbBundle;
@@ -821,8 +814,8 @@ class PluginRegistryService {
     throw StateError('bundle_js不能为空: ${plugin.uuid}');
   }
 
-  String? _loadPluginBundleFromDb(String pluginId) {
-    final text = _states[pluginId]?.originScript ?? '';
+  Future<String?> _loadPluginBundleFromDb(String pluginId) async {
+    final text = await database.plugins.getScriptByUuid(pluginId);
     if (text.trim().isEmpty) {
       return null;
     }
@@ -833,7 +826,6 @@ class PluginRegistryService {
     return PluginRuntimeState(
       uuid: item.uuid,
       version: item.version,
-      originScript: item.originScript,
       isEnabled: item.isEnabled,
       isDeleted: item.isDeleted,
       debug: item.debug,

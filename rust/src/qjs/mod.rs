@@ -310,7 +310,7 @@ impl QjsRuntimeBuilder {
                     "bundle_name-cannot-be-empty"
                 )));
             }
-            if bundle.bundle_js.trim().is_empty() {
+            if bundle.bundle_js.trim().is_empty() && bundle.bytecode.is_none() {
                 return Err(anyhow!(rquickjs_playground::tr!(
                     "bundle_js-cannot-be-empty"
                 )));
@@ -865,7 +865,7 @@ async fn create_qjs_runtime_with_bundle_and_options(
             "bundle_name-cannot-be-empty"
         )));
     }
-    if bundle_js.trim().is_empty() {
+    if bundle_js.trim().is_empty() && bundle_bytecode.is_none() {
         return Err(anyhow!(rquickjs_playground::tr!(
             "bundle_js-cannot-be-empty"
         )));
@@ -1021,6 +1021,26 @@ async fn install_bundle(
 ) -> Result<QjsBundleInstallResult> {
     if let Some(bytecode) = bundle_bytecode {
         let app_version = bytecode_app_version();
+        if bundle_js.trim().is_empty() {
+            // 宿主用脚本 revision 命名字节码文件，revision 命中即代表对应当前
+            // 源码；这里只校验引擎/应用版本，加载失败再由 Dart 回退源码。
+            let payload =
+                rquickjs_playground::bytecode::validate_without_source(bytecode, &app_version)
+                    .map_err(|err| anyhow!(err))?;
+            runtime
+                .bundle_load_bytecode(name, "", payload)
+                .await
+                .map_err(|err| {
+                    anyhow!(rquickjs_playground::tr!(
+                        "failed-to-load-qjs-bundle",
+                        err = err
+                    ))
+                })?;
+            return Ok(QjsBundleInstallResult {
+                used_bytecode: true,
+                bytecode_error: None,
+            });
+        }
         match rquickjs_playground::bytecode::load_bundle(
             runtime,
             name,
@@ -1045,6 +1065,12 @@ async fn install_bundle(
                 });
             }
         }
+    }
+
+    if bundle_js.trim().is_empty() {
+        return Err(anyhow!(rquickjs_playground::tr!(
+            "bundle_js-cannot-be-empty"
+        )));
     }
 
     load_bundle_inner(runtime, name, bundle_js).await?;
@@ -2031,7 +2057,8 @@ mod tests {
     use std::time::{Duration, Instant};
 
     use super::{
-        init_rust_functions, qjs_drop_runtime, qjs_fetch_image, qjs_task_call, set_http_proxy,
+        QjsRuntimeBuilder, QjsRuntimeBundleBuild, init_rust_functions, qjs_drop_runtime,
+        qjs_fetch_image, qjs_task_call, set_bytecode_app_version, set_http_proxy,
     };
     use rquickjs_playground::HttpClientConfig;
 
@@ -2300,6 +2327,45 @@ mod tests {
         assert_eq!(parsed["numbers"], json!([2, 1]));
         assert_eq!(parsed["isByteArray"], true);
         assert_eq!(parsed["isWebp"], true);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn bytecode_only_bundle_runs_without_source() {
+        let runtime_name = format!("test-qjs-bytecode-only-{}", std::process::id());
+        let app_version = "test-bytecode-only-app";
+        set_bytecode_app_version(app_version.to_string());
+        let source = "module.exports = { run: () => ({ ok: true }) };";
+        let blob =
+            rquickjs_playground::bytecode::compile_bundle(&runtime_name, source, app_version)
+                .await
+                .expect("compile bundle bytecode");
+
+        let install = QjsRuntimeBuilder::new(&runtime_name)
+            .with_bundle(QjsRuntimeBundleBuild {
+                bundle_name: runtime_name.clone(),
+                bundle_js: String::new(),
+                bytecode: Some(blob),
+            })
+            .build()
+            .await
+            .expect("build runtime from bytecode only");
+        assert!(install.used_bytecode);
+
+        let output = qjs_task_call(
+            runtime_name.clone(),
+            "test-bytecode-only".to_string(),
+            false,
+            None,
+            None,
+            "run".to_string(),
+            "[]".to_string(),
+        )
+        .await;
+        qjs_drop_runtime(runtime_name)
+            .await
+            .expect("drop bytecode-only runtime");
+        let parsed: Value = serde_json::from_slice(&output.expect("call")).expect("parse result");
+        assert_eq!(parsed["ok"], true);
     }
 
     #[test]

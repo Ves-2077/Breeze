@@ -52,7 +52,7 @@ Future<void> ensureLocalComicPluginInstalled() async {
   final existing = await database.plugins.getInfoByUuid(kLocalComicPluginId);
   final now = DateTime.now().toUtc();
   if (existing == null) {
-    await database.plugins.putInfo(
+    await database.plugins.putInfoWithScript(
       PluginInfo(
         uuid: kLocalComicPluginId,
         version: kLocalComicPluginVersion,
@@ -81,9 +81,15 @@ Future<void> ensureLocalComicPluginInstalled() async {
     existing.isEnabled = true;
     changed = true;
   }
-  if (existing.originScript.trim().isEmpty) {
+
+  final currentScript = await database.plugins.getScriptByUuid(
+    kLocalComicPluginId,
+  );
+  var scriptChanged = false;
+  if (currentScript.trim().isEmpty) {
     existing.originScript = _kLocalComicBundle;
     changed = true;
+    scriptChanged = true;
   }
   if (existing.getInfoJson.trim().isEmpty) {
     existing.getInfoJson = jsonEncode(localComicPluginInfo());
@@ -95,9 +101,14 @@ Future<void> ensureLocalComicPluginInstalled() async {
       ..originScript = _kLocalComicBundle
       ..getInfoJson = jsonEncode(localComicPluginInfo());
     changed = true;
+    scriptChanged = true;
   }
   if (changed) {
     existing.updatedAt = now;
-    await database.plugins.putInfo(existing);
+    if (scriptChanged) {
+      await database.plugins.putInfoWithScript(existing);
+    } else {
+      await database.plugins.putInfo(existing);
+    }
   }
 }

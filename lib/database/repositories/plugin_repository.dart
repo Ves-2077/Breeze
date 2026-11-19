@@ -1,21 +1,31 @@
+import 'package:uuid/uuid.dart';
 import 'package:zephyr/database/db.dart';
 import 'package:zephyr/database/query_isolate.dart';
 import 'package:zephyr/database/row_codec.dart';
 import 'package:zephyr/object_box/model.dart';
 
+const _pluginInfoColumns =
+    '"id","version","insertedAt","updatedAt","isEnabled","isDeleted","uuid",'
+    '"lastLoadSuccess","lastLoadError","deletedAt","debug","debugUrl",'
+    '"getInfoJson","sortOrder"';
+
+const _pluginInfoWithScriptSelect =
+    'SELECT i.*, COALESCE(s."originScript", \'\') AS "originScript" '
+    'FROM "PluginInfo" i LEFT JOIN "PluginScript" s ON s."uuid" = i."uuid"';
+
 const _pluginInfoInsert =
     'INSERT INTO "PluginInfo" '
     '("version","insertedAt","updatedAt","isEnabled","isDeleted","uuid",'
     '"lastLoadSuccess","lastLoadError","deletedAt","debug","debugUrl",'
-    '"originScript","getInfoJson","sortOrder") '
-    'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)';
+    '"getInfoJson","sortOrder") '
+    'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)';
 
 const _pluginInfoUpsert =
     'INSERT INTO "PluginInfo" '
     '("id","version","insertedAt","updatedAt","isEnabled","isDeleted","uuid",'
     '"lastLoadSuccess","lastLoadError","deletedAt","debug","debugUrl",'
-    '"originScript","getInfoJson","sortOrder") '
-    'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) '
+    '"getInfoJson","sortOrder") '
+    'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) '
     'ON CONFLICT("id") DO UPDATE SET '
     '"version"=excluded."version","insertedAt"=excluded."insertedAt",'
     '"updatedAt"=excluded."updatedAt","isEnabled"=excluded."isEnabled",'
@@ -23,8 +33,15 @@ const _pluginInfoUpsert =
     '"lastLoadSuccess"=excluded."lastLoadSuccess",'
     '"lastLoadError"=excluded."lastLoadError","deletedAt"=excluded."deletedAt",'
     '"debug"=excluded."debug","debugUrl"=excluded."debugUrl",'
-    '"originScript"=excluded."originScript","getInfoJson"=excluded."getInfoJson",'
-    '"sortOrder"=excluded."sortOrder"';
+    '"getInfoJson"=excluded."getInfoJson","sortOrder"=excluded."sortOrder"';
+
+const _pluginScriptUpsert =
+    'INSERT INTO "PluginScript" ("uuid","originScript","revision") '
+    'VALUES (?,?,?) '
+    'ON CONFLICT("uuid") DO UPDATE SET '
+    '"originScript"=excluded."originScript","revision"=excluded."revision"';
+
+const _pluginScriptDelete = 'DELETE FROM "PluginScript" WHERE "uuid" = ?';
 
 const _pluginConfigInsert =
     'INSERT INTO "PluginConfig" ("name","config") VALUES (?,?)';
@@ -42,32 +59,69 @@ class PluginRepository {
   static const String infoTable = 'PluginInfo';
   static const String configTable = 'PluginConfig';
 
+  /// 只读元数据，不 JOIN 脚本表。列表、排序、启用状态等 UI 查询走这里。
   Future<List<PluginInfo>> listInfos() => runDbRead(
     db,
-    sql: 'SELECT * FROM "PluginInfo" ORDER BY "id"',
+    sql: 'SELECT $_pluginInfoColumns FROM "PluginInfo" ORDER BY "id"',
+    decode: _decodeInfos,
+  );
+
+  /// 同步/备份等确实需要脚本的场景：一次性把脚本和元数据取回。
+  Future<List<PluginInfo>> listInfosWithScripts() => runDbRead(
+    db,
+    sql: '$_pluginInfoWithScriptSelect ORDER BY i."id"',
     decode: _decodeInfos,
   );
 
   Future<PluginInfo?> getInfoById(int id) => runDbRead(
     db,
-    sql: 'SELECT * FROM "PluginInfo" WHERE "id" = ? LIMIT 1',
+    sql: 'SELECT $_pluginInfoColumns FROM "PluginInfo" WHERE "id" = ? LIMIT 1',
     params: <Object?>[id],
     decode: _decodeInfoFirst,
   );
 
   Future<PluginInfo?> getInfoByUuid(String uuid) => runDbRead(
     db,
-    sql: 'SELECT * FROM "PluginInfo" WHERE "uuid" = ? LIMIT 1',
+    sql:
+        'SELECT $_pluginInfoColumns FROM "PluginInfo" '
+        'WHERE "uuid" = ? LIMIT 1',
     params: <Object?>[uuid],
     decode: _decodeInfoFirst,
   );
 
+  /// 元数据 + 脚本；仅在需要执行/比较脚本时使用。
+  Future<PluginInfo?> getInfoWithScriptByUuid(String uuid) => runDbRead(
+    db,
+    sql: '$_pluginInfoWithScriptSelect WHERE i."uuid" = ? LIMIT 1',
+    params: <Object?>[uuid],
+    decode: _decodeInfoFirst,
+  );
+
+  /// 按 uuid 读取脚本；不存在或为空时返回空串。
+  Future<String> getScriptByUuid(String uuid) => runDbRead(
+    db,
+    sql: 'SELECT "originScript" FROM "PluginScript" WHERE "uuid" = ? LIMIT 1',
+    params: <Object?>[uuid],
+    decode: _decodeScript,
+  );
+
+  /// 当前脚本 revision；字节码缓存按它命名，脚本一变 revision 就变。
+  Future<String> getScriptRevisionByUuid(String uuid) => runDbRead(
+    db,
+    sql: 'SELECT "revision" FROM "PluginScript" WHERE "uuid" = ? LIMIT 1',
+    params: <Object?>[uuid],
+    decode: _decodeRevision,
+  );
+
   Future<List<PluginInfo>> listDeletedInfos() => runDbRead(
     db,
-    sql: 'SELECT * FROM "PluginInfo" WHERE "isDeleted" = 1 ORDER BY "id"',
+    sql:
+        'SELECT $_pluginInfoColumns FROM "PluginInfo" '
+        'WHERE "isDeleted" = 1 ORDER BY "id"',
     decode: _decodeInfos,
   );
 
+  /// 只写元数据，不触碰 [PluginScript]；用于启用状态、getInfo 缓存等更新。
   Future<int> putInfo(PluginInfo value) async {
     if (value.id > 0) {
       await db.execute(_pluginInfoUpsert, _infoParams(value, includeId: true));
@@ -81,6 +135,16 @@ class PluginRepository {
     return value.id;
   }
 
+  /// 元数据 + 脚本一起写；安装、更新、恢复等场景使用。
+  Future<int> putInfoWithScript(PluginInfo value) {
+    return db.transaction((tx) async {
+      final id = await _putInfoInTx(tx, value);
+      await _putScriptInTx(tx, value.uuid, value.originScript);
+      return id;
+    });
+  }
+
+  /// 只写元数据；脚本保持不变。
   Future<List<int>> putInfos(List<PluginInfo> values) async {
     if (values.isEmpty) return const <int>[];
     return db.transaction((tx) async {
@@ -92,27 +156,74 @@ class PluginRepository {
     });
   }
 
-  Future<int> removeInfoById(int id) async {
-    final result = await db.execute(
-      'DELETE FROM "PluginInfo" WHERE "id" = ?',
-      <Object?>[id],
-    );
+  /// 元数据 + 脚本一起写；同步、备份恢复等场景使用。
+  Future<List<int>> putInfosWithScripts(List<PluginInfo> values) async {
+    if (values.isEmpty) return const <int>[];
+    return db.transaction((tx) async {
+      final ids = <int>[];
+      for (final value in values) {
+        ids.add(await _putInfoInTx(tx, value));
+        await _putScriptInTx(tx, value.uuid, value.originScript);
+      }
+      return ids;
+    });
+  }
+
+  Future<int> putScript(String uuid, String originScript) async {
+    if (originScript.trim().isEmpty) {
+      return removeScriptByUuid(uuid);
+    }
+    final result = await db.execute(_pluginScriptUpsert, <Object?>[
+      uuid,
+      originScript,
+      const Uuid().v4(),
+    ]);
     return result.changes;
+  }
+
+  Future<int> removeScriptByUuid(String uuid) async {
+    final result = await db.execute(_pluginScriptDelete, <Object?>[uuid]);
+    return result.changes;
+  }
+
+  Future<int> removeInfoById(int id) async {
+    return db.transaction((tx) async {
+      await tx.execute(
+        'DELETE FROM "PluginScript" WHERE "uuid" IN '
+        '(SELECT "uuid" FROM "PluginInfo" WHERE "id" = ?)',
+        <Object?>[id],
+      );
+      final result = await tx.execute(
+        'DELETE FROM "PluginInfo" WHERE "id" = ?',
+        <Object?>[id],
+      );
+      return result.changes;
+    });
   }
 
   Future<int> removeInfosByIds(List<int> ids) async {
     if (ids.isEmpty) return 0;
     final marks = List.filled(ids.length, '?').join(',');
-    final result = await db.execute(
-      'DELETE FROM "PluginInfo" WHERE "id" IN ($marks)',
-      ids,
-    );
-    return result.changes;
+    return db.transaction((tx) async {
+      await tx.execute(
+        'DELETE FROM "PluginScript" WHERE "uuid" IN '
+        '(SELECT "uuid" FROM "PluginInfo" WHERE "id" IN ($marks))',
+        ids,
+      );
+      final result = await tx.execute(
+        'DELETE FROM "PluginInfo" WHERE "id" IN ($marks)',
+        ids,
+      );
+      return result.changes;
+    });
   }
 
   Future<int> removeAllInfos() async {
-    final result = await db.execute('DELETE FROM "PluginInfo"');
-    return result.changes;
+    return db.transaction((tx) async {
+      await tx.execute('DELETE FROM "PluginScript"');
+      final result = await tx.execute('DELETE FROM "PluginInfo"');
+      return result.changes;
+    });
   }
 
   Future<List<PluginConfig>> listConfigs() => runDbRead(
@@ -199,6 +310,22 @@ class PluginRepository {
     return value.id;
   }
 
+  Future<void> _putScriptInTx(
+    DbTransaction tx,
+    String uuid,
+    String originScript,
+  ) async {
+    if (originScript.trim().isEmpty) {
+      await tx.execute(_pluginScriptDelete, <Object?>[uuid]);
+      return;
+    }
+    await tx.execute(_pluginScriptUpsert, <Object?>[
+      uuid,
+      originScript,
+      const Uuid().v4(),
+    ]);
+  }
+
   List<Object?> _infoParams(PluginInfo v, {required bool includeId}) {
     return <Object?>[
       if (includeId) v.id,
@@ -213,7 +340,6 @@ class PluginRepository {
       dateToDb(v.deletedAt),
       boolToDb(v.debug),
       v.debugUrl,
-      v.originScript,
       v.getInfoJson,
       v.sortOrder,
     ];
@@ -254,6 +380,16 @@ class PluginRepository {
 
   static List<PluginInfo> _decodeInfos(List<Map<String, dynamic>> rows) =>
       rows.map(_decodeInfo).toList();
+
+  static String _decodeScript(List<Map<String, dynamic>> rows) {
+    if (rows.isEmpty) return '';
+    return rows.first['originScript'] as String? ?? '';
+  }
+
+  static String _decodeRevision(List<Map<String, dynamic>> rows) {
+    if (rows.isEmpty) return '';
+    return rows.first['revision'] as String? ?? '';
+  }
 
   static PluginInfo? _decodeInfoFirst(List<Map<String, dynamic>> rows) =>
       rows.isEmpty ? null : _decodeInfo(rows.first);
