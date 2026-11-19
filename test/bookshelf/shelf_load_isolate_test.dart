@@ -10,6 +10,7 @@ Future<ShelfLoadResult> _load(
   String currentPath = '',
   int offset = 0,
   int limit = 2000,
+  List<String> sources = const <String>[],
 }) {
   return loadShelfInIsolate(
     ShelfLoadTask(
@@ -18,7 +19,7 @@ Future<ShelfLoadResult> _load(
       currentPath: currentPath,
       keyword: '',
       sort: 'dd',
-      sources: const <String>[],
+      sources: sources,
       offset: offset,
       limit: limit,
     ),
@@ -187,5 +188,47 @@ void main() {
     expect(inside.folders.map((f) => f.name), contains('B'));
     expect(inside.comics, hasLength(1));
     expect(inside.comics.single.id, favorite.comicId);
+  });
+
+  test('文件夹漫画数跟随来源筛选并跳过已软删漫画', () async {
+    final now = DateTime.now().toUtc().millisecondsSinceEpoch;
+    await database.folders.put(
+      ComicFolder(
+        syncId: 'sync-a',
+        parentSyncId: '',
+        uniqueKey: '|A|favorite',
+        name: 'A',
+        typeData: ComicFolderType.favorite.name,
+        versionVectorJson: '{}',
+        createdAt: now,
+        updatedAt: now,
+      ),
+    );
+    final sourceA = createTestFavorite('src-a:1', source: 'src-a');
+    final sourceB = createTestFavorite('src-b:1', source: 'src-b');
+    final deleted = createTestFavorite(
+      'src-a:2',
+      source: 'src-a',
+      deleted: true,
+    );
+    await database.favorites.putMany([sourceA, sourceB, deleted]);
+    await database.links.putMany([
+      for (final favorite in [sourceA, sourceB, deleted])
+        ComicLink(
+          uniqueKey: '${favorite.uniqueKey}|sync-a|favorite',
+          comicUniqueKey: favorite.uniqueKey,
+          folderSyncId: 'sync-a',
+          typeData: ComicFolderType.favorite.name,
+          versionVectorJson: '{}',
+          createdAt: now,
+          updatedAt: now,
+        ),
+    ]);
+
+    final all = await _load('favorite');
+    expect(all.folderComicCounts['/A'], 2);
+
+    final filtered = await _load('favorite', sources: ['src-a']);
+    expect(filtered.folderComicCounts['/A'], 1);
   });
 }

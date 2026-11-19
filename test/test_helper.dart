@@ -48,12 +48,13 @@ class TestDatabaseHelper {
 UnifiedComicFavorite createTestFavorite(
   String uniqueKey, {
   bool deleted = false,
+  String source = 'test',
   DateTime? updatedAt,
 }) {
   final now = updatedAt ?? DateTime.now().toUtc();
   return UnifiedComicFavorite(
     uniqueKey: uniqueKey,
-    source: 'test',
+    source: source,
     comicId: uniqueKey,
     title: 'Test Comic $uniqueKey',
     description: '',

@@ -414,15 +414,50 @@ class ComicLinkRepository {
   }
 
   /// 各文件夹下未软删除链接数，键为文件夹 syncId（空串表示根目录）。
-  Future<Map<String, int>> countActiveByFolder(String typeData) => runDbRead(
-    db,
-    sql:
-        'SELECT "folderSyncId", COUNT(*) AS c FROM "ComicLink" '
-        'WHERE "typeData" = ? AND "deletedAt" IS NULL '
-        'GROUP BY "folderSyncId"',
-    params: <Object?>[typeData],
-    decode: _decodeFolderCounts,
-  );
+  ///
+  /// [sources] 非空时只统计这些来源的漫画，与书架列表的来源筛选保持一致。
+  /// 计数同时关联漫画本体表并跳过已软删除的记录，避免详情模式的「N 本」
+  /// 把列表里看不到的条目也算进去。
+  Future<Map<String, int>> countActiveByFolder(
+    String typeData, {
+    List<String> sources = const <String>[],
+  }) {
+    final comicTable = typeData == ComicFolderType.favorite.name
+        ? '"UnifiedComicFavorite"'
+        : typeData == ComicFolderType.download.name
+        ? '"UnifiedComicDownload"'
+        : null;
+    if (comicTable == null) {
+      return runDbRead(
+        db,
+        sql:
+            'SELECT "folderSyncId", COUNT(*) AS c FROM "ComicLink" '
+            'WHERE "typeData" = ? AND "deletedAt" IS NULL '
+            'GROUP BY "folderSyncId"',
+        params: <Object?>[typeData],
+        decode: _decodeFolderCounts,
+      );
+    }
+    final cleanedSources = <String>[
+      for (final source in sources)
+        if (source.trim().isNotEmpty) source.trim(),
+    ];
+    final sourceClause = cleanedSources.isEmpty
+        ? ''
+        : ' AND TRIM(m."source") IN (${List.filled(cleanedSources.length, '?').join(',')})';
+    return runDbRead(
+      db,
+      sql:
+          'SELECT l."folderSyncId", COUNT(*) AS c FROM "ComicLink" AS l '
+          'JOIN $comicTable AS m ON m."uniqueKey" = l."comicUniqueKey" '
+          'AND m."deleted" = 0 '
+          'WHERE l."typeData" = ? AND l."deletedAt" IS NULL'
+          '$sourceClause '
+          'GROUP BY l."folderSyncId"',
+      params: <Object?>[typeData, ...cleanedSources],
+      decode: _decodeFolderCounts,
+    );
+  }
 
   static Map<String, int> _decodeFolderCounts(
     List<Map<String, dynamic>> rows,

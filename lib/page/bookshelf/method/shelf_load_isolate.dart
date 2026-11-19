@@ -109,7 +109,10 @@ Future<ShelfLoadResult> loadShelfInIsolate(ShelfLoadTask task) async {
       : const <ComicFolder>[];
   var folderComicCounts = const <String, int>{};
   if (isFirstPage && !isSearching) {
-    final byFolder = await db.links.countActiveByFolder(folderType.name);
+    final byFolder = await db.links.countActiveByFolder(
+      folderType.name,
+      sources: task.sources,
+    );
     folderComicCounts = <String, int>{
       for (final folder in folders)
         if ((byFolder[folder.syncId] ?? 0) > 0)
