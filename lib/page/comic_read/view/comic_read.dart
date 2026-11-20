@@ -252,6 +252,7 @@ class _ComicReadPageState extends State<_ComicReadPage>
     _imagePrefetchController.dispose();
     _volumeController.dispose();
     _pageController.dispose();
+    scrollController.dispose();
     _transformationController.dispose();
     unawaited(_orientationController.restorePortrait());
     try {

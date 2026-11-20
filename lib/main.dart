@@ -38,7 +38,6 @@ import 'package:zephyr/database/database.dart';
 import 'package:zephyr/database/app_database.dart';
 import 'package:zephyr/object_box/model.dart';
 import 'package:zephyr/page/comic_follow/cubit/comic_follow_cubit.dart';
-import 'package:zephyr/page/comic_read/widgets/settings/reader_scroll_experiment_switch.dart';
 import 'package:zephyr/platform/desktop/desktop_window.dart';
 import 'package:zephyr/platform/desktop/system_tray.dart';
 import 'package:zephyr/platform/desktop/window_logic.dart';
@@ -172,8 +171,6 @@ Future<void> main(List<String> args) async {
     await _initOhosUncaughtErrorLogger();
     _installFallbackErrorHandlers();
   }
-
-  await loadZoomedContinuousScrollEnabled();
 
   // desktop_webview_linux 必需的标题栏子进程入口
   // 不添加会导致 Linux 下 WebView 窗口关闭时 segfault 崩溃

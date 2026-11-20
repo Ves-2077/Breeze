@@ -10,14 +10,15 @@ class ZoomedScrollHandoff {
   double? _previousScale;
   Drag? _drag;
   ScrollPosition? _position;
-  double _lastDirection = 0;
+  double _lastDeltaY = 0;
 
   bool get isActive => _drag != null || _position != null;
 
   void _onScrollActivityChanged() {
-    if (_drag == null && _position?.isScrollingNotifier.value == false) {
-      _detachPosition();
+    if (_drag != null || _position?.isScrollingNotifier.value != false) {
+      return;
     }
+    _detachPosition();
   }
 
   void _detachPosition() {
@@ -26,15 +27,19 @@ class ZoomedScrollHandoff {
   }
 
   void cancel() {
+    final drag = _drag;
     final position = _position;
-    _drag?.cancel();
+    // 拖动中的取消由 drag.cancel() 自己回弹；只有松手后的惯性需要定格，
+    // 避免每次触摸都 jumpTo 产生多余的滚动通知。
+    final stopMomentum =
+        drag == null && (position?.isScrollingNotifier.value ?? false);
     _drag = null;
     _detachPosition();
-    // 取消本次手势留下的惯性，防止捏合、关开关或切页后继续滑动。
-    if (position != null && position.hasPixels) {
+    drag?.cancel();
+    if (stopMomentum && position != null && position.hasPixels) {
       position.jumpTo(position.pixels);
     }
-    _lastDirection = 0;
+    _lastDeltaY = 0;
     _previousScale = null;
   }
 
@@ -44,8 +49,8 @@ class ZoomedScrollHandoff {
     if (drag == null) return;
     final scale = _previousScale ?? 1;
     final velocityY = details.velocity.pixelsPerSecond.dy;
-    final canFling =
-        details.pointerCount == 0 && velocityY * _lastDirection > 0;
+    // 松手速度必须与最后一次拖动同向，否则视为误触不续惯性。
+    final canFling = details.pointerCount == 0 && velocityY * _lastDeltaY > 0;
     final velocity = canFling ? velocityY / scale : 0.0;
     drag.end(
       DragEndDetails(
@@ -67,14 +72,17 @@ class ZoomedScrollHandoff {
     required ScrollController scrollController,
     required bool enabled,
   }) {
-    final matrix = transformation.value;
-    final scale = matrix.getMaxScaleOnAxis();
+    if (!enabled) {
+      cancel();
+      return;
+    }
+
+    final scale = transformation.value.getMaxScaleOnAxis();
     final previousScale = _previousScale;
     _previousScale = scale;
 
     // 捏合及缩放锚点变化不应改变列表位置。
-    if (!enabled ||
-        details.pointerCount != 1 ||
+    if (details.pointerCount != 1 ||
         previousScale == null ||
         (scale - previousScale).abs() > 0.0001 ||
         scale <= kScaleLockThreshold ||
@@ -86,8 +94,8 @@ class ZoomedScrollHandoff {
 
     // 不先消耗视口再转交边界余量：整次纵向拖动使用同一列表物理，
     // 避免两套惯性、边界裁剪和重新起步造成速度突变。
-    final delta = details.focalPointDelta.dy;
-    if (delta.abs() < 0.001) return;
+    final deltaY = details.focalPointDelta.dy;
+    if (deltaY.abs() < 0.001) return;
     final position = scrollController.position;
     if (_drag == null) {
       _detachPosition();
@@ -96,7 +104,8 @@ class ZoomedScrollHandoff {
       _drag = position.drag(
         DragStartDetails(globalPosition: details.focalPoint),
         () {
-          // end() 已将 _drag 清空时，继续跟踪松手后的惯性直到停止。
+          // 正常松手时 end() 已先清空 _drag，继续跟踪松手后的惯性；
+          // 只有异常取消才在这里解除跟踪。
           if (_drag != null) {
             _drag = null;
             _detachPosition();
@@ -104,12 +113,12 @@ class ZoomedScrollHandoff {
         },
       );
     }
-    _lastDirection = delta;
+    _lastDeltaY = deltaY;
     _drag!.update(
       DragUpdateDetails(
         globalPosition: details.focalPoint,
-        delta: Offset(0, delta / scale),
-        primaryDelta: delta / scale,
+        delta: Offset(0, deltaY / scale),
+        primaryDelta: deltaY / scale,
       ),
     );
   }

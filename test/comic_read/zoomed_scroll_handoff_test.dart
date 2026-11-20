@@ -1,27 +1,8 @@
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:zephyr/page/comic_read/method/zoomed_scroll_handoff.dart';
-import 'package:zephyr/page/comic_read/widgets/settings/reader_scroll_experiment_switch.dart';
-import 'package:zephyr/page/comic_read/widgets/settings/reader_settings_sheet.dart';
 
 void main() {
-  TestWidgetsFlutterBinding.ensureInitialized();
-
-  test('experimental preference defaults off and survives reloads', () async {
-    SharedPreferences.setMockInitialValues({});
-    await loadZoomedContinuousScrollEnabled();
-    expect(zoomedContinuousScrollEnabled.value, false);
-    await setZoomedContinuousScrollEnabled(true);
-    zoomedContinuousScrollEnabled.value = false;
-    await loadZoomedContinuousScrollEnabled();
-    expect(zoomedContinuousScrollEnabled.value, true);
-    await setZoomedContinuousScrollEnabled(false);
-    zoomedContinuousScrollEnabled.value = true;
-    await loadZoomedContinuousScrollEnabled();
-    expect(zoomedContinuousScrollEnabled.value, false);
-  });
-
   testWidgets('zoomed vertical drags continue through multiple list images', (
     tester,
   ) async {
@@ -95,6 +76,22 @@ void main() {
     }
     expect(scroll.offset, closeTo(0, 0.001));
 
+    // 未放大时列表本就未锁定，转交不应生效。
+    transform.value = Matrix4.identity();
+    handoff.start(transform);
+    handoff.update(
+      details: ScaleUpdateDetails(
+        focalPointDelta: const Offset(0, -100),
+        pointerCount: 1,
+      ),
+      transformation: transform,
+      scrollController: scroll,
+      enabled: true,
+    );
+    expect(handoff.isActive, isFalse);
+    expect(scroll.offset, 0);
+    transform.value = Matrix4.identity()..scaleByDouble(2, 2, 1, 1);
+
     // 双指捏合不应被当成列表拖动；横向单页模式也不参与转交。
     for (final enabled in [true, false]) {
       handoff.start(transform);
@@ -122,9 +119,11 @@ void main() {
       enabled: true,
     );
     expect(handoff.isActive, isTrue);
-    handoff.end(ScaleEndDetails(
-      velocity: const Velocity(pixelsPerSecond: Offset(0, -1200)),
-    ));
+    handoff.end(
+      ScaleEndDetails(
+        velocity: const Velocity(pixelsPerSecond: Offset(0, -1200)),
+      ),
+    );
     expect(handoff.isActive, isTrue);
     final releasedOffset = scroll.offset;
     await tester.pump();
@@ -139,39 +138,5 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
     scroll.dispose();
     transform.dispose();
-  });
-
-  testWidgets('experimental switch starts disabled and can be toggled', (
-    tester,
-  ) async {
-    SharedPreferences.setMockInitialValues({});
-    zoomedContinuousScrollEnabled.value = false;
-    addTearDown(() => zoomedContinuousScrollEnabled.value = false);
-    // 与实际设置面板一样使用 material_ui 的 App、主题及 Material 祖先。
-    // 旧 flutter/material.dart 控件在这个环境中会缺少匹配的祖先/本地化。
-    for (final brightness in Brightness.values) {
-      await tester.pumpWidget(MaterialApp(
-        theme: ThemeData(brightness: brightness),
-        home: const Scaffold(
-          body: SingleChildScrollView(
-            child: Material(child: ReaderScrollExperimentSwitch()),
-          ),
-        ),
-      ));
-      await tester.pumpAndSettle();
-      expect(tester.takeException(), isNull);
-      expect(find.text('Continuous scrolling while zoomed (experimental)'),
-          findsOneWidget);
-      expect(find.byType(SwitchListTile), findsNothing);
-      expect(tester.widget<Switch>(find.byType(Switch)).value,
-          false);
-      await tester.tap(find.byType(Switch));
-      await tester.pumpAndSettle();
-      expect(zoomedContinuousScrollEnabled.value, true);
-      await tester.tap(find.byType(Switch));
-      await tester.pumpAndSettle();
-      expect(zoomedContinuousScrollEnabled.value, false);
-      expect(tester.takeException(), isNull);
-    }
   });
 }

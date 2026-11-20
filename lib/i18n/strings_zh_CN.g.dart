@@ -2270,6 +2270,15 @@ class Translations$reader$zh_CN {
 	/// zh-CN: '开启后可用音量键上下翻页/滑动'
 	String get volumeKeyPageTurnSubtitle => '开启后可用音量键上下翻页/滑动';
 
+	/// zh-CN: '实验性功能'
+	String get experimentalFeatures => '实验性功能';
+
+	/// zh-CN: '条漫放大后连续滚动'
+	String get zoomedContinuousScroll => '条漫放大后连续滚动';
+
+	/// zh-CN: '仅条漫模式。放大后单指上下拖动可继续滚动；手势异常时请关闭'
+	String get zoomedContinuousScrollSubtitle => '仅条漫模式。放大后单指上下拖动可继续滚动；手势异常时请关闭';
+
 	/// zh-CN: '% 屏高'
 	String get screenHeightPercent => '% 屏高';
 
@@ -5126,6 +5135,9 @@ extension on Translations {
 			'reader.volumeKeyPageTurn' => '音量键翻页',
 			'reader.enableVolumeKeyPageTurn' => '启用音量键翻页',
 			'reader.volumeKeyPageTurnSubtitle' => '开启后可用音量键上下翻页/滑动',
+			'reader.experimentalFeatures' => '实验性功能',
+			'reader.zoomedContinuousScroll' => '条漫放大后连续滚动',
+			'reader.zoomedContinuousScrollSubtitle' => '仅条漫模式。放大后单指上下拖动可继续滚动；手势异常时请关闭',
 			'reader.screenHeightPercent' => '% 屏高',
 			'reader.milliseconds' => 'ms',
 			'reader.percent' => '%',
@@ -5444,11 +5456,11 @@ extension on Translations {
 			'about.projectLink' => '前往 GitHub 仓库 (breeze-project-org/Breeze) ⭐',
 			'about.contact' => '联系方式',
 			'about.contactDesc' => '有任何想法或问题，欢迎来找我聊聊~',
+			_ => null,
+		} ?? switch (path) {
 			'about.feedback' => '反馈与建议',
 			'about.feedbackDesc' => '发现BUG或者有新的点子？',
 			'about.feedbackLink' => '在 GitHub Issues 中提出',
-			_ => null,
-		} ?? switch (path) {
 			'about.contributors' => '贡献者',
 			'about.contributorsCount' => ({required Object count}) => '${count}人',
 			'about.contributionsTooltip' => ({required Object login, required Object count}) => '${login} (${count} 次提交)',

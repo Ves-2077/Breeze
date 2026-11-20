@@ -360,6 +360,7 @@ abstract class ReadSettingState with _$ReadSettingState {
     @Default(72) int volumeKeyPageTurnDistancePercent,
     @Default(false) bool doubleTapZoom,
     @Default(false) bool doubleTapOpenMenu,
+    @Default(false) bool zoomedContinuousScroll,
     @Default(true) bool pageInfoShowPage,
     @Default(true) bool pageInfoShowNetwork,
     @Default(false) bool pageInfoShowBattery,

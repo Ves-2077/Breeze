@@ -13,7 +13,6 @@ import 'package:zephyr/page/comic_read/method/key.dart';
 import 'package:zephyr/page/comic_read/method/reader_gesture_logic.dart';
 import 'package:zephyr/page/comic_read/method/zoomed_scroll_handoff.dart';
 import 'package:zephyr/page/comic_read/widgets/layout/read_layout.dart';
-import 'package:zephyr/page/comic_read/widgets/settings/reader_scroll_experiment_switch.dart';
 
 /// 阅读器输入控制器。
 ///
@@ -66,33 +65,30 @@ class ReaderInputController {
 
   void init() {
     transformationController.addListener(_onTransformationChanged);
-    zoomedContinuousScrollEnabled.addListener(_onExperimentChanged);
   }
 
   void dispose() {
     transformationController.removeListener(_onTransformationChanged);
-    zoomedContinuousScrollEnabled.removeListener(_onExperimentChanged);
     _zoomedScrollHandoff.cancel();
     focusNode.dispose();
   }
 
-  bool get isUserInteracting =>
-      zoomedContinuousScrollEnabled.value &&
-      isColumnReadMode(context.readEffectiveReadMode()) &&
-      (_activeTouchPointers.isNotEmpty || _zoomedScrollHandoff.isActive);
-
-  bool get continuousScrollEnabled => zoomedContinuousScrollEnabled.value;
-
-  void _onExperimentChanged() {
-    _zoomedScrollHandoff.cancel();
-    if (context.mounted) onRefreshState();
+  /// 条漫放大后连续滚动是否生效：仅条漫模式且设置开启。
+  bool get zoomedContinuousScrollActive {
+    final setting = context.readEffectiveReadSetting();
+    return setting.zoomedContinuousScroll && isColumnReadMode(setting.readMode);
   }
+
+  bool get isUserInteracting =>
+      zoomedContinuousScrollActive &&
+      (_activeTouchPointers.isNotEmpty || _zoomedScrollHandoff.isActive);
 
   /// 构建阅读核心交互层：键盘、手势、缩放、多指锁滚动。
   Widget buildInteractiveViewer() {
     final readSetting = context.watchEffectiveReadSetting();
     final isDoubleTapActionEnabled =
         readSetting.doubleTapZoom || readSetting.doubleTapOpenMenu;
+    final continuousScroll = zoomedContinuousScrollActive;
 
     return Focus(
       focusNode: focusNode,
@@ -111,11 +107,7 @@ class ReaderInputController {
               : null,
           onDoubleTap: isDoubleTapActionEnabled ? _onDoubleTap : null,
           child: InteractiveViewer(
-            panAxis:
-                continuousScrollEnabled &&
-                    isColumnReadMode(readSetting.readMode)
-                ? PanAxis.horizontal
-                : PanAxis.free,
+            panAxis: continuousScroll ? PanAxis.horizontal : PanAxis.free,
             transformationController: transformationController,
             boundaryMargin: EdgeInsets.zero,
             minScale: kMinReaderScale,
@@ -127,16 +119,15 @@ class ReaderInputController {
                 transformationController.value.getMaxScaleOnAxis() >
                     kScaleLockThreshold,
             interactionEndFrictionCoefficient: kReaderPanFriction,
-            onInteractionStart: (_) =>
-                _zoomedScrollHandoff.start(transformationController),
+            onInteractionStart: continuousScroll
+                ? (_) => _zoomedScrollHandoff.start(transformationController)
+                : null,
             onInteractionUpdate: (details) {
               _zoomedScrollHandoff.update(
                 details: details,
                 transformation: transformationController,
                 scrollController: scrollController,
-                enabled:
-                    zoomedContinuousScrollEnabled.value &&
-                    isColumnReadMode(readSetting.readMode),
+                enabled: continuousScroll,
               );
               _updateMultiTouchScrollLock();
             },
@@ -245,7 +236,7 @@ class ReaderInputController {
   void _onPointerDown(PointerDownEvent event) {
     if (!_isTouchPointer(event.kind)) return;
     _activeTouchPointers.add(event.pointer);
-    if (zoomedContinuousScrollEnabled.value) _zoomedScrollHandoff.cancel();
+    if (zoomedContinuousScrollActive) _zoomedScrollHandoff.cancel();
     _updateMultiTouchScrollLock();
   }
 

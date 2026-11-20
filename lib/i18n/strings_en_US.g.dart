@@ -860,6 +860,9 @@ class _Translations$reader$en_US extends Translations$reader$zh_CN {
 	@override String get volumeKeyPageTurn => 'Volume key page turn';
 	@override String get enableVolumeKeyPageTurn => 'Enable volume key page turn';
 	@override String get volumeKeyPageTurnSubtitle => 'Use volume keys to turn pages/scroll';
+	@override String get experimentalFeatures => 'Experimental features';
+	@override String get zoomedContinuousScroll => 'Continuous scrolling while zoomed';
+	@override String get zoomedContinuousScrollSubtitle => 'Webtoon mode only. After zooming, drag vertically with one finger to keep scrolling; turn off if gestures misbehave';
 	@override String get screenHeightPercent => '% screen height';
 	@override String get milliseconds => 'ms';
 	@override String get percent => '%';
@@ -2456,6 +2459,9 @@ extension on TranslationsEnUs {
 			'reader.volumeKeyPageTurn' => 'Volume key page turn',
 			'reader.enableVolumeKeyPageTurn' => 'Enable volume key page turn',
 			'reader.volumeKeyPageTurnSubtitle' => 'Use volume keys to turn pages/scroll',
+			'reader.experimentalFeatures' => 'Experimental features',
+			'reader.zoomedContinuousScroll' => 'Continuous scrolling while zoomed',
+			'reader.zoomedContinuousScrollSubtitle' => 'Webtoon mode only. After zooming, drag vertically with one finger to keep scrolling; turn off if gestures misbehave',
 			'reader.screenHeightPercent' => '% screen height',
 			'reader.milliseconds' => 'ms',
 			'reader.percent' => '%',
@@ -2774,11 +2780,11 @@ extension on TranslationsEnUs {
 			'about.contact' => 'Contact',
 			'about.contactDesc' => 'Have ideas or questions? Feel free to reach out~',
 			'about.feedback' => 'Feedback',
+			_ => null,
+		} ?? switch (path) {
 			'about.feedbackDesc' => 'Found a bug or have a new idea?',
 			'about.feedbackLink' => 'Open a GitHub Issue',
 			'about.contributors' => 'Contributors',
-			_ => null,
-		} ?? switch (path) {
 			'about.contributorsCount' => ({required Object count}) => '${count}',
 			'about.contributionsTooltip' => ({required Object login, required Object count}) => '${login} (${count} commits)',
 			'about.disclaimer' => 'Disclaimer',

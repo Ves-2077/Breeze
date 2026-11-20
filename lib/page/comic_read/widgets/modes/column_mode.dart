@@ -59,11 +59,13 @@ class _ColumnModeWidgetState extends State<ColumnModeWidget> {
     final basePhysics = widget.parentPhysics != null
         ? widget.parentPhysics!.applyTo(const AlwaysScrollableScrollPhysics())
         : const AlwaysScrollableScrollPhysics();
-    final physics = widget.disableScroll
-        ? NeverScrollableScrollPhysics(
-            parent: widget.preserveScrollPhysics ? basePhysics : null,
-          )
-        : basePhysics;
+    // 锁定时仍挂父级物理：列表自身不接手势，但手工 drag 进来的
+    // 滚动需要父级的边界回弹和松手惯性。
+    final physics = !widget.disableScroll
+        ? basePhysics
+        : widget.preserveScrollPhysics
+        ? NeverScrollableScrollPhysics(parent: basePhysics)
+        : const NeverScrollableScrollPhysics();
 
     return LayoutBuilder(
       builder: (context, constraints) {
