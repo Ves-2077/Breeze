@@ -291,6 +291,13 @@ _SyncSettingState _$SyncSettingStateFromJson(Map<String, dynamic> json) =>
       syncSettings: json['syncSettings'] as bool? ?? false,
       syncPlugins: json['syncPlugins'] as bool? ?? false,
       autoSync: json['autoSync'] as bool? ?? true,
+      syncInterval: (json['syncInterval'] as num?)?.toInt() ?? 5,
+      syncIntervalUnit:
+          $enumDecodeNullable(
+            _$SyncIntervalUnitEnumMap,
+            json['syncIntervalUnit'],
+          ) ??
+          SyncIntervalUnit.minute,
       syncNotify: json['syncNotify'] as bool? ?? true,
       settingsSyncTime: (json['settingsSyncTime'] as num?)?.toInt() ?? 0,
     );
@@ -303,6 +310,8 @@ Map<String, dynamic> _$SyncSettingStateToJson(_SyncSettingState instance) =>
       'syncSettings': instance.syncSettings,
       'syncPlugins': instance.syncPlugins,
       'autoSync': instance.autoSync,
+      'syncInterval': instance.syncInterval,
+      'syncIntervalUnit': _$SyncIntervalUnitEnumMap[instance.syncIntervalUnit]!,
       'syncNotify': instance.syncNotify,
       'settingsSyncTime': instance.settingsSyncTime,
     };
@@ -311,6 +320,12 @@ const _$SyncServiceTypeEnumMap = {
   SyncServiceType.none: 'none',
   SyncServiceType.webdav: 'webdav',
   SyncServiceType.s3: 's3',
+};
+
+const _$SyncIntervalUnitEnumMap = {
+  SyncIntervalUnit.second: 'second',
+  SyncIntervalUnit.minute: 'minute',
+  SyncIntervalUnit.hour: 'hour',
 };
 
 _ReadSettingState _$ReadSettingStateFromJson(Map<String, dynamic> json) =>

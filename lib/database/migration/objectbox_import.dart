@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
+import 'package:uuid/uuid.dart';
 import 'package:zephyr/database/db.dart';
 import 'package:zephyr/database/migration/legacy_columns.dart';
 import 'package:zephyr/main.dart';
@@ -73,12 +74,20 @@ Future<void> ensureObjectBoxImport(
         if (table == 'PluginInfo') {
           final uuid = record['uuid']?.toString().trim() ?? '';
           final script = record['originScript']?.toString() ?? '';
+          final legacyUpdatedAt = record['updatedAt'];
+          final scriptUpdatedAt = legacyUpdatedAt is num
+              ? legacyUpdatedAt.toInt()
+              : int.tryParse(legacyUpdatedAt?.toString() ?? '') ?? 0;
           if (uuid.isNotEmpty && script.trim().isNotEmpty) {
             await tx.execute(
-              'INSERT INTO "PluginScript" ("uuid","originScript") VALUES (?,?) '
+              'INSERT INTO "PluginScript" '
+              '("uuid","originScript","revision","scriptUpdatedAt") '
+              'VALUES (?,?,?,?) '
               'ON CONFLICT("uuid") DO UPDATE SET '
-              '"originScript"=excluded."originScript"',
-              <Object?>[uuid, script],
+              '"originScript"=excluded."originScript",'
+              '"revision"=excluded."revision",'
+              '"scriptUpdatedAt"=excluded."scriptUpdatedAt"',
+              <Object?>[uuid, script, const Uuid().v4(), scriptUpdatedAt],
             );
           }
         }

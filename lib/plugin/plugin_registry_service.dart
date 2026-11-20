@@ -528,7 +528,8 @@ class PluginRegistryService {
     }
     found.lastLoadSuccess = success;
     found.lastLoadError = error;
-    found.updatedAt = DateTime.now().toUtc();
+    // 加载结果只是本机运行状态。不能刷新 updatedAt，否则同步会把
+    // “这台设备加载得晚”当成元数据更新，覆盖其它设备的启停/排序等真实变更。
     await database.plugins.putInfo(found);
     _states[uuid] = _toState(found);
     _emit();

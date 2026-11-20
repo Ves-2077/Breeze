@@ -24,6 +24,9 @@ enum ReaderTapPageTurnMode { fullScreen, leftHand, rightHand }
 
 enum SyncServiceType { none, webdav, s3 }
 
+/// 自动同步间隔单位。
+enum SyncIntervalUnit { second, minute, hour }
+
 /// 代理协议类型。
 enum ProxyType { http, socks5 }
 
@@ -45,6 +48,32 @@ extension SyncServiceTypeExtension on SyncServiceType {
         return 'WebDAV';
       case SyncServiceType.s3:
         return 'S3';
+    }
+  }
+}
+
+extension SyncIntervalUnitExtension on SyncIntervalUnit {
+  String get label {
+    switch (this) {
+      case SyncIntervalUnit.second:
+        return t.settings.syncIntervalUnitSecond;
+      case SyncIntervalUnit.minute:
+        return t.settings.syncIntervalUnitMinute;
+      case SyncIntervalUnit.hour:
+        return t.settings.syncIntervalUnitHour;
+    }
+  }
+
+  /// 把设置值换算成定时器间隔；0/负数按 1 处理，避免忙循环。
+  Duration durationFor(int value) {
+    final safeValue = value < 1 ? 1 : value;
+    switch (this) {
+      case SyncIntervalUnit.second:
+        return Duration(seconds: safeValue);
+      case SyncIntervalUnit.minute:
+        return Duration(minutes: safeValue);
+      case SyncIntervalUnit.hour:
+        return Duration(hours: safeValue);
     }
   }
 }
@@ -283,6 +312,10 @@ abstract class SyncSettingState with _$SyncSettingState {
     @Default(false) bool syncSettings,
     @Default(false) bool syncPlugins,
     @Default(true) bool autoSync,
+
+    /// 自动同步间隔数值 + 单位，默认 5 分钟。
+    @Default(5) int syncInterval,
+    @Default(SyncIntervalUnit.minute) SyncIntervalUnit syncIntervalUnit,
     @Default(true) bool syncNotify,
     @Default(0) int settingsSyncTime,
   }) = _SyncSettingState;

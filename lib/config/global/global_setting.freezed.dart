@@ -2272,7 +2272,8 @@ as bool,
 /// @nodoc
 mixin _$SyncSettingState {
 
- SyncServiceType get syncServiceType; WebDavSettingState get webdavSetting; S3SettingState get s3Setting; bool get syncSettings; bool get syncPlugins; bool get autoSync; bool get syncNotify; int get settingsSyncTime;
+ SyncServiceType get syncServiceType; WebDavSettingState get webdavSetting; S3SettingState get s3Setting; bool get syncSettings; bool get syncPlugins; bool get autoSync;/// 自动同步间隔数值 + 单位，默认 5 分钟。
+ int get syncInterval; SyncIntervalUnit get syncIntervalUnit; bool get syncNotify; int get settingsSyncTime;
 /// Create a copy of SyncSettingState
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -2286,20 +2287,20 @@ $SyncSettingStateCopyWith<SyncSettingState> get copyWith => _$SyncSettingStateCo
 @override
 bool operator ==(Object other) {
   final _this = this as SyncSettingState;
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is SyncSettingState&&(identical(other.syncServiceType, _this.syncServiceType) || other.syncServiceType == _this.syncServiceType)&&(identical(other.webdavSetting, _this.webdavSetting) || other.webdavSetting == _this.webdavSetting)&&(identical(other.s3Setting, _this.s3Setting) || other.s3Setting == _this.s3Setting)&&(identical(other.syncSettings, _this.syncSettings) || other.syncSettings == _this.syncSettings)&&(identical(other.syncPlugins, _this.syncPlugins) || other.syncPlugins == _this.syncPlugins)&&(identical(other.autoSync, _this.autoSync) || other.autoSync == _this.autoSync)&&(identical(other.syncNotify, _this.syncNotify) || other.syncNotify == _this.syncNotify)&&(identical(other.settingsSyncTime, _this.settingsSyncTime) || other.settingsSyncTime == _this.settingsSyncTime));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is SyncSettingState&&(identical(other.syncServiceType, _this.syncServiceType) || other.syncServiceType == _this.syncServiceType)&&(identical(other.webdavSetting, _this.webdavSetting) || other.webdavSetting == _this.webdavSetting)&&(identical(other.s3Setting, _this.s3Setting) || other.s3Setting == _this.s3Setting)&&(identical(other.syncSettings, _this.syncSettings) || other.syncSettings == _this.syncSettings)&&(identical(other.syncPlugins, _this.syncPlugins) || other.syncPlugins == _this.syncPlugins)&&(identical(other.autoSync, _this.autoSync) || other.autoSync == _this.autoSync)&&(identical(other.syncInterval, _this.syncInterval) || other.syncInterval == _this.syncInterval)&&(identical(other.syncIntervalUnit, _this.syncIntervalUnit) || other.syncIntervalUnit == _this.syncIntervalUnit)&&(identical(other.syncNotify, _this.syncNotify) || other.syncNotify == _this.syncNotify)&&(identical(other.settingsSyncTime, _this.settingsSyncTime) || other.settingsSyncTime == _this.settingsSyncTime));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
 int get hashCode {
   final _this = this as SyncSettingState;
-  return Object.hash(runtimeType,_this.syncServiceType,_this.webdavSetting,_this.s3Setting,_this.syncSettings,_this.syncPlugins,_this.autoSync,_this.syncNotify,_this.settingsSyncTime);
+  return Object.hash(runtimeType,_this.syncServiceType,_this.webdavSetting,_this.s3Setting,_this.syncSettings,_this.syncPlugins,_this.autoSync,_this.syncInterval,_this.syncIntervalUnit,_this.syncNotify,_this.settingsSyncTime);
 }
 
 @override
 String toString() {
   final _this = this as SyncSettingState;
-  return 'SyncSettingState(syncServiceType: ${_this.syncServiceType}, webdavSetting: ${_this.webdavSetting}, s3Setting: ${_this.s3Setting}, syncSettings: ${_this.syncSettings}, syncPlugins: ${_this.syncPlugins}, autoSync: ${_this.autoSync}, syncNotify: ${_this.syncNotify}, settingsSyncTime: ${_this.settingsSyncTime})';
+  return 'SyncSettingState(syncServiceType: ${_this.syncServiceType}, webdavSetting: ${_this.webdavSetting}, s3Setting: ${_this.s3Setting}, syncSettings: ${_this.syncSettings}, syncPlugins: ${_this.syncPlugins}, autoSync: ${_this.autoSync}, syncInterval: ${_this.syncInterval}, syncIntervalUnit: ${_this.syncIntervalUnit}, syncNotify: ${_this.syncNotify}, settingsSyncTime: ${_this.settingsSyncTime})';
 }
 
 
@@ -2310,7 +2311,7 @@ abstract mixin class $SyncSettingStateCopyWith<$Res>  {
   factory $SyncSettingStateCopyWith(SyncSettingState value, $Res Function(SyncSettingState) _then) = _$SyncSettingStateCopyWithImpl;
 @useResult
 $Res call({
- SyncServiceType syncServiceType, WebDavSettingState webdavSetting, S3SettingState s3Setting, bool syncSettings, bool syncPlugins, bool autoSync, bool syncNotify, int settingsSyncTime
+ SyncServiceType syncServiceType, WebDavSettingState webdavSetting, S3SettingState s3Setting, bool syncSettings, bool syncPlugins, bool autoSync, int syncInterval, SyncIntervalUnit syncIntervalUnit, bool syncNotify, int settingsSyncTime
 });
 
 
@@ -2327,7 +2328,7 @@ class _$SyncSettingStateCopyWithImpl<$Res>
 
 /// Create a copy of SyncSettingState
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? syncServiceType = null,Object? webdavSetting = null,Object? s3Setting = null,Object? syncSettings = null,Object? syncPlugins = null,Object? autoSync = null,Object? syncNotify = null,Object? settingsSyncTime = null,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? syncServiceType = null,Object? webdavSetting = null,Object? s3Setting = null,Object? syncSettings = null,Object? syncPlugins = null,Object? autoSync = null,Object? syncInterval = null,Object? syncIntervalUnit = null,Object? syncNotify = null,Object? settingsSyncTime = null,}) {
   return _then(SyncSettingState(
 syncServiceType: null == syncServiceType ? _self.syncServiceType : syncServiceType // ignore: cast_nullable_to_non_nullable
 as SyncServiceType,webdavSetting: null == webdavSetting ? _self.webdavSetting : webdavSetting // ignore: cast_nullable_to_non_nullable
@@ -2335,7 +2336,9 @@ as WebDavSettingState,s3Setting: null == s3Setting ? _self.s3Setting : s3Setting
 as S3SettingState,syncSettings: null == syncSettings ? _self.syncSettings : syncSettings // ignore: cast_nullable_to_non_nullable
 as bool,syncPlugins: null == syncPlugins ? _self.syncPlugins : syncPlugins // ignore: cast_nullable_to_non_nullable
 as bool,autoSync: null == autoSync ? _self.autoSync : autoSync // ignore: cast_nullable_to_non_nullable
-as bool,syncNotify: null == syncNotify ? _self.syncNotify : syncNotify // ignore: cast_nullable_to_non_nullable
+as bool,syncInterval: null == syncInterval ? _self.syncInterval : syncInterval // ignore: cast_nullable_to_non_nullable
+as int,syncIntervalUnit: null == syncIntervalUnit ? _self.syncIntervalUnit : syncIntervalUnit // ignore: cast_nullable_to_non_nullable
+as SyncIntervalUnit,syncNotify: null == syncNotify ? _self.syncNotify : syncNotify // ignore: cast_nullable_to_non_nullable
 as bool,settingsSyncTime: null == settingsSyncTime ? _self.settingsSyncTime : settingsSyncTime // ignore: cast_nullable_to_non_nullable
 as int,
   ));
@@ -2440,10 +2443,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( SyncServiceType syncServiceType,  WebDavSettingState webdavSetting,  S3SettingState s3Setting,  bool syncSettings,  bool syncPlugins,  bool autoSync,  bool syncNotify,  int settingsSyncTime)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( SyncServiceType syncServiceType,  WebDavSettingState webdavSetting,  S3SettingState s3Setting,  bool syncSettings,  bool syncPlugins,  bool autoSync,  int syncInterval,  SyncIntervalUnit syncIntervalUnit,  bool syncNotify,  int settingsSyncTime)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _SyncSettingState() when $default != null:
-return $default(_that.syncServiceType,_that.webdavSetting,_that.s3Setting,_that.syncSettings,_that.syncPlugins,_that.autoSync,_that.syncNotify,_that.settingsSyncTime);case _:
+return $default(_that.syncServiceType,_that.webdavSetting,_that.s3Setting,_that.syncSettings,_that.syncPlugins,_that.autoSync,_that.syncInterval,_that.syncIntervalUnit,_that.syncNotify,_that.settingsSyncTime);case _:
   return orElse();
 
 }
@@ -2461,10 +2464,10 @@ return $default(_that.syncServiceType,_that.webdavSetting,_that.s3Setting,_that.
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( SyncServiceType syncServiceType,  WebDavSettingState webdavSetting,  S3SettingState s3Setting,  bool syncSettings,  bool syncPlugins,  bool autoSync,  bool syncNotify,  int settingsSyncTime)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( SyncServiceType syncServiceType,  WebDavSettingState webdavSetting,  S3SettingState s3Setting,  bool syncSettings,  bool syncPlugins,  bool autoSync,  int syncInterval,  SyncIntervalUnit syncIntervalUnit,  bool syncNotify,  int settingsSyncTime)  $default,) {final _that = this;
 switch (_that) {
 case _SyncSettingState():
-return $default(_that.syncServiceType,_that.webdavSetting,_that.s3Setting,_that.syncSettings,_that.syncPlugins,_that.autoSync,_that.syncNotify,_that.settingsSyncTime);case _:
+return $default(_that.syncServiceType,_that.webdavSetting,_that.s3Setting,_that.syncSettings,_that.syncPlugins,_that.autoSync,_that.syncInterval,_that.syncIntervalUnit,_that.syncNotify,_that.settingsSyncTime);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -2481,10 +2484,10 @@ return $default(_that.syncServiceType,_that.webdavSetting,_that.s3Setting,_that.
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( SyncServiceType syncServiceType,  WebDavSettingState webdavSetting,  S3SettingState s3Setting,  bool syncSettings,  bool syncPlugins,  bool autoSync,  bool syncNotify,  int settingsSyncTime)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( SyncServiceType syncServiceType,  WebDavSettingState webdavSetting,  S3SettingState s3Setting,  bool syncSettings,  bool syncPlugins,  bool autoSync,  int syncInterval,  SyncIntervalUnit syncIntervalUnit,  bool syncNotify,  int settingsSyncTime)?  $default,) {final _that = this;
 switch (_that) {
 case _SyncSettingState() when $default != null:
-return $default(_that.syncServiceType,_that.webdavSetting,_that.s3Setting,_that.syncSettings,_that.syncPlugins,_that.autoSync,_that.syncNotify,_that.settingsSyncTime);case _:
+return $default(_that.syncServiceType,_that.webdavSetting,_that.s3Setting,_that.syncSettings,_that.syncPlugins,_that.autoSync,_that.syncInterval,_that.syncIntervalUnit,_that.syncNotify,_that.settingsSyncTime);case _:
   return null;
 
 }
@@ -2496,7 +2499,7 @@ return $default(_that.syncServiceType,_that.webdavSetting,_that.s3Setting,_that.
 @JsonSerializable()
 
 class _SyncSettingState implements SyncSettingState {
-  const _SyncSettingState({this.syncServiceType = SyncServiceType.none, this.webdavSetting = const WebDavSettingState(), this.s3Setting = const S3SettingState(), this.syncSettings = false, this.syncPlugins = false, this.autoSync = true, this.syncNotify = true, this.settingsSyncTime = 0});
+  const _SyncSettingState({this.syncServiceType = SyncServiceType.none, this.webdavSetting = const WebDavSettingState(), this.s3Setting = const S3SettingState(), this.syncSettings = false, this.syncPlugins = false, this.autoSync = true, this.syncInterval = 5, this.syncIntervalUnit = SyncIntervalUnit.minute, this.syncNotify = true, this.settingsSyncTime = 0});
   factory _SyncSettingState.fromJson(Map<String, dynamic> json) => _$SyncSettingStateFromJson(json);
 
 @override@JsonKey() final  SyncServiceType syncServiceType;
@@ -2505,6 +2508,9 @@ class _SyncSettingState implements SyncSettingState {
 @override@JsonKey() final  bool syncSettings;
 @override@JsonKey() final  bool syncPlugins;
 @override@JsonKey() final  bool autoSync;
+/// 自动同步间隔数值 + 单位，默认 5 分钟。
+@override@JsonKey() final  int syncInterval;
+@override@JsonKey() final  SyncIntervalUnit syncIntervalUnit;
 @override@JsonKey() final  bool syncNotify;
 @override@JsonKey() final  int settingsSyncTime;
 
@@ -2521,18 +2527,18 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-    return identical(this, other) || (other.runtimeType == runtimeType&&other is _SyncSettingState&&(identical(other.syncServiceType, syncServiceType) || other.syncServiceType == syncServiceType)&&(identical(other.webdavSetting, webdavSetting) || other.webdavSetting == webdavSetting)&&(identical(other.s3Setting, s3Setting) || other.s3Setting == s3Setting)&&(identical(other.syncSettings, syncSettings) || other.syncSettings == syncSettings)&&(identical(other.syncPlugins, syncPlugins) || other.syncPlugins == syncPlugins)&&(identical(other.autoSync, autoSync) || other.autoSync == autoSync)&&(identical(other.syncNotify, syncNotify) || other.syncNotify == syncNotify)&&(identical(other.settingsSyncTime, settingsSyncTime) || other.settingsSyncTime == settingsSyncTime));
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _SyncSettingState&&(identical(other.syncServiceType, syncServiceType) || other.syncServiceType == syncServiceType)&&(identical(other.webdavSetting, webdavSetting) || other.webdavSetting == webdavSetting)&&(identical(other.s3Setting, s3Setting) || other.s3Setting == s3Setting)&&(identical(other.syncSettings, syncSettings) || other.syncSettings == syncSettings)&&(identical(other.syncPlugins, syncPlugins) || other.syncPlugins == syncPlugins)&&(identical(other.autoSync, autoSync) || other.autoSync == autoSync)&&(identical(other.syncInterval, syncInterval) || other.syncInterval == syncInterval)&&(identical(other.syncIntervalUnit, syncIntervalUnit) || other.syncIntervalUnit == syncIntervalUnit)&&(identical(other.syncNotify, syncNotify) || other.syncNotify == syncNotify)&&(identical(other.settingsSyncTime, settingsSyncTime) || other.settingsSyncTime == settingsSyncTime));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
 int get hashCode {
-    return Object.hash(runtimeType,syncServiceType,webdavSetting,s3Setting,syncSettings,syncPlugins,autoSync,syncNotify,settingsSyncTime);
+    return Object.hash(runtimeType,syncServiceType,webdavSetting,s3Setting,syncSettings,syncPlugins,autoSync,syncInterval,syncIntervalUnit,syncNotify,settingsSyncTime);
 }
 
 @override
 String toString() {
-    return 'SyncSettingState(syncServiceType: $syncServiceType, webdavSetting: $webdavSetting, s3Setting: $s3Setting, syncSettings: $syncSettings, syncPlugins: $syncPlugins, autoSync: $autoSync, syncNotify: $syncNotify, settingsSyncTime: $settingsSyncTime)';
+    return 'SyncSettingState(syncServiceType: $syncServiceType, webdavSetting: $webdavSetting, s3Setting: $s3Setting, syncSettings: $syncSettings, syncPlugins: $syncPlugins, autoSync: $autoSync, syncInterval: $syncInterval, syncIntervalUnit: $syncIntervalUnit, syncNotify: $syncNotify, settingsSyncTime: $settingsSyncTime)';
 }
 
 
@@ -2543,7 +2549,7 @@ abstract mixin class _$SyncSettingStateCopyWith<$Res> implements $SyncSettingSta
   factory _$SyncSettingStateCopyWith(_SyncSettingState value, $Res Function(_SyncSettingState) _then) = __$SyncSettingStateCopyWithImpl;
 @override @useResult
 $Res call({
- SyncServiceType syncServiceType, WebDavSettingState webdavSetting, S3SettingState s3Setting, bool syncSettings, bool syncPlugins, bool autoSync, bool syncNotify, int settingsSyncTime
+ SyncServiceType syncServiceType, WebDavSettingState webdavSetting, S3SettingState s3Setting, bool syncSettings, bool syncPlugins, bool autoSync, int syncInterval, SyncIntervalUnit syncIntervalUnit, bool syncNotify, int settingsSyncTime
 });
 
 
@@ -2560,7 +2566,7 @@ class __$SyncSettingStateCopyWithImpl<$Res>
 
 /// Create a copy of SyncSettingState
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? syncServiceType = null,Object? webdavSetting = null,Object? s3Setting = null,Object? syncSettings = null,Object? syncPlugins = null,Object? autoSync = null,Object? syncNotify = null,Object? settingsSyncTime = null,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? syncServiceType = null,Object? webdavSetting = null,Object? s3Setting = null,Object? syncSettings = null,Object? syncPlugins = null,Object? autoSync = null,Object? syncInterval = null,Object? syncIntervalUnit = null,Object? syncNotify = null,Object? settingsSyncTime = null,}) {
   return _then(_SyncSettingState(
 syncServiceType: null == syncServiceType ? _self.syncServiceType : syncServiceType // ignore: cast_nullable_to_non_nullable
 as SyncServiceType,webdavSetting: null == webdavSetting ? _self.webdavSetting : webdavSetting // ignore: cast_nullable_to_non_nullable
@@ -2568,7 +2574,9 @@ as WebDavSettingState,s3Setting: null == s3Setting ? _self.s3Setting : s3Setting
 as S3SettingState,syncSettings: null == syncSettings ? _self.syncSettings : syncSettings // ignore: cast_nullable_to_non_nullable
 as bool,syncPlugins: null == syncPlugins ? _self.syncPlugins : syncPlugins // ignore: cast_nullable_to_non_nullable
 as bool,autoSync: null == autoSync ? _self.autoSync : autoSync // ignore: cast_nullable_to_non_nullable
-as bool,syncNotify: null == syncNotify ? _self.syncNotify : syncNotify // ignore: cast_nullable_to_non_nullable
+as bool,syncInterval: null == syncInterval ? _self.syncInterval : syncInterval // ignore: cast_nullable_to_non_nullable
+as int,syncIntervalUnit: null == syncIntervalUnit ? _self.syncIntervalUnit : syncIntervalUnit // ignore: cast_nullable_to_non_nullable
+as SyncIntervalUnit,syncNotify: null == syncNotify ? _self.syncNotify : syncNotify // ignore: cast_nullable_to_non_nullable
 as bool,settingsSyncTime: null == settingsSyncTime ? _self.settingsSyncTime : settingsSyncTime // ignore: cast_nullable_to_non_nullable
 as int,
   ));

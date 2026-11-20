@@ -860,6 +860,12 @@ class PluginInfo {
   /// 默认查询返回空串，只有安装/同步/备份或显式 with-script 查询才填充。
   String originScript;
 
+  /// 脚本内容的最后变更时间（Unix 毫秒）。
+  ///
+  /// 随 with-script 查询返回，同步时用于单独判断脚本新旧：
+  /// 插件加载结果会刷新 [updatedAt]，不能让“加载得晚”覆盖更新的脚本。
+  int scriptUpdatedAt;
+
   bool lastLoadSuccess;
 
   String? lastLoadError;
@@ -889,6 +895,7 @@ class PluginInfo {
     required this.uuid,
     required this.version,
     required this.originScript,
+    this.scriptUpdatedAt = 0,
     required this.insertedAt,
     required this.updatedAt,
     required this.isEnabled,
@@ -916,6 +923,7 @@ class PluginInfo {
           'isDeleted': false,
           'lastLoadSuccess': false,
           'originScript': '',
+          'scriptUpdatedAt': 0,
           'getInfoJson': '',
           'debug': false,
         }),

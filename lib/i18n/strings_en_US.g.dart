@@ -292,6 +292,14 @@ class _Translations$settings$en_US extends Translations$settings$zh_CN {
 	@override String get syncServiceS3 => 'S3';
 	@override String get autoSync => 'Auto sync';
 	@override String get autoSyncSubtitle => 'Sync configuration periodically in background';
+	@override String get syncInterval => 'Sync interval';
+	@override String get syncIntervalSubtitle => 'How often auto sync runs; 5 minutes by default';
+	@override String get syncIntervalValue => 'Interval value';
+	@override String get syncIntervalUnitLabel => 'Unit';
+	@override String get syncIntervalUnitSecond => 'Seconds';
+	@override String get syncIntervalUnitMinute => 'Minutes';
+	@override String get syncIntervalUnitHour => 'Hours';
+	@override String get syncIntervalInvalid => 'Enter a positive integer';
 	@override String get syncNotify => 'Sync notifications';
 	@override String get syncNotifySubtitle => 'Notify when sync starts and completes';
 	@override String get syncSettings => 'Sync settings';
@@ -1914,6 +1922,14 @@ extension on TranslationsEnUs {
 			'settings.syncServiceS3' => 'S3',
 			'settings.autoSync' => 'Auto sync',
 			'settings.autoSyncSubtitle' => 'Sync configuration periodically in background',
+			'settings.syncInterval' => 'Sync interval',
+			'settings.syncIntervalSubtitle' => 'How often auto sync runs; 5 minutes by default',
+			'settings.syncIntervalValue' => 'Interval value',
+			'settings.syncIntervalUnitLabel' => 'Unit',
+			'settings.syncIntervalUnitSecond' => 'Seconds',
+			'settings.syncIntervalUnitMinute' => 'Minutes',
+			'settings.syncIntervalUnitHour' => 'Hours',
+			'settings.syncIntervalInvalid' => 'Enter a positive integer',
 			'settings.syncNotify' => 'Sync notifications',
 			'settings.syncNotifySubtitle' => 'Notify when sync starts and completes',
 			'settings.syncSettings' => 'Sync settings',
@@ -2247,6 +2263,8 @@ extension on TranslationsEnUs {
 			'comicInfo.discontinued' => 'This comic is discontinued',
 			'comicInfo.likes' => ({required Object count}) => 'Likes ${count}',
 			'comicInfo.comments' => ({required Object count}) => 'Comments ${count}',
+			_ => null,
+		} ?? switch (path) {
 			'comicInfo.collected' => 'Collected',
 			'comicInfo.collect' => 'Collect',
 			'comicInfo.download' => 'Download',
@@ -2255,8 +2273,6 @@ extension on TranslationsEnUs {
 			'comicInfo.removedFromCollection' => 'Removed from collection',
 			'comicInfo.confirmUncollectTitle' => 'Remove collection',
 			'comicInfo.confirmUncollectContent' => 'This will delete the comic from all folders. Continue?',
-			_ => null,
-		} ?? switch (path) {
 			'comicInfo.commentForbidden' => 'This plugin does not support this feature',
 			'comicInfo.commentForbiddenTitle' => 'Comments disabled',
 			'comicInfo.chooseLocalFavoriteFolders' => 'Choose local favorite folders',
@@ -2761,6 +2777,8 @@ extension on TranslationsEnUs {
 			'about.feedbackDesc' => 'Found a bug or have a new idea?',
 			'about.feedbackLink' => 'Open a GitHub Issue',
 			'about.contributors' => 'Contributors',
+			_ => null,
+		} ?? switch (path) {
 			'about.contributorsCount' => ({required Object count}) => '${count}',
 			'about.contributionsTooltip' => ({required Object login, required Object count}) => '${login} (${count} commits)',
 			'about.disclaimer' => 'Disclaimer',
@@ -2769,8 +2787,6 @@ extension on TranslationsEnUs {
 			'about.disclaimerItem1Content' => 'This project is open-source software, independently developed and maintained by the author. It is provided "as-is". The developer makes no express or implied warranties regarding functionality, stability, security, or fitness for purpose.',
 			'about.disclaimerItem2Title' => '2. Limitation of Liability',
 			'about.disclaimerItem2Content' => 'The developer shall not be liable for any direct, indirect, special, incidental, or consequential damages arising from use, modification, or distribution of this project (including but not limited to direct use, secondary development, or integration into other projects). These damages may include but are not limited to data loss, device damage, business interruption, lost profits, or other economic losses.',
-			_ => null,
-		} ?? switch (path) {
 			'about.disclaimerItem3Title' => '3. User Responsibility',
 			'about.disclaimerItem3Content' => 'Users should evaluate suitability and assume all risks when using this project. Users must ensure their use complies with applicable laws, regulations, and ethical standards. The developer is not responsible for consequences resulting from violations of laws or misuse.',
 			'about.disclaimerItem4Title' => '4. Third-Party Dependencies and Resources',

@@ -2,7 +2,7 @@ import 'package:zephyr/database/db.dart';
 import 'package:zephyr/database/migration/objectbox_import.dart';
 import 'package:zephyr/database/schema.dart';
 
-const int currentSchemaVersion = 1;
+const int currentSchemaVersion = 2;
 
 class DatabaseIncompatibleException implements Exception {
   const DatabaseIncompatibleException(this.message);
@@ -48,5 +48,15 @@ Future<void> _ensureSchema(BreezeDatabase db) async {
       'SQLite schema v$version is newer than app v$currentSchemaVersion',
     );
   }
-  // 未来 schema 升级：在这里按版本顺序执行 migration。
+  // 按版本顺序执行 migration，每一步都自己推进 user_version。
+  if (version < 2) {
+    await db.executeScript('''
+ALTER TABLE "PluginScript" ADD COLUMN "scriptUpdatedAt" INTEGER NOT NULL DEFAULT 0;
+UPDATE "PluginScript" SET "scriptUpdatedAt" = COALESCE(
+  (SELECT "updatedAt" FROM "PluginInfo" WHERE "PluginInfo"."uuid" = "PluginScript"."uuid"),
+  0
+) WHERE "scriptUpdatedAt" = 0;
+PRAGMA user_version = 2;
+''');
+  }
 }

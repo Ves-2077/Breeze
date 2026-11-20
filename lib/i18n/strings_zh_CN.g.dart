@@ -638,6 +638,30 @@ class Translations$settings$zh_CN {
 	/// zh-CN: '开启后在后台定期同步配置'
 	String get autoSyncSubtitle => '开启后在后台定期同步配置';
 
+	/// zh-CN: '同步间隔'
+	String get syncInterval => '同步间隔';
+
+	/// zh-CN: '自动同步的执行间隔，默认 5 分钟'
+	String get syncIntervalSubtitle => '自动同步的执行间隔，默认 5 分钟';
+
+	/// zh-CN: '间隔数值'
+	String get syncIntervalValue => '间隔数值';
+
+	/// zh-CN: '单位'
+	String get syncIntervalUnitLabel => '单位';
+
+	/// zh-CN: '秒'
+	String get syncIntervalUnitSecond => '秒';
+
+	/// zh-CN: '分钟'
+	String get syncIntervalUnitMinute => '分钟';
+
+	/// zh-CN: '小时'
+	String get syncIntervalUnitHour => '小时';
+
+	/// zh-CN: '请输入大于 0 的整数'
+	String get syncIntervalInvalid => '请输入大于 0 的整数';
+
 	/// zh-CN: '自动同步通知'
 	String get syncNotify => '自动同步通知';
 
@@ -4568,6 +4592,14 @@ extension on Translations {
 			'settings.syncServiceS3' => 'S3',
 			'settings.autoSync' => '自动同步',
 			'settings.autoSyncSubtitle' => '开启后在后台定期同步配置',
+			'settings.syncInterval' => '同步间隔',
+			'settings.syncIntervalSubtitle' => '自动同步的执行间隔，默认 5 分钟',
+			'settings.syncIntervalValue' => '间隔数值',
+			'settings.syncIntervalUnitLabel' => '单位',
+			'settings.syncIntervalUnitSecond' => '秒',
+			'settings.syncIntervalUnitMinute' => '分钟',
+			'settings.syncIntervalUnitHour' => '小时',
+			'settings.syncIntervalInvalid' => '请输入大于 0 的整数',
 			'settings.syncNotify' => '自动同步通知',
 			'settings.syncNotifySubtitle' => '开启后在同步开始与完成时提醒',
 			'settings.syncSettings' => '同步设置',
@@ -4901,6 +4933,8 @@ extension on Translations {
 			'comicInfo.discontinued' => '此漫画已下架',
 			'comicInfo.likes' => ({required Object count}) => '点赞 ${count}',
 			'comicInfo.comments' => ({required Object count}) => '评论 ${count}',
+			_ => null,
+		} ?? switch (path) {
 			'comicInfo.collected' => '已收藏',
 			'comicInfo.collect' => '收藏',
 			'comicInfo.download' => '下载',
@@ -4909,8 +4943,6 @@ extension on Translations {
 			'comicInfo.removedFromCollection' => '已取消收藏',
 			'comicInfo.confirmUncollectTitle' => '确认取消收藏',
 			'comicInfo.confirmUncollectContent' => '此项操作会删除该漫画在所有文件夹的记录，是否确认删除？',
-			_ => null,
-		} ?? switch (path) {
 			'comicInfo.commentForbidden' => '该插件暂不支持此功能',
 			'comicInfo.commentForbiddenTitle' => '禁止评论',
 			'comicInfo.chooseLocalFavoriteFolders' => '选择本地收藏文件夹',
@@ -5415,6 +5447,8 @@ extension on Translations {
 			'about.feedback' => '反馈与建议',
 			'about.feedbackDesc' => '发现BUG或者有新的点子？',
 			'about.feedbackLink' => '在 GitHub Issues 中提出',
+			_ => null,
+		} ?? switch (path) {
 			'about.contributors' => '贡献者',
 			'about.contributorsCount' => ({required Object count}) => '${count}人',
 			'about.contributionsTooltip' => ({required Object login, required Object count}) => '${login} (${count} 次提交)',
@@ -5423,8 +5457,6 @@ extension on Translations {
 			'about.disclaimerItem1Title' => '1. 项目性质与声明',
 			'about.disclaimerItem1Content' => '本项目为开源软件，由本人独立开发并维护。项目以"原样"形式提供，开发者不对项目的功能完整性、稳定性、安全性或适用性作出任何明示或暗示的担保。',
 			'about.disclaimerItem2Title' => '2. 责任限制',
-			_ => null,
-		} ?? switch (path) {
 			'about.disclaimerItem2Content' => '开发者对因使用、修改或分发本项目（包括但不限于直接使用、二次开发或集成至其他项目）而导致的任何直接、间接、特殊、附带或后果性损害不承担任何责任。这些损害可能包括但不限于数据丢失、设备损坏、业务中断、利润损失或其他经济损失。',
 			'about.disclaimerItem3Title' => '3. 用户责任',
 			'about.disclaimerItem3Content' => '用户在使用本项目时，应自行评估其适用性并承担所有风险。用户须确保其使用行为符合所在国家或地区的法律法规及道德规范。开发者不对用户因违反法律法规或不当使用本项目而导致的任何后果负责。',

@@ -8,6 +8,7 @@ import 'package:zephyr/page/comic_follow/cubit/comic_follow_cubit.dart';
 import 'package:zephyr/plugin/plugin_registry_service.dart';
 
 import 'package:zephyr/network/sync/comic_sync_core.dart';
+import 'package:zephyr/network/sync/plugin_sync_merge.dart';
 import 'package:zephyr/network/sync/s3_sync_service.dart';
 import 'package:zephyr/network/sync/webdav_sync_service.dart';
 
@@ -791,7 +792,7 @@ Future<void> _applyPluginBlockData(Map<String, dynamic> pluginBlockData) async {
       .where((uuid) => uuid.isNotEmpty)
       .toSet();
 
-  final remotePluginInfos = <PluginInfo>[];
+  final remotePluginEntries = <({String uuid, Map<String, dynamic> json})>[];
   for (final json in pluginInfoJsonList) {
     try {
       final parsed = PluginInfo.fromJson(json);
@@ -799,24 +800,10 @@ Future<void> _applyPluginBlockData(Map<String, dynamic> pluginBlockData) async {
       if (uuid.isEmpty || parsed.isDeleted) {
         continue;
       }
-      remotePluginInfos.add(
-        PluginInfo(
-          uuid: uuid,
-          version: parsed.version,
-          originScript: parsed.originScript,
-          insertedAt: parsed.insertedAt.toUtc(),
-          updatedAt: parsed.updatedAt.toUtc(),
-          isEnabled: parsed.isEnabled,
-          isDeleted: false,
-          deletedAt: null,
-          lastLoadSuccess: parsed.lastLoadSuccess,
-          lastLoadError: parsed.lastLoadError,
-          sortOrder: parsed.sortOrder,
-          debug: parsed.debug,
-          debugUrl: parsed.debugUrl,
-          getInfoJson: parsed.getInfoJson,
-        ),
-      );
+      final normalized = parsed.toJson()
+        ..remove('id')
+        ..['uuid'] = uuid;
+      remotePluginEntries.add((uuid: uuid, json: normalized));
     } catch (e) {
       logger.w('[sync][plugins] 忽略无效插件信息: $e');
     }
@@ -825,41 +812,31 @@ Future<void> _applyPluginBlockData(Map<String, dynamic> pluginBlockData) async {
   final infoUpserts = <PluginInfo>[];
   final changedScriptUuids = <String>{};
   var skippedDeletedLocal = 0;
-  for (final incoming in remotePluginInfos) {
-    final uuid = incoming.uuid.trim();
+  for (final remote in remotePluginEntries) {
+    final uuid = remote.uuid;
     if (localDeletedUuids.contains(uuid)) {
       skippedDeletedLocal++;
       continue;
     }
     final existing = localPluginByUuid[uuid];
-    if (existing != null &&
-        !_shouldApplyIncomingPluginInfo(existing, incoming)) {
+    final existingJson = existing == null
+        ? null
+        : (existing.toJson()..remove('id'));
+    final resolvedJson = resolvePluginInfoForApply(existingJson, remote.json);
+    final resolved = PluginInfo.fromJson(<String, dynamic>{
+      ...resolvedJson,
+      'id': existing?.id ?? 0,
+    });
+    final resolvedNormalized = resolved.toJson()..remove('id');
+    if (existingJson != null &&
+        samePluginInfoJson(existingJson, resolvedNormalized)) {
       continue;
     }
-    if (existing == null || existing.originScript != incoming.originScript) {
+    if (existing == null || existing.originScript != resolved.originScript) {
       changedScriptUuids.add(uuid);
     }
-    final upsert = PluginInfo(
-      id: existing?.id ?? 0,
-      uuid: uuid,
-      version: incoming.version,
-      originScript: incoming.originScript,
-      insertedAt: existing?.insertedAt ?? incoming.insertedAt,
-      updatedAt: incoming.updatedAt,
-      isEnabled: incoming.isEnabled,
-      isDeleted: false,
-      deletedAt: null,
-      lastLoadSuccess: incoming.lastLoadSuccess,
-      lastLoadError: incoming.lastLoadError,
-      sortOrder: incoming.sortOrder ?? existing?.sortOrder,
-      debug: incoming.debug,
-      debugUrl: incoming.debugUrl,
-      getInfoJson: incoming.getInfoJson.isNotEmpty
-          ? incoming.getInfoJson
-          : (existing?.getInfoJson ?? ''),
-    );
-    infoUpserts.add(upsert);
-    localPluginByUuid[uuid] = upsert;
+    infoUpserts.add(resolved);
+    localPluginByUuid[uuid] = resolved;
   }
   if (infoUpserts.isNotEmpty) {
     await database.plugins.putInfosWithScripts(infoUpserts);
@@ -1187,7 +1164,7 @@ _SettingsBlockPayload? _mergePluginBlocks(
   }
 
   final preferRemoteOnConflict = remoteBlock.updatedAt > localBlock.updatedAt;
-  final mergedData = _mergePluginBlockData(
+  final mergedData = mergePluginBlockData(
     localBlock.data,
     remoteBlock.data,
     preferRemoteOnConflict: preferRemoteOnConflict,
@@ -1207,127 +1184,6 @@ _SettingsBlockPayload? _mergePluginBlocks(
         : remoteBlock.updatedAt,
     data: mergedData,
   );
-}
-
-Map<String, dynamic> _mergePluginBlockData(
-  Map<String, dynamic> localData,
-  Map<String, dynamic> remoteData, {
-  required bool preferRemoteOnConflict,
-}) {
-  final localInfos = _toJsonMapList(localData['pluginInfos'])
-      .where((item) {
-        final uuid = item['uuid']?.toString().trim() ?? '';
-        return uuid.isNotEmpty && item['isDeleted'] != true;
-      })
-      .map((item) {
-        final next = Map<String, dynamic>.from(item);
-        next['uuid'] = item['uuid']?.toString().trim() ?? '';
-        return next;
-      })
-      .toList();
-  final remoteInfos = _toJsonMapList(remoteData['pluginInfos'])
-      .where((item) {
-        final uuid = item['uuid']?.toString().trim() ?? '';
-        return uuid.isNotEmpty && item['isDeleted'] != true;
-      })
-      .map((item) {
-        final next = Map<String, dynamic>.from(item);
-        next['uuid'] = item['uuid']?.toString().trim() ?? '';
-        return next;
-      })
-      .toList();
-
-  final mergedInfoByUuid = <String, Map<String, dynamic>>{
-    for (final item in localInfos) item['uuid'] as String: item,
-  };
-  for (final remote in remoteInfos) {
-    final uuid = remote['uuid'] as String;
-    final local = mergedInfoByUuid[uuid];
-    if (local == null) {
-      mergedInfoByUuid[uuid] = remote;
-      continue;
-    }
-    final remoteUpdatedAt = _pluginInfoUpdatedAtMs(remote);
-    final localUpdatedAt = _pluginInfoUpdatedAtMs(local);
-    if (remoteUpdatedAt > localUpdatedAt ||
-        (preferRemoteOnConflict && remoteUpdatedAt == localUpdatedAt)) {
-      mergedInfoByUuid[uuid] = remote;
-    }
-  }
-
-  final localConfigs = _toJsonMapList(localData['pluginConfigs']);
-  final remoteConfigs = _toJsonMapList(remoteData['pluginConfigs']);
-  final mergedConfigByName = <String, Map<String, dynamic>>{};
-
-  for (final item in localConfigs) {
-    final name = item['name']?.toString().trim() ?? '';
-    if (name.isEmpty) {
-      continue;
-    }
-    final next = Map<String, dynamic>.from(item);
-    next['name'] = name;
-    mergedConfigByName[name] = next;
-  }
-  for (final item in remoteConfigs) {
-    final name = item['name']?.toString().trim() ?? '';
-    if (name.isEmpty) {
-      continue;
-    }
-    final next = Map<String, dynamic>.from(item);
-    next['name'] = name;
-    if (!mergedConfigByName.containsKey(name) || preferRemoteOnConflict) {
-      mergedConfigByName[name] = next;
-    }
-  }
-
-  final mergedInfos = mergedInfoByUuid.values.toList()
-    ..sort((a, b) {
-      final aKey = '${a['uuid'] ?? ''}:${a['version'] ?? ''}';
-      final bKey = '${b['uuid'] ?? ''}:${b['version'] ?? ''}';
-      return aKey.compareTo(bKey);
-    });
-  final mergedConfigs = mergedConfigByName.values.toList()
-    ..sort((a, b) {
-      final aName = a['name']?.toString() ?? '';
-      final bName = b['name']?.toString() ?? '';
-      return aName.compareTo(bName);
-    });
-
-  return <String, dynamic>{
-    'pluginConfigs': mergedConfigs,
-    'pluginInfos': mergedInfos,
-  };
-}
-
-int _pluginInfoUpdatedAtMs(Map<String, dynamic> item) {
-  final updatedAt = DateTime.tryParse(item['updatedAt']?.toString() ?? '');
-  final insertedAt = DateTime.tryParse(item['insertedAt']?.toString() ?? '');
-  final updatedAtMs = updatedAt?.toUtc().millisecondsSinceEpoch ?? 0;
-  final insertedAtMs = insertedAt?.toUtc().millisecondsSinceEpoch ?? 0;
-  return updatedAtMs > insertedAtMs ? updatedAtMs : insertedAtMs;
-}
-
-bool _shouldApplyIncomingPluginInfo(PluginInfo existing, PluginInfo incoming) {
-  if (existing.isDeleted) {
-    return false;
-  }
-
-  final remoteUpdatedAt = incoming.updatedAt.toUtc().millisecondsSinceEpoch;
-  final localUpdatedAt = existing.updatedAt.toUtc().millisecondsSinceEpoch;
-  if (remoteUpdatedAt > localUpdatedAt) {
-    return true;
-  }
-  if (remoteUpdatedAt < localUpdatedAt) {
-    return false;
-  }
-  return existing.version != incoming.version ||
-      existing.originScript != incoming.originScript ||
-      existing.isEnabled != incoming.isEnabled ||
-      existing.debug != incoming.debug ||
-      (existing.debugUrl ?? '') != (incoming.debugUrl ?? '') ||
-      existing.lastLoadSuccess != incoming.lastLoadSuccess ||
-      (existing.lastLoadError ?? '') != (incoming.lastLoadError ?? '') ||
-      existing.sortOrder != incoming.sortOrder;
 }
 
 Set<String> _buildPluginConfigNameCandidatesForSync(String uuid) {

@@ -38,16 +38,26 @@ void main() {
       'script-test:b',
     );
     expect(withScript!.originScript, contains('console.log("b")'));
+    expect(
+      withScript.scriptUpdatedAt,
+      DateTime.utc(2026, 1, 1).millisecondsSinceEpoch,
+    );
     final firstRevision = await database.plugins.getScriptRevisionByUuid(
       'script-test:b',
     );
     expect(firstRevision, isNotEmpty);
 
     withScript.originScript = 'console.log("b2");';
+    withScript.scriptUpdatedAt = 2000;
     await database.plugins.putInfoWithScript(withScript);
     expect(
       await database.plugins.getScriptByUuid('script-test:b'),
       'console.log("b2");',
+    );
+    expect(
+      (await database.plugins.getInfoWithScriptByUuid('script-test:b'))!
+          .scriptUpdatedAt,
+      2000,
     );
     final secondRevision = await database.plugins.getScriptRevisionByUuid(
       'script-test:b',
@@ -57,6 +67,21 @@ void main() {
 
     final all = await database.plugins.listInfosWithScripts();
     expect(all.single.originScript, 'console.log("b2");');
+
+    // 内容相同的重写（同步/备份 apply）不应刷新 revision，
+    // 否则每次同步都会把字节码缓存作废。
+    withScript.originScript = 'console.log("b2");';
+    withScript.scriptUpdatedAt = 9999;
+    await database.plugins.putInfoWithScript(withScript);
+    expect(
+      await database.plugins.getScriptRevisionByUuid('script-test:b'),
+      secondRevision,
+    );
+    expect(
+      (await database.plugins.getInfoWithScriptByUuid('script-test:b'))!
+          .scriptUpdatedAt,
+      2000,
+    );
   });
 
   test('删除元数据或写入空脚本会清理脚本行', () async {

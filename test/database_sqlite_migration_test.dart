@@ -66,6 +66,46 @@ void main() {
     }
   });
 
+  test('v1 PluginScript rows migrate to scriptUpdatedAt', () async {
+    final temp = await Directory.systemTemp.createTemp('breeze_migrate_');
+    final path = p.join(temp.path, 'breeze.sqlite3');
+    final legacyDir = p.join(temp.path, 'missing_objectbox');
+    var db = await openAppDatabase(path: path, legacyObjectBoxDir: legacyDir);
+    try {
+      // 造一个 v1 库：去掉新列，写入没有 scriptUpdatedAt 的旧数据。
+      await db.executeScript(
+        'ALTER TABLE "PluginScript" DROP COLUMN "scriptUpdatedAt";',
+      );
+      await db.execute(
+        'INSERT INTO "PluginInfo" ("uuid","version","insertedAt","updatedAt") '
+        'VALUES (?,?,?,?)',
+        <Object?>['migrate:1', '1.0.0', 1000, 2000],
+      );
+      await db.execute(
+        'INSERT INTO "PluginScript" ("uuid","originScript","revision") '
+        'VALUES (?,?,?)',
+        <Object?>['migrate:1', 'console.log("legacy");', 'rev-1'],
+      );
+      await db.executeScript('PRAGMA user_version = 1;');
+    } finally {
+      await db.close();
+    }
+
+    db = await openAppDatabase(path: path, legacyObjectBoxDir: legacyDir);
+    try {
+      final version = await db.query('PRAGMA user_version');
+      expect(version.single['user_version'], currentSchemaVersion);
+      final rows = await db.query(
+        'SELECT "scriptUpdatedAt" FROM "PluginScript" WHERE "uuid" = ?',
+        <Object?>['migrate:1'],
+      );
+      expect(rows.single['scriptUpdatedAt'], 2000);
+    } finally {
+      await db.close();
+      await temp.delete(recursive: true);
+    }
+  });
+
   test('archives and verifies legacy ObjectBox data.mdb', () async {
     final temp = await Directory.systemTemp.createTemp('breeze_archive_');
     final dataFile = File(p.join(temp.path, 'data.mdb'));
@@ -154,6 +194,13 @@ void main() {
         expect(await count('ComicLink'), 6);
         expect(await count('ComicFollow'), 5);
         expect(await count('ComicReadChapter'), 17);
+
+        // 导入的脚本必须带 revision，否则字节码缓存永远无法命中。
+        final emptyRevision = await db.query(
+          'SELECT COUNT(*) AS c FROM "PluginScript" '
+          'WHERE "revision" = \'\'',
+        );
+        expect((emptyRevision.single['c'] as num).toInt(), 0);
 
         final setting = await db.query(
           'SELECT "globalSettingData" FROM "UserSetting" WHERE "id" = 1',

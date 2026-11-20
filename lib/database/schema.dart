@@ -224,7 +224,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS "ux_PluginInfo_uuid" ON "PluginInfo" ("uuid");
 CREATE TABLE IF NOT EXISTS "PluginScript" (
   "uuid" TEXT PRIMARY KEY,
   "originScript" TEXT NOT NULL DEFAULT '',
-  "revision" TEXT NOT NULL DEFAULT ''
+  "revision" TEXT NOT NULL DEFAULT '',
+  "scriptUpdatedAt" INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS "UnifiedComicDownload" (
@@ -398,5 +399,5 @@ CREATE INDEX IF NOT EXISTS "ix_ComicReadChapter_source" ON "ComicReadChapter" ("
 CREATE INDEX IF NOT EXISTS "ix_ComicReadChapter_comicId" ON "ComicReadChapter" ("comicId");
 
 -- 所有表/索引创建成功后才标记版本，失败时下次启动会重试。
-PRAGMA user_version = 1;
+PRAGMA user_version = 2;
 ''';

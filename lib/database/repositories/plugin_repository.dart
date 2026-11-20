@@ -10,7 +10,8 @@ const _pluginInfoColumns =
     '"getInfoJson","sortOrder"';
 
 const _pluginInfoWithScriptSelect =
-    'SELECT i.*, COALESCE(s."originScript", \'\') AS "originScript" '
+    'SELECT i.*, COALESCE(s."originScript", \'\') AS "originScript", '
+    'COALESCE(s."scriptUpdatedAt", 0) AS "scriptUpdatedAt" '
     'FROM "PluginInfo" i LEFT JOIN "PluginScript" s ON s."uuid" = i."uuid"';
 
 const _pluginInfoInsert =
@@ -35,11 +36,16 @@ const _pluginInfoUpsert =
     '"debug"=excluded."debug","debugUrl"=excluded."debugUrl",'
     '"getInfoJson"=excluded."getInfoJson","sortOrder"=excluded."sortOrder"';
 
+// 内容不变时不更新：revision 是字节码缓存的键，同步/备份重写同一脚本
+// 不应让缓存失效。
 const _pluginScriptUpsert =
-    'INSERT INTO "PluginScript" ("uuid","originScript","revision") '
-    'VALUES (?,?,?) '
+    'INSERT INTO "PluginScript" '
+    '("uuid","originScript","revision","scriptUpdatedAt") '
+    'VALUES (?,?,?,?) '
     'ON CONFLICT("uuid") DO UPDATE SET '
-    '"originScript"=excluded."originScript","revision"=excluded."revision"';
+    '"originScript"=excluded."originScript","revision"=excluded."revision",'
+    '"scriptUpdatedAt"=excluded."scriptUpdatedAt" '
+    'WHERE "originScript" <> excluded."originScript"';
 
 const _pluginScriptDelete = 'DELETE FROM "PluginScript" WHERE "uuid" = ?';
 
@@ -139,7 +145,12 @@ class PluginRepository {
   Future<int> putInfoWithScript(PluginInfo value) {
     return db.transaction((tx) async {
       final id = await _putInfoInTx(tx, value);
-      await _putScriptInTx(tx, value.uuid, value.originScript);
+      await _putScriptInTx(
+        tx,
+        value.uuid,
+        value.originScript,
+        _scriptUpdatedAtMs(value),
+      );
       return id;
     });
   }
@@ -163,7 +174,12 @@ class PluginRepository {
       final ids = <int>[];
       for (final value in values) {
         ids.add(await _putInfoInTx(tx, value));
-        await _putScriptInTx(tx, value.uuid, value.originScript);
+        await _putScriptInTx(
+          tx,
+          value.uuid,
+          value.originScript,
+          _scriptUpdatedAtMs(value),
+        );
       }
       return ids;
     });
@@ -177,6 +193,7 @@ class PluginRepository {
       uuid,
       originScript,
       const Uuid().v4(),
+      DateTime.now().toUtc().millisecondsSinceEpoch,
     ]);
     return result.changes;
   }
@@ -314,6 +331,7 @@ class PluginRepository {
     DbTransaction tx,
     String uuid,
     String originScript,
+    int scriptUpdatedAt,
   ) async {
     if (originScript.trim().isEmpty) {
       await tx.execute(_pluginScriptDelete, <Object?>[uuid]);
@@ -323,7 +341,16 @@ class PluginRepository {
       uuid,
       originScript,
       const Uuid().v4(),
+      scriptUpdatedAt,
     ]);
+  }
+
+  /// 显式时间优先；安装/更新等新建对象用 [PluginInfo.updatedAt] 兜底。
+  static int _scriptUpdatedAtMs(PluginInfo value) {
+    if (value.scriptUpdatedAt > 0) {
+      return value.scriptUpdatedAt;
+    }
+    return value.updatedAt.toUtc().millisecondsSinceEpoch;
   }
 
   List<Object?> _infoParams(PluginInfo v, {required bool includeId}) {
