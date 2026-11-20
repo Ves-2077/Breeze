@@ -105,10 +105,12 @@ class ZoomedScrollHandoff {
       );
     }
     _lastDirection = delta;
-    _drag!.update(DragUpdateDetails(
-      globalPosition: details.focalPoint,
-      delta: Offset(0, delta / scale),
-      primaryDelta: delta / scale,
-    ));
+    _drag!.update(
+      DragUpdateDetails(
+        globalPosition: details.focalPoint,
+        delta: Offset(0, delta / scale),
+        primaryDelta: delta / scale,
+      ),
+    );
   }
 }

@@ -111,7 +111,8 @@ class ReaderInputController {
               : null,
           onDoubleTap: isDoubleTapActionEnabled ? _onDoubleTap : null,
           child: InteractiveViewer(
-            panAxis: continuousScrollEnabled &&
+            panAxis:
+                continuousScrollEnabled &&
                     isColumnReadMode(readSetting.readMode)
                 ? PanAxis.horizontal
                 : PanAxis.free,
@@ -133,7 +134,8 @@ class ReaderInputController {
                 details: details,
                 transformation: transformationController,
                 scrollController: scrollController,
-                enabled: zoomedContinuousScrollEnabled.value &&
+                enabled:
+                    zoomedContinuousScrollEnabled.value &&
                     isColumnReadMode(readSetting.readMode),
               );
               _updateMultiTouchScrollLock();

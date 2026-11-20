@@ -598,9 +598,7 @@ class ReaderScrollExperimentSwitch extends StatelessWidget {
             title: chinese
                 ? '条漫放大后连续滚动（实验性）'
                 : 'Continuous scrolling while zoomed (experimental)',
-            subtitle: chinese
-                ? '仅条漫模式。自动保存开关状态；手势异常时请关闭。'
-                : 'Webtoon mode only. Remembers your choice; disable if gestures misbehave.',
+            subtitle: chinese ? '仅条漫模式。自动保存开关状态；手势异常时请关闭。' : 'Webtoon mode only. Remembers your choice; disable if gestures misbehave.',
             value: enabled,
             onChanged: setZoomedContinuousScrollEnabled,
           ),
