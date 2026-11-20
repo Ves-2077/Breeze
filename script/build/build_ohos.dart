@@ -3,6 +3,7 @@
 // ignore_for_file: avoid_print
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:code_assets/code_assets.dart';
@@ -684,6 +685,15 @@ Future<_PubBackup?> _prepareOhosPubspec(
     },
   };
 
+  // Sentry（经 path_provider_android / shared_preferences_android）会间接带入
+  // package:jni；其 Int32 的 AbiSpecificIntegerMapping 没有 ohos，release AOT
+  // 会报 “Int32 is missing mapping for ohos_arm64”。只在 OHOS 构建时复制并
+  // 补 mapping，官方 Android/桌面构建继续使用 pub 版本。
+  final jniPatch = await _preparePatchedJni(projectRoot);
+  if (jniPatch != null) {
+    overridePaths['jni'] = jniPatch;
+  }
+
   final forkOverrides = <String>[];
   for (final entry in gitOverrides.entries) {
     forkOverrides.add(
@@ -730,6 +740,86 @@ Future<_PubBackup?> _prepareOhosPubspec(
     pubspecContent: content,
     lockContent: lockContent,
   );
+}
+
+/// Sentry 的 Android 依赖会带入 package:jni；jni 的 Int32 映射缺少 OHOS ABI。
+/// 复制当前 package_config 中的 jni 到 .dart_tool 并补 mapping，只在 OHOS
+/// 构建的临时 pubspec 中 override，避免污染官方依赖。
+Future<String?> _preparePatchedJni(String projectRoot) async {
+  final configFile = File(
+    p.join(projectRoot, '.dart_tool', 'package_config.json'),
+  );
+  if (!await configFile.exists()) return null;
+
+  try {
+    final config = jsonDecode(await configFile.readAsString());
+    if (config is! Map || config['packages'] is! List) return null;
+
+    Map? jniPackage;
+    for (final package in config['packages'] as List) {
+      if (package is Map && package['name'] == 'jni') {
+        jniPackage = package;
+        break;
+      }
+    }
+
+    final rootUri = jniPackage?['rootUri'];
+    if (rootUri is! String) return null;
+    final source = _packageDirectory(projectRoot, rootUri);
+    if (source == null || !await source.exists()) return null;
+
+    final target = Directory(
+      p.join(projectRoot, '.dart_tool', 'ohos_jni_patch'),
+    );
+    if (await target.exists()) {
+      await target.delete(recursive: true);
+    }
+    await _copyDirectory(source, target);
+
+    final internal = File(p.join(target.path, 'lib', '_internal.dart'));
+    if (!await internal.exists()) return null;
+    var content = await internal.readAsString();
+    if (!content.contains('Abi.ohosArm64')) {
+      const anchor = '  Abi.fuchsiaArm64: ffi.Int32(),';
+      if (!content.contains(anchor)) return null;
+      const additions =
+          '  Abi.ohosArm: ffi.Int32(),\n'
+          '  Abi.ohosArm64: ffi.Int32(),\n'
+          '  Abi.ohosX64: ffi.Int32(),\n';
+      content = content.replaceFirst(anchor, '$additions$anchor');
+      await internal.writeAsString(content);
+    }
+
+    return p.relative(target.path, from: projectRoot);
+  } catch (error) {
+    _printColor('准备 jni OHOS ABI 补丁失败: $error', _yellow);
+    return null;
+  }
+}
+
+Directory? _packageDirectory(String projectRoot, String rootUri) {
+  try {
+    final uri = Uri.parse(rootUri);
+    if (uri.scheme == 'file') {
+      return Directory(uri.toFilePath(windows: Platform.isWindows));
+    }
+    return Directory(p.normalize(p.join(projectRoot, rootUri)));
+  } catch (_) {
+    return null;
+  }
+}
+
+Future<void> _copyDirectory(Directory source, Directory target) async {
+  await target.create(recursive: true);
+  await for (final entity in source.list(recursive: true, followLinks: false)) {
+    final relative = p.relative(entity.path, from: source.path);
+    final destination = p.join(target.path, relative);
+    if (entity is Directory) {
+      await Directory(destination).create(recursive: true);
+    } else if (entity is File) {
+      await entity.copy(destination);
+    }
+  }
 }
 
 class _PubBackup {

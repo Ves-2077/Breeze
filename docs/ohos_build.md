@@ -250,3 +250,9 @@ OHOS 桌面与应用内图标来自 `asset/image/app-icon.png`，已同步到：
 4. **签名**：`ohos/build-profile.json5` 目前 `signingConfigs` 为空，需在 DevEco 里生成调试签名后才能安装；
    命令行可用 `script/build/sign_ohos_hap.dart` 签未签名 HAP。
 5. `lib/main.dart` 已可在 OHOS fork 下完整构建；调试探针统一放在 `tool/ohos/`。
+6. **release AOT 与 jni**：`sentry_flutter` / `path_provider_android` 会间接带入
+   `package:jni 1.2.0`，其 `Int32` 的 `AbiSpecificIntegerMapping` 没有
+   `ohosArm` / `ohosArm64` / `ohosX64`，release AOT 会报
+   `Int32 is missing mapping for ohos_arm64`。`build_ohos.dart --hap` 会把
+   `package_config.json` 中的 jni 复制到 `.dart_tool/ohos_jni_patch` 并补三个
+   mapping，只在 OHOS 临时 pubspec 中 override；官方 Android/桌面构建不受影响。
