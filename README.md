@@ -78,11 +78,94 @@
 
 # 🚀 如何安装
 
-### 📱 Android/鸿蒙
+### 📱 Android
 
 - 前往 [Releases 页面](https://github.com/breeze-project-org/Breeze/releases) 下载 `app-arm64-v8a-release.apk`。
 
-  > **注意**：中国大陆内因未经审核应用可能无法安装，可以使用[GBox](https://gboxlab.com/i18n/zh-Hant/)、[出境易](https://www.chujingapp.com/)或[GSpace](https://gspaceteam.com/)（鸿蒙系统可通过应用商店下载）的方式绕过系统安装器，以安装应用。
+  > **注意**：中国大陆内因未经审核应用可能无法安装，可以使用[GBox](https://gboxlab.com/i18n/zh-Hant/)、[出境易](https://www.chujingapp.com/)或[GSpace](https://gspaceteam.com/)（鸿蒙 4.x 可通过应用商店下载）的方式绕过系统安装器，以安装应用。
+
+> **HarmonyOS 4.x 及更早版本**仍可安装 APK；**HarmonyOS NEXT / 5.0 及以上**不再兼容 APK，请使用下面的 HAP 安装方式。
+
+### 📱 HarmonyOS NEXT / 5.0+
+
+HarmonyOS NEXT 只支持 `.hap`，且未上架应用必须签名后才能安装。Breeze 的 Release 提供的是**未签名 arm64 HAP**，需要你自己完成签名。
+
+**系统要求：** HarmonyOS `5.0.5(17)` 及以上，`arm64-v8a` 设备。
+
+#### 1. 下载 HAP
+
+前往 [Releases 页面](https://github.com/breeze-project-org/Breeze/releases) 下载：
+
+```text
+Breeze-<版本>-ohos-arm64-release-unsigned.hap
+```
+
+如果 Release 提供的是 zip，请先解压，并核对 `SHA256SUMS.txt`。
+
+#### 2. 准备签名材料
+
+未签名 HAP 不能直接安装。HarmonyOS NEXT 零售机没有通用的“自签证书”，需要目标设备信任的证书和 profile：
+
+- **调试签名**：profile 绑定设备 UDID，适合个人设备
+- **发布签名**：使用华为开发者 release 证书/profile，适合分发给其他人
+
+> 你需要一个已完成实名认证的华为开发者账号。仅安装自己设备时，使用 DevEco Studio 的自动签名生成材料即可。
+
+#### 3. 签名
+
+**方式 A：有源码（推荐开发者）**
+
+1. 用 DevEco Studio 打开本仓库的 `ohos/` 工程。
+2. 连接设备，开启开发者模式和 USB 调试。
+3. 打开 `File > Project Structure > Signing Configs`，启用自动签名并登录华为账号。
+4. 直接构建/运行，DevEco 会生成已签名 HAP。
+
+**方式 B：只有下载的 HAP**
+
+1. 在 DevEco Studio 中为 bundleName `com.zephyr.breeze` 生成签名材料（`.p12` / `.cer` / `.p7b`）。
+2. 使用 SDK 里的 `hap-sign-tool.jar` 对 HAP 签名：
+
+```bash
+java -jar <SDK>/toolchains/lib/hap-sign-tool.jar sign-app \
+  -mode localSign \
+  -keyAlias "<alias>" \
+  -keyPwd "<key password>" \
+  -appCertFile "<cert.cer>" \
+  -profileFile "<profile.p7b>" \
+  -inFile Breeze-<版本>-ohos-arm64-release-unsigned.hap \
+  -signAlg SHA256withECDSA \
+  -keystoreFile "<keystore.p12>" \
+  -keystorePwd "<keystore password>" \
+  -outFile Breeze-<版本>-ohos-arm64-release-signed.hap
+```
+
+#### 4. 安装
+
+```bash
+hdc list targets
+hdc install -r Breeze-<版本>-ohos-arm64-release-signed.hap
+```
+
+启动：
+
+```bash
+hdc shell aa start -a EntryAbility -b com.zephyr.breeze
+```
+
+> 如果报 `signature verify failed`，通常是 profile 的 bundleName 或证书不匹配；如果报 `install parse native so failed`，通常是设备架构不是 `arm64-v8a`。
+
+#### 5. 升级说明
+
+每个新版本都需要重新签名，但可以继续使用同一套 `.p12` / `.cer` / `.p7b`。请保留签名材料；如果升级时换了证书，系统会认为签名冲突，可能需要卸载旧版，应用数据也会丢失。
+
+#### 教程
+
+- **视频：鸿蒙 5.0 安装第三方 HAP 应用**：[哔哩哔哩：华为鸿蒙5.0如何安装第三方APP，Hap格式原生APP](https://www.bilibili.com/video/BV1RspczeE7i)
+- **视频：HarmonyOS 手动签名完整流程**：[哔哩哔哩：从 DevEco Studio 配置到 AGC 平台操作](https://www.bilibili.com/video/BV1wAapzaEPa)
+- **图文：鸿蒙 NEXT 应用侧载与 HAP 签名安装实战笔记**：[GitHub：harmonyos-sideload-guide](https://github.com/Richard1037/harmonyos-sideload-guide)
+- **官方文档**：[DevEco Studio 自动签名](https://developer.huawei.com/consumer/cn/doc/harmonyos-guides/ide-signing-auto)、[应用签名配置与证书常见问题](https://developer.huawei.com/consumer/cn/doc/harmonyos-faqs/faqs-signature-service-17)
+
+> 以上视频/图文为第三方教程，仅用于说明签名和安装流程；具体菜单可能随 DevEco Studio 版本变化。开发构建与测试签名脚本见 [docs/ohos_build.md](docs/ohos_build.md)。
 
 ### 🪟 Windows
 
