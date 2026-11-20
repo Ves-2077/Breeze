@@ -4,6 +4,11 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:zephyr/config/global/global.dart';
 import 'package:zephyr/main.dart';
+import 'package:zephyr/util/ohos/platform.dart';
+
+// 内部目录统一走 path_provider；OHOS 实现在
+// lib/util/ohos/path_provider.dart（support=应用 files，cache=临时目录），
+// 因此下面的通用分支无需再按 OHOS 复制一份。
 
 // =========================================================
 // 平台策略判断
@@ -143,6 +148,13 @@ Future<File> getLogPath() async {
 
 /// 创建/获取用户可见的公开下载目录
 Future<String> createDownloadDir() async {
+  if (isOhos) {
+    // OHOS 没有可直接写入的公共 Downloads 路径；导出统一走
+    // 缓存暂存 + saveFileToPicker，不能再回退到应用沙盒冒充“下载目录”。
+    throw UnsupportedError(
+      'OHOS has no public downloads directory; use saveFileToPicker instead',
+    );
+  }
   try {
     // 1. Desktop (Windows/Linux/macOS)
     if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
