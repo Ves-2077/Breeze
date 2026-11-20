@@ -4,9 +4,15 @@ on:
   push:
     branches:
       - main
+    paths:
+      - 'lib/**'
+      - 'rust/**'
   pull_request:
     branches:
       - main
+    paths:
+      - 'lib/**'
+      - 'rust/**'
   workflow_dispatch:
 
 permissions:
