@@ -9,7 +9,7 @@ import 'package:material_ui/material_ui.dart';
 ///
 /// 构建：
 /// ```bash
-/// flutter build hap -t lib/main_ohos.dart --debug
+/// flutter build hap -t tool/ohos/smoke.dart --debug
 /// ```
 void main() {
   WidgetsFlutterBinding.ensureInitialized();

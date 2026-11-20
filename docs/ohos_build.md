@@ -34,8 +34,11 @@ dart ./script/build/build_ohos.dart --check
 # 交叉编译 Rust（release + strip，约 30 MB）
 dart ./script/build/build_ohos.dart --rust
 
-# Rust + 拷贝 .so + 构建 HAP（默认入口 lib/main_ohos.dart）
-dart ./script/build/build_ohos.dart --hap --entry lib/main_ohos.dart
+# Rust + 拷贝 .so + 构建 HAP（默认入口 lib/main.dart）
+dart ./script/build/build_ohos.dart --hap
+
+# 轻量启动冒烟（不初始化数据库/插件/Rust）
+dart ./script/build/build_ohos.dart --hap --entry tool/ohos/smoke.dart
 
 # release Rust 也输出 debug 级日志
 dart ./script/build/build_ohos.dart --hap --rust-log
@@ -81,8 +84,9 @@ OHOS fork 新增 `TargetPlatform.ohos` 后编译失败。仓库内维护了 OHOS
 `build_ohos.dart --hap` 在临时 pubspec 里注入 `dependency_overrides`，
 构建结束恢复；官方构建继续用 pub 版本。详见 `third_party/README.md`。
 
-已验证：`lib/main_ohos.dart` 与完整 `lib/main.dart` 都能编译并产出 debug HAP
-（`entry-default-unsigned.hap`，约 227 MB）。
+已验证：默认入口 `lib/main.dart` 能编译并产出完整 debug HAP
+（`entry-default-unsigned.hap`，约 227 MB）；`tool/ohos/smoke.dart` 仍可用于
+不依赖业务初始化的轻量启动验证。
 
 桌面栈 `window_manager` / `screen_retriever` / `tray_manager` 依赖
 `nativeapi 0.6`（Dart `^3.14`）。OHOS 构建期间用
@@ -126,7 +130,7 @@ dart ./script/build/sign_ohos_hap.dart \
   桌面 stub 的依赖覆盖。
 - 偏好存储沿用旧插件文件名 `FlutterSharedPreferences` 与 key 格式，
   升级后已有设置不丢；写偏好失败也不会阻塞插件首页切换。
-- 探针 `lib/main_ohos_probe.dart` 已验证：FRB 加载、Rust greet、
+- 探针 `tool/ohos/runtime_probe.dart` 已验证：FRB 加载、Rust greet、
   `getApplicationSupportDirectory`（`/data/storage/el2/base/files`）、
   `getTemporaryDirectory`、`Database.open` + `SELECT 1` 全部通过。
 - 完整 `lib/main.dart` 已在模拟器启动并显示 Home/书架/发现/更多底栏。
@@ -222,16 +226,18 @@ OHOS 桌面与应用内图标来自 `asset/image/app-icon.png`，已同步到：
   OHOS(非 PC/2in1)系统不支持文件夹选择：批量导出自动改为 zip + 逐个系统“另存为”；
   本地文件夹导入入口隐藏，改用压缩包导入；自定义导出目录选项在 OHOS 隐藏。
 
+### 其他已知问题
+
 1. **Dart 版本冲突**：完整依赖树中的桌面栈（`window_manager` / `tray_manager` / `screen_retriever` → `nativeapi 0.6`）
    要求 Dart `^3.14.0`，OHOS fork 只有 3.13.5。`--hap` 已自动临时裁剪并恢复；
    长期方案仍是给 OHOS 维护独立依赖集（或等 fork 升级 Dart）。
 2. **`material_ui` 的 OHOS 分支**：上游 `material_ui 1.11` 缺少
    `TargetPlatform.ohos` 分支；完整 App 已改用 `material_ui_ohos` / `cupertino_ui_ohos` fork，
-   `lib/main_ohos.dart` 仅作为不依赖 UI fork 的轻量探针。
+   `tool/ohos/smoke.dart` 仅作为不依赖 UI fork 的轻量探针。
 3. **插件适配**：`path_provider` / `shared_preferences` / `file_selector` 已有 OHOS 实现；
    `url_launcher`、`package_info_plus`、`device_info_plus`、`connectivity_plus`、
    `battery_plus`、`dynamic_color` 已由本地桥或 UI 降级覆盖。
    剩余：`sentry_flutter`、`flutter_inappwebview`、`flutter_foreground_task` 等。
 4. **签名**：`ohos/build-profile.json5` 目前 `signingConfigs` 为空，需在 DevEco 里生成调试签名后才能安装；
    命令行可用 `script/build/sign_ohos_hap.dart` 签未签名 HAP。
-5. `lib/main.dart` 已可在 OHOS fork 下完整构建，`lib/main_ohos.dart` 仅保留为轻量启动探针。
+5. `lib/main.dart` 已可在 OHOS fork 下完整构建；调试探针统一放在 `tool/ohos/`。

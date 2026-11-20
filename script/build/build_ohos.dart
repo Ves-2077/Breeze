@@ -83,7 +83,7 @@ class _Options {
   bool rustLog = false;
   bool noRust = false;
   bool help = false;
-  String entry = 'lib/main_ohos.dart';
+  String entry = 'lib/main.dart';
   String arch = 'arm64';
   String? flutter;
 
@@ -808,7 +808,7 @@ void _printUsage() {
   --all              check + rust + hap
   --debug            Rust / HAP 使用 debug 模式（不 strip）
   --no-rust          --hap 时跳过 Rust 编译，直接用已有产物
-  --entry <path>     HAP 入口，默认 lib/main_ohos.dart
+  --entry <path>     HAP 入口，默认 lib/main.dart
   --arch <abi>       arm64（默认）或 x64（模拟器）
   --no-impeller      构建期间关闭 Impeller（模拟器白屏时用，构建后恢复）
   --rust-log         HAP 传 --dart-define=rust_log=true（release 也能出 Rust 日志）
