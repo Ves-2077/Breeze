@@ -140,7 +140,10 @@ void main() {
 
   group('autoCloudCollectOnLocalFavorite 开关', () {
     test('默认关闭', () {
-      expect(const GlobalSettingState().autoCloudCollectOnLocalFavorite, isFalse);
+      expect(
+        const GlobalSettingState().autoCloudCollectOnLocalFavorite,
+        isFalse,
+      );
     });
 
     test('旧版 JSON 缺字段回落 false，且往返保持', () {

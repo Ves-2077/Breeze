@@ -124,11 +124,7 @@ void main() {
       );
       final bPath = await _path(b);
       await expectLater(
-        ComicFolderService.renameFolder(
-          bPath,
-          'a',
-          ComicFolderType.favorite,
-        ),
+        ComicFolderService.renameFolder(bPath, 'a', ComicFolderType.favorite),
         throwsA(isA<StateError>()),
       );
     });
@@ -495,10 +491,7 @@ void main() {
         ComicFolderType.favorite,
       );
       expect(links.length, 1);
-      expect(
-        (await database.favorites.getById(favorite.id))!.deleted,
-        isFalse,
-      );
+      expect((await database.favorites.getById(favorite.id))!.deleted, isFalse);
     });
 
     test('removeComicFromAll removes all links', () async {
@@ -610,51 +603,45 @@ void main() {
       },
     );
 
-    test(
-      'deleting a parent folder removes links in nested folders and unfavorites comic',
-      () async {
-        final favorite = createTestFavorite('test:comic1');
-        await database.favorites.put(favorite);
-        final parent = await ComicFolderService.createFolder(
-          '',
-          'parent',
-          ComicFolderType.favorite,
-        );
-        final parentPath = await _path(parent);
-        final child = await ComicFolderService.createFolder(
-          parentPath,
-          'child',
-          ComicFolderType.favorite,
-        );
-        final childPath = await _path(child);
-        await ComicLinkService.addComic(
+    test('deleting a parent folder removes links in nested folders and unfavorites comic', () async {
+      final favorite = createTestFavorite('test:comic1');
+      await database.favorites.put(favorite);
+      final parent = await ComicFolderService.createFolder(
+        '',
+        'parent',
+        ComicFolderType.favorite,
+      );
+      final parentPath = await _path(parent);
+      final child = await ComicFolderService.createFolder(
+        parentPath,
+        'child',
+        ComicFolderType.favorite,
+      );
+      final childPath = await _path(child);
+      await ComicLinkService.addComic(
+        'test:comic1',
+        childPath,
+        ComicFolderType.favorite,
+      );
+
+      await ComicFolderService.deleteFolder(
+        parentPath,
+        ComicFolderType.favorite,
+      );
+      await ComicLinkService.removeLinksInFolderTree(
+        parentPath,
+        ComicFolderType.favorite,
+      );
+
+      expect(
+        await ComicLinkService.linksOfComic(
           'test:comic1',
-          childPath,
           ComicFolderType.favorite,
-        );
-
-        await ComicFolderService.deleteFolder(
-          parentPath,
-          ComicFolderType.favorite,
-        );
-        await ComicLinkService.removeLinksInFolderTree(
-          parentPath,
-          ComicFolderType.favorite,
-        );
-
-        expect(
-          await ComicLinkService.linksOfComic(
-            'test:comic1',
-            ComicFolderType.favorite,
-          ),
-          isEmpty,
-        );
-        expect(
-          (await database.favorites.getById(favorite.id))!.deleted,
-          isTrue,
-        );
-      },
-    );
+        ),
+        isEmpty,
+      );
+      expect((await database.favorites.getById(favorite.id))!.deleted, isTrue);
+    });
   });
 
   group('ComicFolderService edge cases', () {
@@ -779,28 +766,31 @@ void main() {
       expect((await database.folders.getById(child.id))!.deletedAt, isNotNull);
     });
 
-    test('createFolder under deleted parent falls back to root semantics', () async {
-      final parent = await ComicFolderService.createFolder(
-        '',
-        'parent',
-        ComicFolderType.favorite,
-      );
-      final parentPath = await _path(parent);
-      await ComicFolderService.deleteFolder(
-        parentPath,
-        ComicFolderType.favorite,
-      );
+    test(
+      'createFolder under deleted parent falls back to root semantics',
+      () async {
+        final parent = await ComicFolderService.createFolder(
+          '',
+          'parent',
+          ComicFolderType.favorite,
+        );
+        final parentPath = await _path(parent);
+        await ComicFolderService.deleteFolder(
+          parentPath,
+          ComicFolderType.favorite,
+        );
 
-      // Attempting to create under the deleted parent path cannot find active parent,
-      // so it ends up creating at root level with a different uniqueKey.
-      final created = await ComicFolderService.createFolder(
-        parentPath,
-        'child',
-        ComicFolderType.favorite,
-      );
-      expect(created.parentSyncId, isNull);
-      expect(await _path(created), '/child');
-    });
+        // Attempting to create under the deleted parent path cannot find active parent,
+        // so it ends up creating at root level with a different uniqueKey.
+        final created = await ComicFolderService.createFolder(
+          parentPath,
+          'child',
+          ComicFolderType.favorite,
+        );
+        expect(created.parentSyncId, isNull);
+        expect(await _path(created), '/child');
+      },
+    );
   });
 
   group('ComicLinkService edge cases', () {
@@ -872,14 +862,17 @@ void main() {
       );
 
       expect(
-        (await ComicLinkService.listLinks(path, ComicFolderType.favorite))
-            .length,
+        (await ComicLinkService.listLinks(
+          path,
+          ComicFolderType.favorite,
+        )).length,
         1,
       );
       expect(
-        (await ComicLinkService.listLinks(path, ComicFolderType.favorite))
-            .single
-            .id,
+        (await ComicLinkService.listLinks(
+          path,
+          ComicFolderType.favorite,
+        )).single.id,
         link.id,
       );
     });
