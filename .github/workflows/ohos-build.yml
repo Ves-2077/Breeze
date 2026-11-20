@@ -170,9 +170,10 @@ jobs:
 
       - name: 构建 HAP
         id: build
-        continue-on-error: true
         run: |
           set -euxo pipefail
+          HAP=ohos/entry/build/default/outputs/default/entry-default-unsigned.hap
+          rm -f "$HAP"
           args=(
             ./script/build/build_ohos.dart
             --hap
@@ -183,7 +184,17 @@ jobs:
           if [ "${{ inputs.build_mode }}" = "debug" ]; then
             args+=(--debug)
           fi
+          set +e
           dart "${args[@]}"
+          code=$?
+          set -e
+          if [ "$code" -ne 0 ]; then
+            if [ -f "$HAP" ]; then
+              echo "::warning::dart 退出码 $code，但未签名 HAP 已生成，按构建成功处理"
+            else
+              exit "$code"
+            fi
+          fi
 
       - name: 检查 HAP
         run: |
@@ -200,7 +211,8 @@ jobs:
               data = json.loads(z.read("module.json"))
               module = data["module"]
               app = data["app"]
-              print("bundleName:", module.get("name"))
+              print("moduleName:", module.get("name"))
+              print("bundleName:", app.get("bundleName"))
               print("versionName:", app.get("versionName"))
               print("versionCode:", app.get("versionCode"))
               print("minAPIVersion:", app.get("minAPIVersion"))
