@@ -78,6 +78,9 @@ CMake 必须用 Ninja 生成器（`aws-lc-sys` 在 Windows 默认选 Visual Stud
 - Rust 级别：`RUST_LOG` 优先；否则默认 `debug`，并静音 hickory / reqwest / h2 噪音。
 - OHOS sink：`rust/src/api/logger.rs` 的 `HilogMakeWriter` 调用 `OH_LOG_Print`（`libhilog_ndk.z.so`），
   真机用 `hdc shell hilog | grep windcore` 查看。
+- **Windows 编码坑**：日志本身是 UTF-8，但 `hdc shell` 直接输出到 Windows 控制台时可能按 GBK
+  解码，中文和 `│`/`─` 会显示成 `鍛ㄤ簲`、`鈹€`。先把日志重定向到文件再用 UTF-8 打开，或先执行
+  `chcp 65001`；不要据此判断 Rust 日志损坏。
 - 第三方 `log` 门面记录默认封顶 `Info`，只有显式 `RUST_LOG` 才放开 debug。
 
 ## 5. UI 包 fork
