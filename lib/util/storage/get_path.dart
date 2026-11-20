@@ -118,6 +118,17 @@ Future<String> getDownloadPath() async {
 
 /// 获取日志文件路径
 Future<File> getLogPath() async {
+  final logDirPath = await getLogDirectoryPath();
+
+  final logFile = File(p.join(logDirPath, "breeze.log"));
+  if (!await logFile.exists()) {
+    await logFile.create();
+  }
+  return logFile;
+}
+
+/// 获取日志目录；未捕获异常日志也放在这里。
+Future<String> getLogDirectoryPath() async {
   String logDirPath;
 
   if (_isPortableStrategy) {
@@ -127,19 +138,13 @@ Future<File> getLogPath() async {
     final docDir = await getApplicationDocumentsDirectory();
     logDirPath = p.join(docDir.path, 'log');
   } else {
-    // macOS/Linux: AppSupport/log 是安全的做法。
-    // 注：macOS 极致原生可以放在 ~/Library/Logs/bundle_id，但 path_provider 未直接提供，此处保持原逻辑亦可。
+    // macOS/Linux/OHOS: AppSupport/log 是安全的做法。
     final appDir = await getAppDirectory();
     logDirPath = p.join(appDir, 'log');
   }
 
   await _ensureDirExists(logDirPath);
-
-  final logFile = File(p.join(logDirPath, "breeze.log"));
-  if (!await logFile.exists()) {
-    await logFile.create();
-  }
-  return logFile;
+  return logDirPath;
 }
 
 // =========================================================

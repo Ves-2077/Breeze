@@ -49,6 +49,7 @@ import 'package:zephyr/src/rust/api/simple.dart';
 import 'package:zephyr/src/rust/api/system.dart' as rust_system;
 import 'package:zephyr/util/device/responsive.dart';
 import 'package:zephyr/util/error/error_filter.dart';
+import 'package:zephyr/util/error/uncaught_error_log.dart';
 import 'package:zephyr/util/ohos/platform.dart';
 import 'package:zephyr/util/ohos/file_bridge.dart';
 import 'package:zephyr/util/ohos/platform_plugins.dart';
@@ -127,10 +128,49 @@ class MyAlwaysLogFilter extends LogFilter {
   bool shouldLog(LogEvent event) => true; // 强制通过所有日志
 }
 
+Future<void> _initOhosUncaughtErrorLogger() async {
+  try {
+    final logDirectory = await getLogDirectoryPath();
+    await initUncaughtErrorFileLogger(logDirectory);
+  } catch (_) {
+    // 启动早期拿不到目录时保留控制台输出，不阻断应用启动。
+  }
+}
+
+void _installFallbackErrorHandlers() {
+  // 捕获 Flutter 框架层错误（如 Widget 构建中的异常）
+  FlutterError.onError = (FlutterErrorDetails details) {
+    logger.e(
+      "Flutter Framework Error",
+      error: details.exception,
+      stackTrace: details.stack,
+    );
+    logUncaughtError(
+      details.exception,
+      details.stack ?? StackTrace.current,
+      source: "Flutter Framework Error",
+    );
+  };
+
+  // 捕获异步错误和底层错误（如 Future.error, Timer 等）
+  PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
+    logger.e("Async/Platform Error", error: error, stackTrace: stack);
+    logUncaughtError(error, stack, source: "Async/Platform Error");
+    return true; // 表示错误已被处理
+  };
+}
+
 Future<void> main(List<String> args) async {
   // 1. 基础初始化
   WidgetsFlutterBinding.ensureInitialized();
   installOhosPlatformPlugins();
+
+  // OHOS 没有 Sentry；在启动最早期准备未捕获异常文件日志，
+  // 普通业务日志不落盘，避免账号密码等敏感参数进入文件。
+  if (isOhos) {
+    await _initOhosUncaughtErrorLogger();
+    _installFallbackErrorHandlers();
+  }
 
   // 先生成本地同步设备 ID，后续文件夹/链接的版本向量会使用它
   await ensureSyncDeviceId();
@@ -147,20 +187,10 @@ Future<void> main(List<String> args) async {
   if (sentryDsn.isEmpty || isOhos) {
     // 1. 如果是调试模式，配置 logger 捕获全局错误
     if (kDebugMode || sentryDsn.isEmpty || isOhos) {
-      // 捕获 Flutter 框架层错误（如 Widget 构建中的异常）
-      FlutterError.onError = (FlutterErrorDetails details) {
-        logger.e(
-          "Flutter Framework Error",
-          error: details.exception,
-          stackTrace: details.stack,
-        );
-      };
-
-      // 捕获异步错误和底层错误（如 Future.error, Timer 等）
-      PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
-        logger.e("Async/Platform Error", error: error, stackTrace: stack);
-        return true; // 表示错误已被处理
-      };
+      // OHOS 已在启动最早期安装同一组处理器；这里避免重复覆盖。
+      if (!isOhos) {
+        _installFallbackErrorHandlers();
+      }
     }
 
     try {
@@ -187,6 +217,7 @@ Future<void> main(List<String> args) async {
       // 捕获初始化阶段（_initServices）可能抛出的异常
       if (kDebugMode || sentryDsn.isEmpty || isOhos) {
         logger.e("App Setup Failed", error: e, stackTrace: stack);
+        logUncaughtError(e, stack, source: "App Setup Failed");
       }
     }
 

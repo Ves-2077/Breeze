@@ -69,6 +69,12 @@ CMake 必须用 Ninja 生成器（`aws-lc-sys` 在 Windows 默认选 Visual Stud
 ## 4. 日志
 
 - Dart：`--dart-define=rust_log=true` 可在 release 打开 Rust 日志（`enableRustLog` 是运行时开关，代码始终编进产物）。
+- Dart 未捕获异常：OHOS 不初始化 Sentry，启动早期会创建独立日志器，只把
+  `FlutterError.onError` / `PlatformDispatcher.onError` / 初始化失败写入
+  `<files>/log/uncaught.log`（后台 isolate 队列写入，超过 2 MB 轮转为 `.1`）。
+  普通业务 logger 不落盘，避免账号密码等参数进入文件。进程被立即杀死时队列尾部
+  可能丢失，属于 best-effort。拉取示例：
+  `hdc file recv /data/app/el2/100/base/com.zephyr.breeze/files/log/uncaught.log .`
 - Rust 级别：`RUST_LOG` 优先；否则默认 `debug`，并静音 hickory / reqwest / h2 噪音。
 - OHOS sink：`rust/src/api/logger.rs` 的 `HilogMakeWriter` 调用 `OH_LOG_Print`（`libhilog_ndk.z.so`），
   真机用 `hdc shell hilog | grep windcore` 查看。
