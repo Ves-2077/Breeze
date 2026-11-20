@@ -100,8 +100,6 @@ HarmonyOS NEXT 只支持 `.hap`，且未上架应用必须签名后才能安装�
 Breeze-<版本>-ohos-arm64-release-unsigned.hap
 ```
 
-如果 Release 提供的是 zip，请先解压，并核对 `SHA256SUMS.txt`。
-
 #### 2. 准备签名材料
 
 未签名 HAP 不能直接安装。HarmonyOS NEXT 零售机没有通用的“自签证书”，需要目标设备信任的证书和 profile：
