@@ -101,6 +101,11 @@ _GlobalSettingState _$GlobalSettingStateFromJson(
   eInkSetting: json['eInkSetting'] == null
       ? const EInkSettingState()
       : EInkSettingState.fromJson(json['eInkSetting'] as Map<String, dynamic>),
+  comicDetailSetting: json['comicDetailSetting'] == null
+      ? const ComicDetailSettingState()
+      : ComicDetailSettingState.fromJson(
+          json['comicDetailSetting'] as Map<String, dynamic>,
+        ),
 );
 
 Map<String, dynamic> _$GlobalSettingStateToJson(
@@ -154,6 +159,7 @@ Map<String, dynamic> _$GlobalSettingStateToJson(
       _$ChineseConvertModeEnumMap[instance.chineseConvertMode]!,
   'bookshelfSetting': instance.bookshelfSetting.toJson(),
   'eInkSetting': instance.eInkSetting.toJson(),
+  'comicDetailSetting': instance.comicDetailSetting.toJson(),
 };
 
 const _$ThemeModeEnumMap = {
@@ -514,4 +520,22 @@ Map<String, dynamic> _$BookshelfSettingStateToJson(
   'downloadSort': instance.downloadSort,
   'detailLayout': instance.detailLayout,
   'reverseChapters': instance.reverseChapters,
+};
+
+_ComicDetailSettingState _$ComicDetailSettingStateFromJson(
+  Map<String, dynamic> json,
+) => _ComicDetailSettingState(
+  showLikeAction: json['showLikeAction'] as bool? ?? true,
+  showCommentAction: json['showCommentAction'] as bool? ?? true,
+  showLocalCollectAction: json['showLocalCollectAction'] as bool? ?? true,
+  showCloudCollectAction: json['showCloudCollectAction'] as bool? ?? true,
+);
+
+Map<String, dynamic> _$ComicDetailSettingStateToJson(
+  _ComicDetailSettingState instance,
+) => <String, dynamic>{
+  'showLikeAction': instance.showLikeAction,
+  'showCommentAction': instance.showCommentAction,
+  'showLocalCollectAction': instance.showLocalCollectAction,
+  'showCloudCollectAction': instance.showCloudCollectAction,
 };

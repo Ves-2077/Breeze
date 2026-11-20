@@ -183,6 +183,8 @@ abstract class GlobalSettingState with _$GlobalSettingState {
     @Default(ChineseConvertMode.off) ChineseConvertMode chineseConvertMode,
     @Default(BookshelfSettingState()) BookshelfSettingState bookshelfSetting,
     @Default(EInkSettingState()) EInkSettingState eInkSetting,
+    @Default(ComicDetailSettingState())
+    ComicDetailSettingState comicDetailSetting,
   }) = _GlobalSettingState;
 
   factory GlobalSettingState.fromJson(Map<String, dynamic> json) =>
@@ -403,6 +405,32 @@ abstract class BookshelfSettingState with _$BookshelfSettingState {
       _$BookshelfSettingStateFromJson(json);
 }
 
+/// 漫画详情页显示样式。
+///
+/// 功能按钮区固定有四个按钮，各自独立控制显隐；隐藏只影响展示，
+/// 不影响收藏、点赞等实际状态与自动逻辑。
+@freezed
+abstract class ComicDetailSettingState with _$ComicDetailSettingState {
+  const factory ComicDetailSettingState({
+    @Default(true) bool showLikeAction,
+    @Default(true) bool showCommentAction,
+    @Default(true) bool showLocalCollectAction,
+    @Default(true) bool showCloudCollectAction,
+  }) = _ComicDetailSettingState;
+
+  factory ComicDetailSettingState.fromJson(Map<String, dynamic> json) =>
+      _$ComicDetailSettingStateFromJson(json);
+}
+
+extension ComicDetailSettingStateX on ComicDetailSettingState {
+  /// 四个功能按钮是否至少显示一个；全关时详情页整块操作区（含分隔线）不占位。
+  bool get hasVisibleActions =>
+      showLikeAction ||
+      showCommentAction ||
+      showLocalCollectAction ||
+      showCloudCollectAction;
+}
+
 class GlobalSettingCubit extends Cubit<GlobalSettingState> {
   // 构造函数，传入由 freezed 生成的默认 state
   GlobalSettingCubit() : super(const GlobalSettingState());
@@ -473,6 +501,16 @@ class GlobalSettingCubit extends Cubit<GlobalSettingState> {
   ) {
     updateState(
       (current) => current.copyWith(eInkSetting: updates(current.eInkSetting)),
+    );
+  }
+
+  void updateComicDetailSetting(
+    ComicDetailSettingState Function(ComicDetailSettingState current) updates,
+  ) {
+    updateState(
+      (current) => current.copyWith(
+        comicDetailSetting: updates(current.comicDetailSetting),
+      ),
     );
   }
 

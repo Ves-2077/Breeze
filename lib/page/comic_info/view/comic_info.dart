@@ -399,10 +399,10 @@ class _ComicInfoState extends State<_ComicInfo>
   Widget _infoView(NormalComicAllInfo normalComicAllInfo, bool localCollected) {
     final comicInfo = normalComicAllInfo.comicInfo;
     _title = comicInfo.title;
-    final clickCoverToStartReading = context
-        .watch<GlobalSettingCubit>()
-        .state
-        .clickCoverToStartReading;
+    final globalSetting = context.watch<GlobalSettingCubit>().state;
+    final clickCoverToStartReading = globalSetting.clickCoverToStartReading;
+    final showOperationActions =
+        globalSetting.comicDetailSetting.hasVisibleActions;
 
     if (!_loadingComplete) {
       WidgetsBinding.instance.addPostFrameCallback(
@@ -491,15 +491,17 @@ class _ComicInfoState extends State<_ComicInfo>
                                 )
                               : null,
                         ),
-                        _buildDivider(context),
-                        ComicOperationWidget(
-                          normalInfo: normalComicAllInfo,
-                          from: widget.from,
-                          collectionTargetId: widget.collectionTargetId,
-                          collectionTargetName: widget.collectionTargetName,
-                          comicInfo: comicInfoDyn,
-                          initialCollected: localCollected,
-                        ),
+                        if (showOperationActions) ...[
+                          _buildDivider(context),
+                          ComicOperationWidget(
+                            normalInfo: normalComicAllInfo,
+                            from: widget.from,
+                            collectionTargetId: widget.collectionTargetId,
+                            collectionTargetName: widget.collectionTargetName,
+                            comicInfo: comicInfoDyn,
+                            initialCollected: localCollected,
+                          ),
+                        ],
                         if (comicInfo.metadata.isNotEmpty ||
                             comicInfo.description.trim().isNotEmpty) ...[
                           _buildDivider(context),

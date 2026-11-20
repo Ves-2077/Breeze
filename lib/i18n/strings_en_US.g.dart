@@ -346,6 +346,17 @@ class _Translations$settings$en_US extends Translations$settings$zh_CN {
 	@override String get detailLayoutSubtitle => 'Show comic lists as horizontal detail rows with author and category info';
 	@override String get reverseChapters => 'Reverse chapters';
 	@override String get reverseChaptersSubtitle => 'Show chapters in reverse order by default on the detail page';
+	@override String get comicDetail => 'Comic detail page';
+	@override String get comicDetailSubtitle => 'Customize action buttons and display style of the detail page';
+	@override String get comicDetailActions => 'Action buttons';
+	@override String get comicDetailShowLike => 'Like';
+	@override String get comicDetailShowLikeSubtitle => 'Show the like button in the action bar';
+	@override String get comicDetailShowComment => 'Comments';
+	@override String get comicDetailShowCommentSubtitle => 'Show the comments button in the action bar';
+	@override String get comicDetailShowLocalCollect => 'Local favorite';
+	@override String get comicDetailShowLocalCollectSubtitle => 'Show the local favorite button in the action bar';
+	@override String get comicDetailShowCloudCollect => 'Cloud favorite';
+	@override String get comicDetailShowCloudCollectSubtitle => 'Show the cloud favorite button in the action bar';
 	@override String get storage => 'Storage';
 	@override String get cache => 'Cache';
 	@override String get clearCache => 'Clear cache';
@@ -1957,6 +1968,17 @@ extension on TranslationsEnUs {
 			'settings.detailLayoutSubtitle' => 'Show comic lists as horizontal detail rows with author and category info',
 			'settings.reverseChapters' => 'Reverse chapters',
 			'settings.reverseChaptersSubtitle' => 'Show chapters in reverse order by default on the detail page',
+			'settings.comicDetail' => 'Comic detail page',
+			'settings.comicDetailSubtitle' => 'Customize action buttons and display style of the detail page',
+			'settings.comicDetailActions' => 'Action buttons',
+			'settings.comicDetailShowLike' => 'Like',
+			'settings.comicDetailShowLikeSubtitle' => 'Show the like button in the action bar',
+			'settings.comicDetailShowComment' => 'Comments',
+			'settings.comicDetailShowCommentSubtitle' => 'Show the comments button in the action bar',
+			'settings.comicDetailShowLocalCollect' => 'Local favorite',
+			'settings.comicDetailShowLocalCollectSubtitle' => 'Show the local favorite button in the action bar',
+			'settings.comicDetailShowCloudCollect' => 'Cloud favorite',
+			'settings.comicDetailShowCloudCollectSubtitle' => 'Show the cloud favorite button in the action bar',
 			'settings.storage' => 'Storage',
 			'settings.cache' => 'Cache',
 			'settings.clearCache' => 'Clear cache',
@@ -2233,6 +2255,8 @@ extension on TranslationsEnUs {
 			'comicInfo.removedFromCollection' => 'Removed from collection',
 			'comicInfo.confirmUncollectTitle' => 'Remove collection',
 			'comicInfo.confirmUncollectContent' => 'This will delete the comic from all folders. Continue?',
+			_ => null,
+		} ?? switch (path) {
 			'comicInfo.commentForbidden' => 'This plugin does not support this feature',
 			'comicInfo.commentForbiddenTitle' => 'Comments disabled',
 			'comicInfo.chooseLocalFavoriteFolders' => 'Choose local favorite folders',
@@ -2244,8 +2268,6 @@ extension on TranslationsEnUs {
 			'comicInfo.exportSuccess' => 'Export successful',
 			'comicInfo.detailsNotLoaded' => 'Comic details not fully loaded',
 			'comicInfo.followed' => 'Following updates',
-			_ => null,
-		} ?? switch (path) {
 			'comicInfo.unfollowed' => 'Unfollowed',
 			'comicInfo.confirmUnfollowTitle' => 'Unfollow',
 			'comicInfo.confirmUnfollowContent' => ({required Object title}) => 'Stop following "${title}"?',
@@ -2747,6 +2769,8 @@ extension on TranslationsEnUs {
 			'about.disclaimerItem1Content' => 'This project is open-source software, independently developed and maintained by the author. It is provided "as-is". The developer makes no express or implied warranties regarding functionality, stability, security, or fitness for purpose.',
 			'about.disclaimerItem2Title' => '2. Limitation of Liability',
 			'about.disclaimerItem2Content' => 'The developer shall not be liable for any direct, indirect, special, incidental, or consequential damages arising from use, modification, or distribution of this project (including but not limited to direct use, secondary development, or integration into other projects). These damages may include but are not limited to data loss, device damage, business interruption, lost profits, or other economic losses.',
+			_ => null,
+		} ?? switch (path) {
 			'about.disclaimerItem3Title' => '3. User Responsibility',
 			'about.disclaimerItem3Content' => 'Users should evaluate suitability and assume all risks when using this project. Users must ensure their use complies with applicable laws, regulations, and ethical standards. The developer is not responsible for consequences resulting from violations of laws or misuse.',
 			'about.disclaimerItem4Title' => '4. Third-Party Dependencies and Resources',
@@ -2758,8 +2782,6 @@ extension on TranslationsEnUs {
 			'about.disclaimerItem7Title' => '7. Contributor Responsibility',
 			'about.disclaimerItem7Content' => 'If external contributions are accepted, contributors act in their personal capacity and do not represent the developer\'s views or positions. The developer is not responsible for contributor actions or content.',
 			'about.disclaimerItem8Title' => '8. Legal Compliance',
-			_ => null,
-		} ?? switch (path) {
 			'about.disclaimerItem8Content' => 'Users must ensure their use complies with applicable laws and regulations. The developer is not responsible for consequences resulting from legal violations.',
 			'about.disclaimerImportant' => 'Important Notice',
 			'about.disclaimerImportantContent' => 'Please read and understand this disclaimer before using this project. If you do not agree with any term, stop using it immediately. Continued use constitutes acceptance of the entire disclaimer.',

@@ -2,6 +2,7 @@ import 'package:auto_route/auto_route.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:zephyr/config/global/global_setting.dart';
+import 'package:zephyr/config/router/router.gr.dart';
 import 'package:zephyr/i18n/i18n_helper.dart';
 import 'package:zephyr/i18n/strings.g.dart';
 import 'package:zephyr/i18n/system_locale_service.dart';
@@ -37,6 +38,7 @@ class AppearanceSettingPage extends StatelessWidget {
           _comicReadTopContainer(state, cubit),
           _isAMOLED(state, cubit),
           _detailLayout(state, cubit),
+          _comicDetail(context),
           _showPluginHome(state, cubit),
           _showPluginCloudFavorite(state, cubit),
           _showSearchBookmark(state, cubit),
@@ -178,6 +180,15 @@ class AppearanceSettingPage extends StatelessWidget {
         );
         showSuccessToast(t.common.settingSaved);
       },
+    );
+  }
+
+  Widget _comicDetail(BuildContext context) {
+    return settingCategoryTile(
+      icon: Icons.article_outlined,
+      title: t.settings.comicDetail,
+      subtitle: t.settings.comicDetailSubtitle,
+      onTap: () => context.pushRoute(const ComicDetailSettingRoute()),
     );
   }
 

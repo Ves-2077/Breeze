@@ -800,6 +800,39 @@ class Translations$settings$zh_CN {
 	/// zh-CN: '开启后漫画详情页章节默认倒序显示'
 	String get reverseChaptersSubtitle => '开启后漫画详情页章节默认倒序显示';
 
+	/// zh-CN: '漫画详情页'
+	String get comicDetail => '漫画详情页';
+
+	/// zh-CN: '自定义功能按钮等详情页显示样式'
+	String get comicDetailSubtitle => '自定义功能按钮等详情页显示样式';
+
+	/// zh-CN: '功能按钮'
+	String get comicDetailActions => '功能按钮';
+
+	/// zh-CN: '点赞'
+	String get comicDetailShowLike => '点赞';
+
+	/// zh-CN: '在功能按钮区显示点赞按钮'
+	String get comicDetailShowLikeSubtitle => '在功能按钮区显示点赞按钮';
+
+	/// zh-CN: '评论'
+	String get comicDetailShowComment => '评论';
+
+	/// zh-CN: '在功能按钮区显示评论按钮'
+	String get comicDetailShowCommentSubtitle => '在功能按钮区显示评论按钮';
+
+	/// zh-CN: '本地收藏'
+	String get comicDetailShowLocalCollect => '本地收藏';
+
+	/// zh-CN: '在功能按钮区显示本地收藏按钮'
+	String get comicDetailShowLocalCollectSubtitle => '在功能按钮区显示本地收藏按钮';
+
+	/// zh-CN: '云收藏'
+	String get comicDetailShowCloudCollect => '云收藏';
+
+	/// zh-CN: '在功能按钮区显示云收藏按钮'
+	String get comicDetailShowCloudCollectSubtitle => '在功能按钮区显示云收藏按钮';
+
 	/// zh-CN: '存储'
 	String get storage => '存储';
 
@@ -4589,6 +4622,17 @@ extension on Translations {
 			'settings.detailLayoutSubtitle' => '开启后漫画列表显示为横排详情样式，含作者与分类信息',
 			'settings.reverseChapters' => '章节倒序',
 			'settings.reverseChaptersSubtitle' => '开启后漫画详情页章节默认倒序显示',
+			'settings.comicDetail' => '漫画详情页',
+			'settings.comicDetailSubtitle' => '自定义功能按钮等详情页显示样式',
+			'settings.comicDetailActions' => '功能按钮',
+			'settings.comicDetailShowLike' => '点赞',
+			'settings.comicDetailShowLikeSubtitle' => '在功能按钮区显示点赞按钮',
+			'settings.comicDetailShowComment' => '评论',
+			'settings.comicDetailShowCommentSubtitle' => '在功能按钮区显示评论按钮',
+			'settings.comicDetailShowLocalCollect' => '本地收藏',
+			'settings.comicDetailShowLocalCollectSubtitle' => '在功能按钮区显示本地收藏按钮',
+			'settings.comicDetailShowCloudCollect' => '云收藏',
+			'settings.comicDetailShowCloudCollectSubtitle' => '在功能按钮区显示云收藏按钮',
 			'settings.storage' => '存储',
 			'settings.cache' => '缓存',
 			'settings.clearCache' => '清理缓存',
@@ -4865,6 +4909,8 @@ extension on Translations {
 			'comicInfo.removedFromCollection' => '已取消收藏',
 			'comicInfo.confirmUncollectTitle' => '确认取消收藏',
 			'comicInfo.confirmUncollectContent' => '此项操作会删除该漫画在所有文件夹的记录，是否确认删除？',
+			_ => null,
+		} ?? switch (path) {
 			'comicInfo.commentForbidden' => '该插件暂不支持此功能',
 			'comicInfo.commentForbiddenTitle' => '禁止评论',
 			'comicInfo.chooseLocalFavoriteFolders' => '选择本地收藏文件夹',
@@ -4876,8 +4922,6 @@ extension on Translations {
 			'comicInfo.exportSuccess' => '导出成功',
 			'comicInfo.detailsNotLoaded' => '当前详情尚未加载完成',
 			'comicInfo.followed' => '已加入追更',
-			_ => null,
-		} ?? switch (path) {
 			'comicInfo.unfollowed' => '已取消追更',
 			'comicInfo.confirmUnfollowTitle' => '取消追更',
 			'comicInfo.confirmUnfollowContent' => ({required Object title}) => '确定不再追更《${title}》吗？',
@@ -5379,6 +5423,8 @@ extension on Translations {
 			'about.disclaimerItem1Title' => '1. 项目性质与声明',
 			'about.disclaimerItem1Content' => '本项目为开源软件，由本人独立开发并维护。项目以"原样"形式提供，开发者不对项目的功能完整性、稳定性、安全性或适用性作出任何明示或暗示的担保。',
 			'about.disclaimerItem2Title' => '2. 责任限制',
+			_ => null,
+		} ?? switch (path) {
 			'about.disclaimerItem2Content' => '开发者对因使用、修改或分发本项目（包括但不限于直接使用、二次开发或集成至其他项目）而导致的任何直接、间接、特殊、附带或后果性损害不承担任何责任。这些损害可能包括但不限于数据丢失、设备损坏、业务中断、利润损失或其他经济损失。',
 			'about.disclaimerItem3Title' => '3. 用户责任',
 			'about.disclaimerItem3Content' => '用户在使用本项目时，应自行评估其适用性并承担所有风险。用户须确保其使用行为符合所在国家或地区的法律法规及道德规范。开发者不对用户因违反法律法规或不当使用本项目而导致的任何后果负责。',
@@ -5390,8 +5436,6 @@ extension on Translations {
 			'about.disclaimerItem6Content' => '开发者保留随时修改、暂停或终止本项目的权利，且无需提前通知用户。开发者不对因项目修改、暂停或终止而导致的任何后果负责。',
 			'about.disclaimerItem7Title' => '7. 贡献者责任',
 			'about.disclaimerItem7Content' => '如果本项目接受外部贡献，贡献者的行为仅代表其个人立场，不代表开发者的观点或立场。开发者对贡献者的行为及其贡献内容不承担责任。',
-			_ => null,
-		} ?? switch (path) {
 			'about.disclaimerItem8Title' => '8. 法律合规性',
 			'about.disclaimerItem8Content' => '用户在使用本项目时，应确保其行为符合所在国家或地区的法律法规。开发者不对用户因违反法律法规而导致的任何后果负责。',
 			'about.disclaimerImportant' => '重要提示',

@@ -133,6 +133,10 @@ class _ComicOperationWidgetState extends State<ComicOperationWidget> {
 
   @override
   Widget build(BuildContext context) {
+    final detailSetting = context
+        .watch<GlobalSettingCubit>()
+        .state
+        .comicDetailSetting;
     final localCollectItem = _OperationItemData(
       icon: isCollected ? Icons.star : Icons.star_border,
       text: isCollected ? t.comicInfo.collected : t.comicInfo.collect,
@@ -152,40 +156,50 @@ class _ComicOperationWidgetState extends State<ComicOperationWidget> {
       enabled: true,
       onTap: _toggleCloudFavorite,
     );
-    final actions = [
-      _OperationItemData(
-        icon: isLiked ? Icons.favorite : Icons.favorite_border,
-        text: t.comicInfo.likes(count: normalInfo.totalLikes),
-        highlighted: isLiked,
-        accentColor: Colors.red,
-        enabled: normalInfo.allowLike,
-        onTap: _toggleCloudLike,
-      ),
-      _OperationItemData(
-        icon: Icons.mode_comment_outlined,
-        text: t.comicInfo.comments(count: normalInfo.totalComments),
-        enabled: normalInfo.allowComments,
-        onTap: _openComments,
-      ),
-      localCollectItem,
-      cloudCollectItem,
+    final actions = <_OperationItemData>[
+      if (detailSetting.showLikeAction)
+        _OperationItemData(
+          icon: isLiked ? Icons.favorite : Icons.favorite_border,
+          text: t.comicInfo.likes(count: normalInfo.totalLikes),
+          highlighted: isLiked,
+          accentColor: Colors.red,
+          enabled: normalInfo.allowLike,
+          onTap: _toggleCloudLike,
+        ),
+      if (detailSetting.showCommentAction)
+        _OperationItemData(
+          icon: Icons.mode_comment_outlined,
+          text: t.comicInfo.comments(count: normalInfo.totalComments),
+          enabled: normalInfo.allowComments,
+          onTap: _openComments,
+        ),
+      if (detailSetting.showLocalCollectAction) localCollectItem,
+      if (detailSetting.showCloudCollectAction) cloudCollectItem,
     ];
+    if (actions.isEmpty) return const SizedBox.shrink();
 
     return SizedBox(
       width: double.infinity,
       child: LayoutBuilder(
         builder: (context, constraints) {
           final isDesktop = constraints.maxWidth >= 900;
-          final itemWidth = switch (constraints.maxWidth) {
-            < 420 => (constraints.maxWidth - 10) / 2,
-            < 900 => (constraints.maxWidth - 30) / 4,
-            _ => 136.0,
-          };
+          const spacing = 10.0;
+          // 按可见按钮数重排：窄屏最多 2 个一行、其余最多 4 个一行；
+          // 单个按钮限宽避免被拉成整行。
+          final maxPerRow = constraints.maxWidth < 420 ? 2 : 4;
+          final perRow = actions.length < maxPerRow
+              ? actions.length
+              : maxPerRow;
+          final itemWidth = isDesktop
+              ? 136.0
+              : ((constraints.maxWidth - spacing * (perRow - 1)) / perRow)
+                    .clamp(0.0, 220.0)
+                    .toDouble();
 
           return Center(
             child: Wrap(
-              spacing: 10,
-              runSpacing: 10,
+              spacing: spacing,
+              runSpacing: spacing,
               alignment: WrapAlignment.center,
               children: actions
                   .map(
