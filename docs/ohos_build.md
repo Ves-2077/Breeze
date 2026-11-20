@@ -10,7 +10,7 @@
 | Flutter OH | `flutter_flutter` `3.47.7+ohos-0.0.1-pre`（Dart 3.13.5） |
 | DevEco Studio | 26（自带 OpenHarmony SDK 26、ohpm、hvigor、node、JDK） |
 | OpenHarmony SDK | `C:\Program Files\Huawei\DevEco Studio\sdk`（建议用无空格 junction 指向） |
-| Rust | stable，`rust/rust-toolchain.toml` 已包含三个 `*-linux-ohos` target |
+| Rust | `rust/rust-toolchain.toml` 固定 1.96.1，已包含三个 `*-linux-ohos` target |
 
 环境变量：
 
