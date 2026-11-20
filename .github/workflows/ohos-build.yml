@@ -1,0 +1,215 @@
+name: Breeze HarmonyOS HAP
+
+on:
+  workflow_dispatch:
+    inputs:
+      arch:
+        description: "目标 ABI"
+        required: true
+        default: arm64
+        type: choice
+        options:
+          - arm64
+          - x64
+      build_mode:
+        description: "构建模式"
+        required: true
+        default: release
+        type: choice
+        options:
+          - release
+          - debug
+      entry:
+        description: "Dart 入口"
+        required: true
+        default: lib/main.dart
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ohos-build-${{ github.ref }}-${{ inputs.arch }}-${{ inputs.build_mode }}
+  cancel-in-progress: true
+
+env:
+  OHOS_FLUTTER_REF: 3.47.7+ohos-0.0.1-pre
+  OHOS_CLI_VERSION: 26.0.0.821
+  FLUTTER_VERSION: 3.50.0
+  FLUTTER_SUPPRESS_ANALYTICS: "true"
+
+jobs:
+  build-hap:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v5
+
+      - name: 释放磁盘空间
+        uses: jlumbroso/free-disk-space@main
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: false
+          docker-images: true
+          swap-storage: false
+
+      - name: 安装构建依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            cmake \
+            ninja-build \
+            libgl1-mesa-dev \
+            libssl-dev \
+            pkg-config \
+            unzip \
+            zip
+          df -h /
+
+      - name: 设置 Java 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: 设置官方 Flutter（运行构建脚本和 pub get）
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: 设置 HarmonyOS Command Line Tools
+        uses: ErBWs/setup-ohos@v2
+        with:
+          version: ${{ env.OHOS_CLI_VERSION }}
+          cache: true
+
+      - name: 打印工具链版本
+        run: |
+          set -euxo pipefail
+          flutter --version
+          dart --version
+          java -version
+          node -v
+          npm -v
+          ohpm -v
+          hvigorw -v
+          echo "HOS_SDK_HOME=$HOS_SDK_HOME"
+          echo "OHOS_NDK_HOME=$OHOS_NDK_HOME"
+
+      - name: 缓存 OHOS Flutter
+        id: flutter-ohos-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/flutter-ohos
+          key: flutter-ohos-${{ runner.os }}-${{ env.OHOS_FLUTTER_REF }}
+
+      - name: 获取 OHOS Flutter
+        if: steps.flutter-ohos-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euxo pipefail
+          git clone --depth 1 \
+            --branch "$OHOS_FLUTTER_REF" \
+            https://gitcode.com/CPF-Flutter/flutter_flutter.git \
+            "$RUNNER_TEMP/flutter-ohos"
+
+      - name: 初始化 OHOS Flutter
+        run: |
+          set -euxo pipefail
+          chmod +x "$RUNNER_TEMP/flutter-ohos/bin/flutter"
+          "$RUNNER_TEMP/flutter-ohos/bin/flutter" --version
+          "$RUNNER_TEMP/flutter-ohos/bin/flutter" precache --ohos
+
+      - name: 设置构建环境
+        run: |
+          {
+            echo "OHOS_FLUTTER=$RUNNER_TEMP/flutter-ohos/bin/flutter"
+            echo "OHOS_SDK_NATIVE=$HOS_SDK_HOME/default/openharmony/native"
+            echo "DEVECO_SDK_HOME=$HOS_SDK_HOME"
+            echo "OHOS_NDK_HOME=$HOS_SDK_HOME/default/openharmony"
+            echo "OHOS_SDK_HOME=$HOS_SDK_HOME/default/openharmony/native"
+          } >> "$GITHUB_ENV"
+          ohpm config set registry https://ohpm.openharmony.cn/ohpm/
+          npm config set registry https://repo.huaweicloud.com/repository/npm/
+
+      - name: 拉取 Flutter 依赖
+        run: flutter pub get
+
+      - name: 安装 Rust OHOS 目标
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.96.1
+          targets: aarch64-unknown-linux-ohos
+
+      - name: 缓存 Rust 产物
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+          key: ohos-${{ inputs.arch }}-${{ inputs.build_mode }}
+
+      - name: 构建 HAP
+        id: build
+        continue-on-error: true
+        run: |
+          set -euxo pipefail
+          args=(
+            ./script/build/build_ohos.dart
+            --hap
+            --arch "${{ inputs.arch }}"
+            --entry "${{ inputs.entry }}"
+            --flutter "$OHOS_FLUTTER"
+          )
+          if [ "${{ inputs.build_mode }}" = "debug" ]; then
+            args+=(--debug)
+          fi
+          dart "${args[@]}"
+
+      - name: 检查 HAP
+        run: |
+          set -euxo pipefail
+          HAP=ohos/entry/build/default/outputs/default/entry-default-unsigned.hap
+          test -f "$HAP"
+          unzip -t "$HAP"
+          ls -lh "$HAP"
+          sha256sum "$HAP"
+          python3 - "$HAP" <<'PY'
+          import json, sys, zipfile
+          path = sys.argv[1]
+          with zipfile.ZipFile(path) as z:
+              data = json.loads(z.read("module.json"))
+              module = data["module"]
+              app = data["app"]
+              print("bundleName:", module.get("name"))
+              print("versionName:", app.get("versionName"))
+              print("versionCode:", app.get("versionCode"))
+              print("minAPIVersion:", app.get("minAPIVersion"))
+              print("targetAPIVersion:", app.get("targetAPIVersion"))
+              print("compressNativeLibs:", module.get("compressNativeLibs"))
+              print("extractNativeLibs:", module.get("extractNativeLibs"))
+              for info in z.infolist():
+                  if info.filename.startswith("libs/") and info.filename.endswith(".so"):
+                      print(info.filename, info.file_size, info.compress_type)
+          PY
+
+      - name: 上传 HAP
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Breeze-ohos-${{ inputs.arch }}-${{ inputs.build_mode }}
+          path: ohos/entry/build/default/outputs/default/*.hap
+          if-no-files-found: error
+
+      - name: 上传构建日志
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ohos-build-logs-${{ inputs.arch }}-${{ inputs.build_mode }}
+          path: |
+            ohos/.hvigor/outputs/build-logs/build.log
+            ohos/.hvigor/outputs/build-logs/build.log.1
+          if-no-files-found: ignore
