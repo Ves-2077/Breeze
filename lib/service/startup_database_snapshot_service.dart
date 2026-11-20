@@ -7,8 +7,8 @@ import 'package:zephyr/database/database.dart';
 import 'package:zephyr/database/query_isolate.dart';
 import 'package:zephyr/main.dart' as app;
 import 'package:zephyr/src/rust/api/simple.dart';
-import 'package:zephyr/util/get_path.dart';
-import 'package:zephyr/util/rust_loader.dart';
+import 'package:zephyr/util/storage/get_path.dart';
+import 'package:zephyr/util/rust/rust_loader.dart';
 
 const _startupDatabaseSnapshotFileName = 'database_snapshot.br';
 

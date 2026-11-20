@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:zephyr/util/ohos.dart';
-import 'package:zephyr/util/volume_key_handler.dart';
+import 'package:zephyr/util/ohos/platform.dart';
+import 'package:zephyr/util/system/volume_key_handler.dart';
 
 /// 阅读器音量键服务。
 ///

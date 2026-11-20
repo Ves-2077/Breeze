@@ -6,8 +6,8 @@ import 'package:material_ui/material_ui.dart';
 import 'package:zephyr/main.dart';
 import 'package:zephyr/page/comic_edit/method/comic_edit_debug.dart';
 import 'package:zephyr/page/comic_edit/view/comic_edit_page.dart';
-import 'package:zephyr/util/get_path.dart';
-import 'package:zephyr/util/rust_loader.dart';
+import 'package:zephyr/util/storage/get_path.dart';
+import 'package:zephyr/util/rust/rust_loader.dart';
 
 import 'test_helper.dart';
 

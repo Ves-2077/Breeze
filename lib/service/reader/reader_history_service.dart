@@ -6,7 +6,7 @@ import 'package:zephyr/database/database.dart';
 import 'package:zephyr/database/query_isolate.dart';
 import 'package:zephyr/main.dart';
 import 'package:zephyr/object_box/model.dart';
-import 'package:zephyr/util/rust_loader.dart';
+import 'package:zephyr/util/rust/rust_loader.dart';
 import 'package:zephyr/page/comic_info/json/normal/normal_comic_all_info.dart'
     as normal;
 import 'package:zephyr/page/comic_info/method/get_plugin_detail.dart';

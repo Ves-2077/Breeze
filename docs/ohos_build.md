@@ -120,11 +120,11 @@ dart ./script/build/sign_ohos_hap.dart \
 
 - OHOS 平台实现已全部并入应用，不再有 `third_party/ohos_plugins/` 或独立
   OHOS 模块：
-  - Dart：`lib/util/ohos_path_provider.dart`、
-    `lib/util/ohos_shared_preferences.dart`、`lib/util/ohos_file_selector.dart`
+  - Dart：`lib/util/ohos/path_provider.dart`、
+    `lib/util/ohos/shared_preferences.dart`、`lib/util/ohos/file_selector.dart`
   - ArkTS：`ohos/entry/src/main/ets/plugins/OhosPathProvider.ets`、
     `OhosSharedPreferences.ets`
-  - 注册：`lib/util/ohos_platform_plugins.dart`，在 `main.dart` 的
+  - 注册：`lib/util/ohos/platform_plugins.dart`，在 `main.dart` 的
     `ensureInitialized()` 之后立刻调用。
 - `build_ohos.dart --hap` 不再注入 `*_ohos` path 依赖；只需要 UI fork 与
   桌面 stub 的依赖覆盖。
@@ -158,7 +158,7 @@ HarmonyOS 模拟器上 Impeller 会白屏。`--hap` 加 `--no-impeller` 可临�
   已验证弹出“允许 Breeze 保存 1 张图片?”系统确认框。
 - **打开文件**：`openFileWithSystem` → OHOS `startAbility(action.viewData)`；
   其他平台仍走 `open_file` 插件。
-- **文件选择**：`lib/util/ohos_file_selector.dart` 直接实现
+- **文件选择**：`lib/util/ohos/file_selector.dart` 直接实现
   `FileSelectorPlatform`，底层复用 `BreezeOhosPlugin` 的 `DocumentViewPicker`。
   选中的文件复制到应用缓存，导出走系统“另存为”后原生复制到用户选择的 URI。
 - **通知权限**：`notificationManager.isNotificationEnabled/requestEnableNotification`，
@@ -171,7 +171,7 @@ HarmonyOS 模拟器上 Impeller 会白屏。`--hap` 加 `--no-impeller` 可临�
   不再回退成 `unknown`。
 - **设备信息**：`BreezeOhosPlugin.getDeviceInfo` 读取 `@ohos.deviceInfo`
   （品牌、厂商、型号、系统版本、SDK、ABI）；更新页的架构判断已接入。
-- **打开链接**：`lib/util/external_link.dart` 在 OHOS 走
+- **打开链接**：`lib/util/system/external_link.dart` 在 OHOS 走
   `startAbility(action.viewData)`，其他平台继续 `url_launcher`；关于页、插件页、
   更新日志、WebView 外链均使用该入口。
 - **网络状态**：`getConnectivity` 读取 `@ohos.net.connection` 默认网络与
@@ -207,7 +207,7 @@ OHOS 桌面与应用内图标来自 `asset/image/app-icon.png`，已同步到：
 ### 第三方包策略
 
 - `shared_preferences` / `path_provider` / `file_selector`：官方 Dart 包 +
-  应用内平台实现（`lib/util/ohos_*_provider*.dart` / `ohos_file_selector.dart`），
+  应用内平台实现（`lib/util/ohos/*.dart`），
   原生方法统一放在 `BreezeOhosPlugin`；不再有独立 OHOS 插件模块。
 - `material_ui` / `cupertino_ui` / `easy_refresh`：纯 Dart 包，OHOS 下需要补
   `TargetPlatform.ohos` 分支，无法用平台插件解决。已迁到独立 GitHub 仓库，

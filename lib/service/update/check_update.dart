@@ -16,10 +16,10 @@ import 'package:zephyr/main.dart';
 import 'package:zephyr/network/utils/github_proxy.dart';
 import 'package:zephyr/service/update/json/github_release_json.dart';
 import 'package:zephyr/type/pipe.dart';
-import 'package:zephyr/util/get_path.dart';
-import 'package:zephyr/util/external_link.dart';
-import 'package:zephyr/util/ohos.dart';
-import 'package:zephyr/util/ohos_file_bridge.dart';
+import 'package:zephyr/util/storage/get_path.dart';
+import 'package:zephyr/util/system/external_link.dart';
+import 'package:zephyr/util/ohos/platform.dart';
+import 'package:zephyr/util/ohos/file_bridge.dart';
 import 'package:zephyr/widgets/toast.dart';
 
 /// 「一周内不再提醒」静默期截止时间的存储键（毫秒时间戳）。

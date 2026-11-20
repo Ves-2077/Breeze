@@ -2,7 +2,7 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zephyr/network/http/plugin/qjs_call_exception.dart';
 import 'package:zephyr/network/http/plugin/unauthorized_payload.dart';
-import 'package:zephyr/util/error_filter.dart';
+import 'package:zephyr/util/error/error_filter.dart';
 
 void main() {
   test('simplify JS plugin error keeps Error: line only', () {

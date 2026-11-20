@@ -10,7 +10,7 @@ import 'package:zephyr/page/comic_info/json/normal/normal_comic_all_info.dart'
     as normal;
 import 'package:zephyr/page/download/models/unified_comic_download.dart';
 import 'package:zephyr/src/rust/api/qjs.dart';
-import 'package:zephyr/util/get_path.dart';
+import 'package:zephyr/util/storage/get_path.dart';
 
 const _legacyJmImageBaseUrl = 'https://cdn-msp12.jmdanjonproxy.xyz';
 

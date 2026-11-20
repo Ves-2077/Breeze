@@ -9,8 +9,8 @@ import 'package:zephyr/page/search/cubit/search_cubit.dart';
 import 'package:zephyr/page/search_result/method/get_plugin_result.dart';
 import 'package:zephyr/page/search_result/models/bloc_state.dart';
 import 'package:zephyr/type/pipe.dart';
-import 'package:zephyr/util/error_filter.dart';
-import 'package:zephyr/util/rust_loader.dart';
+import 'package:zephyr/util/error/error_filter.dart';
+import 'package:zephyr/util/rust/rust_loader.dart';
 import 'package:zephyr/util/text/chinese_convert.dart';
 
 import 'package:zephyr/page/search_result/models/models.dart';

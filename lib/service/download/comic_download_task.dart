@@ -24,7 +24,7 @@ import 'package:zephyr/i18n/strings.g.dart';
 import 'package:zephyr/service/download/image_download.dart';
 import 'package:zephyr/network/sync/sync_device_id.dart';
 import 'package:zephyr/src/rust/api/simple.dart';
-import 'package:zephyr/util/get_path.dart';
+import 'package:zephyr/util/storage/get_path.dart';
 
 /// 单章节下载任务。
 ///

@@ -9,8 +9,8 @@ import 'package:zephyr/config/global/global_setting.dart';
 import 'package:zephyr/i18n/strings.g.dart';
 import 'package:zephyr/page/comic_read/cubit/reader_cubit.dart';
 import 'package:zephyr/page/comic_read/widgets/layout/read_layout.dart';
-import 'package:zephyr/util/ohos.dart';
-import 'package:zephyr/util/ohos_file_bridge.dart';
+import 'package:zephyr/util/ohos/platform.dart';
+import 'package:zephyr/util/ohos/file_bridge.dart';
 
 class PageCountWidget extends StatefulWidget {
   final String epPages;

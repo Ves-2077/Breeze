@@ -17,14 +17,15 @@ import 'package:zephyr/service/lifecycle/foreground_task/foreground_task_service
 import 'package:zephyr/service/lifecycle/notification_service.dart';
 import 'package:zephyr/service/update/check_update.dart';
 import 'package:zephyr/util/context/context_extensions.dart';
-import 'package:zephyr/util/error_filter.dart';
-import 'package:zephyr/util/manage_cache.dart';
+import 'package:zephyr/util/error/error_filter.dart';
+import 'package:zephyr/util/storage/manage_cache.dart';
 import 'package:zephyr/widgets/memory/memory_overlay_widget.dart';
 import 'package:zephyr/widgets/toast.dart';
 
 import 'package:zephyr/main.dart';
 import 'package:zephyr/network/sync/sync_service.dart';
-import 'package:zephyr/util/debouncer.dart';
+import 'package:zephyr/util/async/debouncer.dart';
+import 'package:zephyr/util/device/responsive.dart';
 import 'package:zephyr/util/event/event.dart';
 import 'package:zephyr/widgets/dialog.dart';
 import 'package:zephyr/page/bookshelf/bookshelf.dart';

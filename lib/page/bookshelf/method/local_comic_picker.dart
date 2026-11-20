@@ -3,8 +3,8 @@ import 'dart:io';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
-import 'package:zephyr/util/get_path.dart';
-import 'package:zephyr/util/ohos.dart';
+import 'package:zephyr/util/storage/get_path.dart';
+import 'package:zephyr/util/ohos/platform.dart';
 
 const MethodChannel _filePickerChannel = MethodChannel(
   'com.zephyr.breeze/file_picker',

@@ -9,9 +9,9 @@ import 'package:photo_view/photo_view.dart';
 import 'package:zephyr/config/global/global.dart';
 import 'package:zephyr/i18n/strings.g.dart';
 import 'package:zephyr/page/comic_info/method/export_comic.dart';
-import 'package:zephyr/util/error_filter.dart';
-import 'package:zephyr/util/ohos.dart';
-import 'package:zephyr/util/ohos_file_bridge.dart';
+import 'package:zephyr/util/error/error_filter.dart';
+import 'package:zephyr/util/ohos/platform.dart';
+import 'package:zephyr/util/ohos/file_bridge.dart';
 import 'package:zephyr/widgets/toast.dart';
 
 import 'package:zephyr/main.dart';

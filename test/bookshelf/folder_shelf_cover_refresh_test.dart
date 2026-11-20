@@ -9,7 +9,7 @@ import 'package:zephyr/page/bookshelf/cubit/bookshelf_search_cubit.dart';
 import 'package:zephyr/page/bookshelf/models/shelf_page_mode.dart';
 import 'package:zephyr/page/bookshelf/service/comic_link_service.dart';
 import 'package:zephyr/page/bookshelf/widgets/folder_shelf_page.dart';
-import 'package:zephyr/util/rust_loader.dart';
+import 'package:zephyr/util/rust/rust_loader.dart';
 import 'package:zephyr/widgets/comic_simplify_entry/cover.dart';
 
 import '../test_helper.dart';

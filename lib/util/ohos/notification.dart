@@ -1,6 +1,6 @@
 import 'package:flutter/services.dart';
 
-import 'package:zephyr/util/ohos.dart';
+import 'package:zephyr/util/ohos/platform.dart';
 
 /// OHOS 系统通知发布（实现在 BreezeOhosPlugin）。
 const MethodChannel _channel = MethodChannel('zephyr/ohos_file');

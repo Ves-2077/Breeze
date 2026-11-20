@@ -9,8 +9,8 @@ import 'package:zephyr/main.dart';
 import 'package:zephyr/network/utils/github_proxy.dart';
 import 'package:zephyr/service/update/check_update.dart';
 import 'package:zephyr/service/update/json/github_release_json.dart';
-import 'package:zephyr/util/error_filter.dart';
-import 'package:zephyr/util/external_link.dart';
+import 'package:zephyr/util/error/error_filter.dart';
+import 'package:zephyr/util/system/external_link.dart';
 
 const _proxyReleasesApiUrl =
     '$breezeGithubApi/repos/breeze-project-org/Breeze/releases';

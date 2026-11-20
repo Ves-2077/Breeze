@@ -4,12 +4,12 @@ import 'package:auto_route/auto_route.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:zephyr/util/ohos.dart';
+import 'package:zephyr/util/ohos/platform.dart';
 import 'package:zephyr/config/global/global_setting.dart';
 import 'package:zephyr/config/router/router.gr.dart';
 import 'package:zephyr/i18n/strings.g.dart';
 import 'package:zephyr/page/setting/common/setting_ui.dart';
-import 'package:zephyr/util/get_path.dart';
+import 'package:zephyr/util/storage/get_path.dart';
 import 'package:zephyr/widgets/toast.dart';
 import 'package:zephyr/main.dart';
 

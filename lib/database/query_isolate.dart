@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:zephyr/database/db.dart';
-import 'package:zephyr/util/rust_loader.dart';
+import 'package:zephyr/util/rust/rust_loader.dart';
 
 /// 一条「SQL 查询 + 行解码」任务，整体在 worker isolate 内执行。
 ///

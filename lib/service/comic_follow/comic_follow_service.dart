@@ -1,7 +1,7 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:zephyr/main.dart';
-import 'package:zephyr/util/ohos.dart';
-import 'package:zephyr/util/ohos_notification.dart';
+import 'package:zephyr/util/ohos/platform.dart';
+import 'package:zephyr/util/ohos/notification.dart';
 import 'package:zephyr/object_box/model.dart';
 import 'package:zephyr/page/comic_info/method/get_plugin_detail.dart';
 import 'package:zephyr/i18n/strings.g.dart';

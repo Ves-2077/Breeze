@@ -7,10 +7,10 @@ import 'package:zephyr/config/global/global_setting.dart';
 import 'package:zephyr/i18n/strings.g.dart';
 import 'package:zephyr/page/comic_info/method/export_comic.dart';
 import 'package:zephyr/type/enum.dart';
-import 'package:zephyr/util/get_path.dart';
-import 'package:zephyr/util/ohos.dart';
-import 'package:zephyr/util/ohos_file_bridge.dart';
-import 'package:zephyr/util/permission.dart';
+import 'package:zephyr/util/storage/get_path.dart';
+import 'package:zephyr/util/ohos/platform.dart';
+import 'package:zephyr/util/ohos/file_bridge.dart';
+import 'package:zephyr/util/system/permission.dart';
 import 'package:zephyr/widgets/comic_simplify_entry/comic_simplify_entry_info.dart';
 import 'package:zephyr/main.dart';
 

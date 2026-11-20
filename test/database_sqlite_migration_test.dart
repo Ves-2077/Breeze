@@ -5,7 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:zephyr/database/app_database.dart';
 import 'package:zephyr/database/migration/objectbox_import.dart';
-import 'package:zephyr/util/rust_loader.dart';
+import 'package:zephyr/util/rust/rust_loader.dart';
 
 void main() {
   setUpAll(() async {

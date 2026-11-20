@@ -2,7 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:zephyr/main.dart';
-import 'package:zephyr/util/ohos.dart';
+import 'package:zephyr/util/ohos/platform.dart';
 
 class VolumeKeyHandler {
   static const MethodChannel _channel = MethodChannel('volume_key_handler');

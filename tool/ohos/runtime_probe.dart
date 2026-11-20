@@ -7,8 +7,8 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:zephyr/database/database.dart';
 import 'package:zephyr/src/rust/api/simple.dart' as rust_simple;
-import 'package:zephyr/util/ohos_platform_plugins.dart';
-import 'package:zephyr/util/rust_loader.dart';
+import 'package:zephyr/util/ohos/platform_plugins.dart';
+import 'package:zephyr/util/rust/rust_loader.dart';
 
 /// OHOS 启动探针：逐项执行启动依赖并把结果画到屏幕上。
 ///

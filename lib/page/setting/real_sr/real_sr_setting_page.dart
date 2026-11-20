@@ -11,8 +11,8 @@ import 'package:zephyr/page/setting/real_sr/service/desktop_ncnn_model_config.da
 import 'package:zephyr/page/setting/real_sr/service/real_sr_settings.dart';
 import 'package:zephyr/page/setting/real_sr/service/real_sr_super_resolution.dart';
 import 'package:zephyr/type/enum.dart';
-import 'package:zephyr/util/coreml_model_config.dart';
-import 'package:zephyr/util/external_link.dart';
+import 'package:zephyr/util/coreml/coreml_model_config.dart';
+import 'package:zephyr/util/system/external_link.dart';
 import 'package:zephyr/widgets/fluent_dropdown.dart';
 import 'package:zephyr/widgets/toast.dart';
 

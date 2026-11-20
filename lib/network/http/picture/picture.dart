@@ -14,7 +14,7 @@ import 'package:zephyr/src/rust/api/simple.dart';
 import 'package:zephyr/src/rust/decode/decode.dart';
 import 'package:zephyr/type/enum.dart';
 import 'package:zephyr/type/pipe.dart';
-import 'package:zephyr/util/get_path.dart';
+import 'package:zephyr/util/storage/get_path.dart';
 
 export 'package:zephyr/service/download/download_asset_store.dart'
     show normalizeStoredAssetPath;

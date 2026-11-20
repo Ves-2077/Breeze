@@ -8,8 +8,8 @@ import 'package:zephyr/page/comic_edit/method/comic_edit_service.dart';
 import 'package:zephyr/page/comic_info/method/export_comic.dart';
 import 'package:zephyr/service/download/download_asset_store.dart';
 import 'package:zephyr/type/enum.dart';
-import 'package:zephyr/util/get_path.dart';
-import 'package:zephyr/util/rust_loader.dart';
+import 'package:zephyr/util/storage/get_path.dart';
+import 'package:zephyr/util/rust/rust_loader.dart';
 
 import 'test_helper.dart';
 

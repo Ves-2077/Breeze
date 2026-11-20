@@ -13,8 +13,8 @@ import 'package:zephyr/page/comic_read/method/get_local_info.dart';
 import 'package:zephyr/plugin/local_comic_plugin.dart';
 import 'package:zephyr/service/download/download_asset_store.dart';
 import 'package:zephyr/type/enum.dart';
-import 'package:zephyr/util/get_path.dart';
-import 'package:zephyr/util/rust_loader.dart';
+import 'package:zephyr/util/storage/get_path.dart';
+import 'package:zephyr/util/rust/rust_loader.dart';
 
 import 'test_helper.dart';
 

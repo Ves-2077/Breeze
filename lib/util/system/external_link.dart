@@ -1,6 +1,6 @@
 import 'package:url_launcher/url_launcher.dart';
-import 'package:zephyr/util/ohos.dart';
-import 'package:zephyr/util/ohos_file_bridge.dart';
+import 'package:zephyr/util/ohos/platform.dart';
+import 'package:zephyr/util/ohos/file_bridge.dart';
 
 /// 用系统浏览器/对应应用打开外部链接。
 ///

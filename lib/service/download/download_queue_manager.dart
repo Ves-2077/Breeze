@@ -14,8 +14,8 @@ import 'package:zephyr/service/download/download_task_repository.dart';
 import 'package:zephyr/service/download/models/download_task_json.dart';
 import 'package:zephyr/service/lifecycle/foreground_task/foreground_task_service.dart';
 
-import 'package:zephyr/util/error_filter.dart';
-import 'package:zephyr/util/macos_activity.dart';
+import 'package:zephyr/util/error/error_filter.dart';
+import 'package:zephyr/util/system/macos_activity.dart';
 import 'package:zephyr/i18n/strings.g.dart';
 import 'package:zephyr/widgets/toast.dart';
 

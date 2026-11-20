@@ -8,7 +8,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:zephyr/src/rust/api/database.dart' as rust;
-import 'package:zephyr/util/rust_loader.dart';
+import 'package:zephyr/util/rust/rust_loader.dart';
 
 const Symbol _txZoneKey = #breezeDatabaseTransaction;
 

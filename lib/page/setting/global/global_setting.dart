@@ -8,7 +8,7 @@ import 'package:zephyr/i18n/strings.g.dart';
 import 'package:zephyr/page/comic_read/widgets/settings/reader_settings_sheet.dart';
 import 'package:zephyr/page/setting/common/setting_ui.dart';
 import 'package:zephyr/page/setting/real_sr/service/real_sr_super_resolution.dart';
-import 'package:zephyr/util/ohos.dart';
+import 'package:zephyr/util/ohos/platform.dart';
 
 @RoutePage()
 class GlobalSettingPage extends StatefulWidget {

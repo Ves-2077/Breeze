@@ -4,8 +4,8 @@ import 'dart:io';
 import 'package:material_ui/material_ui.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
-import 'package:zephyr/util/ohos_file_bridge.dart';
-import 'package:zephyr/util/ohos_platform_plugins.dart';
+import 'package:zephyr/util/ohos/file_bridge.dart';
+import 'package:zephyr/util/ohos/platform_plugins.dart';
 
 /// 验证 OHOS 相册保存通道：写入一张 1x1 PNG，然后调用系统保存对话框。
 void main() {

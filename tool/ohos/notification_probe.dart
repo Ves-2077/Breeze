@@ -1,6 +1,6 @@
 import 'package:material_ui/material_ui.dart';
-import 'package:zephyr/util/ohos_file_bridge.dart';
-import 'package:zephyr/util/ohos_notification.dart';
+import 'package:zephyr/util/ohos/file_bridge.dart';
+import 'package:zephyr/util/ohos/notification.dart';
 
 /// 验证 OHOS 系统通知发布。
 void main() {

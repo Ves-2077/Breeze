@@ -3,8 +3,8 @@ import 'dart:io';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:zephyr/i18n/strings.g.dart';
 import 'package:zephyr/main.dart';
-import 'package:zephyr/util/ohos.dart';
-import 'package:zephyr/util/ohos_notification.dart';
+import 'package:zephyr/util/ohos/platform.dart';
+import 'package:zephyr/util/ohos/notification.dart';
 import 'package:zephyr/service/download/download_progress_reporter.dart';
 import 'package:zephyr/widgets/toast.dart';
 

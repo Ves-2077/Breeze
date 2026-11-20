@@ -7,7 +7,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_reorderable_grid_view/widgets/widgets.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:pool/pool.dart';
-import 'package:zephyr/util/ohos.dart';
+import 'package:zephyr/util/ohos/platform.dart';
 import 'package:zephyr/i18n/strings.g.dart';
 import 'package:zephyr/network/http/picture/picture.dart';
 import 'package:zephyr/page/comic_edit/cubit/comic_edit_cubit.dart';

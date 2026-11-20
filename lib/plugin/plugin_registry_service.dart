@@ -13,7 +13,7 @@ import 'package:zephyr/plugin/plugin_bytecode_cache.dart';
 import 'package:zephyr/plugin/plugin_runtime_loader.dart';
 import 'package:zephyr/src/rust/api/qjs.dart';
 import 'package:zephyr/src/rust/qjs.dart';
-import 'package:zephyr/util/get_path.dart';
+import 'package:zephyr/util/storage/get_path.dart';
 import 'package:zephyr/util/json/json_value.dart';
 
 export 'package:zephyr/plugin/models/plugin_runtime_state.dart';

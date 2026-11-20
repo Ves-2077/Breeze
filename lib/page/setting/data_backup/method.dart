@@ -12,7 +12,7 @@ import 'package:zephyr/main.dart';
 import 'package:zephyr/network/sync/sync_device_id.dart';
 import 'package:zephyr/object_box/model.dart';
 import 'package:zephyr/src/rust/api/data_backup.dart';
-import 'package:zephyr/util/get_path.dart';
+import 'package:zephyr/util/storage/get_path.dart';
 import 'package:zephyr/widgets/toast.dart';
 
 /// 在 compute isolate 内读取并解析 objectbox.json，避免大备份阻塞 UI。

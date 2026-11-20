@@ -8,9 +8,9 @@ import 'package:zephyr/main.dart';
 import 'package:zephyr/src/rust/api/qjs.dart';
 import 'package:zephyr/src/rust/api/simple.dart';
 import 'package:zephyr/src/rust/qjs.dart';
-import 'package:zephyr/util/get_path.dart';
-import 'package:zephyr/util/ohos.dart';
-import 'package:zephyr/util/ohos_file_bridge.dart';
+import 'package:zephyr/util/storage/get_path.dart';
+import 'package:zephyr/util/ohos/platform.dart';
+import 'package:zephyr/util/ohos/file_bridge.dart';
 
 /// 字节码缓存的宿主能力（默认走 Rust；测试可注入替身）。
 abstract class PluginBytecodeBackend {

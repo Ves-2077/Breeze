@@ -18,10 +18,10 @@
 `path_provider`、`shared_preferences`、`file_selector` 的 OHOS 平台实现
 已迁到：
 
-- Dart：`lib/util/ohos_path_provider.dart`、
-  `lib/util/ohos_shared_preferences.dart`、`lib/util/ohos_file_selector.dart`
+- Dart：`lib/util/ohos/path_provider.dart`、
+  `lib/util/ohos/shared_preferences.dart`、`lib/util/ohos/file_selector.dart`
 - ArkTS：`ohos/entry/src/main/ets/plugins/`
-- 注册：`lib/util/ohos_platform_plugins.dart`，在 `main.dart` 启动最早期调用
+- 注册：`lib/util/ohos/platform_plugins.dart`，在 `main.dart` 启动最早期调用
 
 不再需要独立 OHOS 模块、path 依赖或 `dart_plugin_registrant` 注入。
 

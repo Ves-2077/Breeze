@@ -9,9 +9,9 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:zephyr/i18n/strings.g.dart';
 import 'package:zephyr/main.dart';
 import 'package:zephyr/util/event/event.dart';
-import 'package:zephyr/util/external_link.dart';
+import 'package:zephyr/util/system/external_link.dart';
 import 'package:zephyr/util/event/webview_observe_bus.dart';
-import 'package:zephyr/util/ohos.dart';
+import 'package:zephyr/util/ohos/platform.dart';
 
 @RoutePage()
 class WebViewPage extends StatefulWidget {

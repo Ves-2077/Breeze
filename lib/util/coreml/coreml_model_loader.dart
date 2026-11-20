@@ -4,7 +4,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:zephyr/main.dart';
 import 'package:zephyr/src/rust/api/simple.dart';
-import 'package:zephyr/util/coreml_model_config.dart';
+import 'package:zephyr/util/coreml/coreml_model_config.dart';
 
 /// 从 GitHub 下载并解压 iOS/macOS CoreML 超分模型。
 ///

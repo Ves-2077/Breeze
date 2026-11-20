@@ -11,7 +11,7 @@ import 'package:zephyr/page/search/widget/source_select_dialog.dart';
 import 'package:zephyr/plugin/plugin_registry_service.dart';
 import 'package:zephyr/plugin/local_comic_plugin.dart';
 import 'package:zephyr/i18n/strings.g.dart';
-import 'package:zephyr/util/debouncer.dart';
+import 'package:zephyr/util/async/debouncer.dart';
 import 'package:zephyr/widgets/multi_choice_list_dialog.dart';
 import 'package:zephyr/widgets/toast.dart';
 

@@ -8,7 +8,7 @@ import 'package:zephyr/object_box/model.dart';
 import 'package:zephyr/page/bookshelf/service/comic_link_service.dart';
 import 'package:zephyr/page/bookshelf/service/comic_folder_service.dart';
 import 'package:zephyr/util/json/json_sanitize.dart';
-import 'package:zephyr/util/path_util.dart';
+import 'package:zephyr/util/storage/path_util.dart';
 import 'package:zephyr/page/comic_info/json/normal/normal_comic_all_info.dart';
 import 'package:zephyr/widgets/toast.dart';
 import 'package:zephyr/i18n/strings.g.dart';

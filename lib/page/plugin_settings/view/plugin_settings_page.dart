@@ -17,7 +17,7 @@ import 'package:zephyr/plugin/plugin_install_service.dart';
 import 'package:zephyr/plugin/plugin_registry_service.dart';
 import 'package:zephyr/plugin/utils/plugin_cloud_download_utils.dart';
 import 'package:zephyr/util/event/event.dart';
-import 'package:zephyr/util/external_link.dart';
+import 'package:zephyr/util/system/external_link.dart';
 import 'package:zephyr/util/event/webview_observe_bus.dart';
 import 'package:zephyr/util/json/json_value.dart';
 import 'package:zephyr/config/router/router.gr.dart';

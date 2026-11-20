@@ -2,7 +2,7 @@ import 'package:zephyr/object_box/model.dart';
 import 'package:zephyr/page/search_result/models/unified_plugin_search.dart';
 import 'package:zephyr/util/json/json_sanitize.dart';
 import 'package:zephyr/util/json/json_value.dart';
-import 'package:zephyr/util/path_util.dart';
+import 'package:zephyr/util/storage/path_util.dart';
 
 import 'package:zephyr/widgets/comic_entry/models/unified_comic_list_item.dart';
 

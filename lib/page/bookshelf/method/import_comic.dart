@@ -13,7 +13,7 @@ import 'package:zephyr/service/download/download_asset_store.dart';
 import 'package:zephyr/src/rust/api/data_backup.dart';
 import 'package:zephyr/src/rust/api/simple.dart';
 import 'package:zephyr/type/enum.dart';
-import 'package:zephyr/util/get_path.dart';
+import 'package:zephyr/util/storage/get_path.dart';
 import 'package:zephyr/widgets/toast.dart';
 
 const String _kProcessedComicInfoFile = 'processed_comic_info.json';

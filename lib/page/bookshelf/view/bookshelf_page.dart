@@ -9,7 +9,7 @@ import 'package:zephyr/page/bookshelf/bookshelf.dart';
 import 'package:zephyr/page/search/widget/search_input_dialog.dart';
 import 'package:zephyr/plugin/plugin_registry_service.dart';
 import 'package:zephyr/util/context/context_extensions.dart';
-import 'package:zephyr/util/debouncer.dart';
+import 'package:zephyr/util/async/debouncer.dart';
 
 @RoutePage()
 class BookshelfPage extends StatelessWidget {

@@ -1,7 +1,7 @@
 import 'package:flutter/services.dart';
 import 'package:open_file/open_file.dart';
 
-import 'package:zephyr/util/ohos.dart';
+import 'package:zephyr/util/ohos/platform.dart';
 
 /// App 级 OHOS 系统通道（实现在 ohos/entry/.../BreezeOhosPlugin.ets）。
 const MethodChannel _channel = MethodChannel('zephyr/ohos_file');

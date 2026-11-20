@@ -7,7 +7,7 @@ import 'package:zephyr/page/plugin_store/cubit/plugin_store_cubit.dart';
 import 'package:zephyr/page/plugin_store/widgets/cloud_plugin_card.dart';
 import 'package:zephyr/page/plugin_store/widgets/plugin_store_status_banner.dart';
 import 'package:zephyr/plugin/utils/plugin_local_file_picker.dart';
-import 'package:zephyr/util/external_link.dart';
+import 'package:zephyr/util/system/external_link.dart';
 import 'package:zephyr/widgets/toast.dart';
 
 @RoutePage()

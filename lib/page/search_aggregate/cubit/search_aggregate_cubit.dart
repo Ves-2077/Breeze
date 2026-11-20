@@ -7,8 +7,8 @@ import 'package:zephyr/page/search_result/bloc/search_bloc.dart';
 import 'package:zephyr/page/search_result/method/get_plugin_result.dart';
 import 'package:zephyr/page/search_result/models/bloc_state.dart';
 import 'package:zephyr/type/pipe.dart';
-import 'package:zephyr/util/error_filter.dart';
-import 'package:zephyr/util/rust_loader.dart';
+import 'package:zephyr/util/error/error_filter.dart';
+import 'package:zephyr/util/rust/rust_loader.dart';
 import 'package:zephyr/util/text/chinese_convert.dart';
 
 enum AggregateSearchStatus { initial, loading, success, failure }

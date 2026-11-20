@@ -13,7 +13,7 @@ import 'package:zephyr/page/download/models/download_chapter.dart';
 import 'package:zephyr/page/download/models/unified_comic_download.dart';
 import 'package:zephyr/service/reader/comic_read_chapter_repository.dart';
 import 'package:zephyr/type/enum.dart';
-import 'package:zephyr/util/error_filter.dart';
+import 'package:zephyr/util/error/error_filter.dart';
 
 export 'package:zephyr/page/comic_info/bloc/get_comic_info_event.dart';
 export 'package:zephyr/page/comic_info/bloc/get_comic_info_state.dart';

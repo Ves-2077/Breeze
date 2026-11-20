@@ -8,7 +8,7 @@ import 'package:zephyr/network/http/plugin/unified_comic_plugin.dart';
 import 'package:zephyr/network/http/plugin/unified_plugin_envelope.dart';
 import 'package:zephyr/page/plugin_home/plugin_home_bundle.dart';
 import 'package:zephyr/page/plugin_home/plugin_home_memory.dart';
-import 'package:zephyr/util/error_filter.dart';
+import 'package:zephyr/util/error/error_filter.dart';
 import 'package:zephyr/util/json/json_value.dart';
 import 'package:zephyr/main.dart';
 

@@ -14,7 +14,7 @@ import 'package:zephyr/database/repositories/reader_repository.dart';
 import 'package:zephyr/database/repositories/search_bookmark_repository.dart';
 import 'package:zephyr/database/repositories/unified_comic_repository.dart';
 import 'package:zephyr/database/repositories/user_setting_repository.dart';
-import 'package:zephyr/util/rust_loader.dart';
+import 'package:zephyr/util/rust/rust_loader.dart';
 
 /// 应用数据库门面：第一层 SQL 执行 + 各领域仓库。
 class Database {

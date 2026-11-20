@@ -7,7 +7,7 @@ import 'package:zephyr/page/download/adapters/download_chapter_matcher.dart';
 import 'package:zephyr/page/download/models/download_chapter.dart';
 import 'package:zephyr/page/download/models/unified_comic_download.dart';
 import 'package:zephyr/object_box/model.dart';
-import 'package:zephyr/util/rust_loader.dart';
+import 'package:zephyr/util/rust/rust_loader.dart';
 
 /// 下载章节查找任务：在 worker isolate 内读库并解析 chapters JSON。
 class DownloadChapterLookupTask {
