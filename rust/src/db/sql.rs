@@ -74,7 +74,14 @@ pub struct DbHandle {
 impl DbHandle {
     fn open_main(id: i64, path: &str) -> Result<Self> {
         let bus = Arc::new(ChangeBus::default());
-        let (conn, pending) = open_connection(path)?;
+        let (conn, pending) = open_connection(path, false)?;
+        // auto_vacuum / journal_mode 是写进数据库头的库级设置，主连接
+        // 打开时执行一次即可；事务连接不必每次建连都再检查一遍。
+        conn.execute_batch(
+            "PRAGMA auto_vacuum=INCREMENTAL;
+             PRAGMA journal_mode=WAL;",
+        )
+        .context("configure SQLite database")?;
         Ok(Self {
             id,
             path: path.to_string(),
@@ -86,9 +93,13 @@ impl DbHandle {
     }
 
     fn open_tx(id: i64, main: &DbHandle, write: bool) -> Result<Self> {
-        let (conn, pending) = open_connection(&main.path)?;
+        // 只读事务连接启用 query_only：误写会在语句执行时直接报错，
+        // 不会悄悄升级成写事务再撞 SQLITE_BUSY。
+        let (conn, pending) = open_connection(&main.path, !write)?;
         {
             let conn = &conn;
+            // 只读事务保持 DEFERRED：快照在第一条真实读语句时建立，
+            // 不提前占住读锁、不阻塞 WAL checkpoint。
             conn.execute_batch(if write { "BEGIN IMMEDIATE" } else { "BEGIN" })
                 .context("begin SQLite transaction")?;
         }
@@ -108,14 +119,25 @@ impl DbHandle {
         let params = parse_params(params_json)?;
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn
-            .prepare(sql)
+            .prepare_cached(sql)
             .with_context(|| format!("prepare SQL: {sql}"))?;
-        let names: Vec<String> = stmt.column_names().into_iter().map(str::to_owned).collect();
         let mut rows = stmt
             .query(params_from_iter(params.iter()))
             .with_context(|| format!("execute query: {sql}"))?;
         let mut out = Vec::new();
+        // 缓存的语句在 schema 变化后由 SQLite 在第一次 step 时自动重编译；
+        // 列名必须在这之后读取，否则 `SELECT *` 可能沿用旧列集合。
+        let mut names: Option<Vec<String>> = None;
         while let Some(row) = rows.next()? {
+            let stmt = row.as_ref();
+            if names.is_none() {
+                names = Some(
+                    (0..stmt.column_count())
+                        .map(|i| stmt.column_name(i).map(str::to_owned).unwrap_or_default())
+                        .collect(),
+                );
+            }
+            let names = names.as_ref().expect("column names initialized");
             let mut map = Map::new();
             for (i, name) in names.iter().enumerate() {
                 map.insert(name.clone(), sql_value_to_json(row.get_ref(i)?));
@@ -131,7 +153,7 @@ impl DbHandle {
         let (changes, last_id) = {
             let conn = self.conn.lock().unwrap();
             let mut stmt = conn
-                .prepare(sql)
+                .prepare_cached(sql)
                 .with_context(|| format!("prepare SQL: {sql}"))?;
             let changes = stmt
                 .execute(params_from_iter(params.iter()))
@@ -180,13 +202,24 @@ impl DbHandle {
         if finished.swap(true, Ordering::SeqCst) {
             bail!("transaction {} already finished", self.id);
         }
-        {
+        let result = {
             let conn = self.conn.lock().unwrap();
             conn.execute_batch("COMMIT")
-                .context("commit SQLite transaction")?;
+                .context("commit SQLite transaction")
+        };
+        match result {
+            Ok(()) => {
+                self.publish_pending();
+                Ok(())
+            }
+            Err(error) => {
+                // COMMIT 失败时事务可能仍然开着；立刻回滚，避免连接和
+                // WAL 快照泄漏。句柄随后由 registry 移除。
+                let _ = self.conn.lock().unwrap().execute_batch("ROLLBACK");
+                self.discard_pending();
+                Err(error)
+            }
         }
-        self.publish_pending();
-        Ok(())
     }
 
     pub fn rollback(&self) -> Result<()> {
@@ -209,42 +242,59 @@ impl DbHandle {
             self.rollback()?;
         } else {
             let conn = self.conn.lock().unwrap();
+            // 关闭前刷新查询规划器统计信息；analysis_limit 限制单表采样量，
+            // 避免大表拖慢退出。失败不影响关闭。
+            let _ = conn.execute_batch("PRAGMA analysis_limit=400; PRAGMA optimize;");
             let _ = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);");
         }
         Ok(())
     }
 }
 
-fn open_connection(path: &str) -> Result<(Connection, Arc<Mutex<HashSet<String>>>)> {
+fn open_connection(
+    path: &str,
+    read_only: bool,
+) -> Result<(Connection, Arc<Mutex<HashSet<String>>>)> {
     let mut conn = Connection::open(path).with_context(|| format!("open SQLite {path}"))?;
     conn.busy_timeout(std::time::Duration::from_secs(5))?;
-    // auto_vacuum 必须在建第一张表之前设置；对已有表的库是 no-op。
-    // 新库统一使用 INCREMENTAL，之后可用 PRAGMA incremental_vacuum 回收空闲页。
     conn.execute_batch(
-        "PRAGMA auto_vacuum=INCREMENTAL;
-         PRAGMA journal_mode=WAL;
-         PRAGMA synchronous=NORMAL;
+        "PRAGMA synchronous=NORMAL;
          PRAGMA foreign_keys=ON;
-         PRAGMA busy_timeout=5000;",
+         PRAGMA temp_store=MEMORY;
+         PRAGMA cache_size=-8000;",
     )
     .context("configure SQLite pragmas")?;
+    if read_only {
+        // 在引擎层禁止写入；只读事务不应存在锁升级路径。
+        conn.execute_batch("PRAGMA query_only=ON;")
+            .context("configure read-only SQLite pragmas")?;
+    }
+    // 仓库 SQL 形态固定，默认 16 条缓存不够用；配合 prepare_cached 避免
+    // 高频语句每次重新解析。
+    conn.set_prepared_statement_cache_capacity(64);
 
     let pending = Arc::new(Mutex::new(HashSet::new()));
-    let sink = pending.clone();
-    conn.update_hook(Some(
-        move |action: Action, _db: &str, table: &str, _rowid: i64| {
-            if !matches!(
-                action,
-                Action::SQLITE_INSERT | Action::SQLITE_UPDATE | Action::SQLITE_DELETE
-            ) {
-                return;
-            }
-            // hook 在 SQLite 执行线程内同步调用：只入队，绝不查询/等待。
-            if let Ok(mut buf) = sink.lock() {
-                buf.insert(table.to_owned());
-            }
-        },
-    ))?;
+    if !read_only {
+        // 只读连接不会有写操作，不需要注册 hook。
+        let sink = pending.clone();
+        conn.update_hook(Some(
+            move |action: Action, _db: &str, table: &str, _rowid: i64| {
+                if !matches!(
+                    action,
+                    Action::SQLITE_INSERT | Action::SQLITE_UPDATE | Action::SQLITE_DELETE
+                ) {
+                    return;
+                }
+                // hook 在 SQLite 执行线程内同步调用：只入队，绝不查询/等待。
+                // 批量写入时同一张表会被回调上万次，先查后插避免重复分配。
+                if let Ok(mut buf) = sink.lock() {
+                    if !buf.contains(table) {
+                        buf.insert(table.to_owned());
+                    }
+                }
+            },
+        ))?;
+    }
     Ok((conn, pending))
 }
 
@@ -345,9 +395,13 @@ pub fn main_handle() -> Result<i64> {
 
 pub fn commit(handle: i64) -> Result<()> {
     let tx = get(handle)?;
-    tx.commit()?;
-    lock_registry()?.remove(&handle);
-    Ok(())
+    let is_tx = matches!(&tx.kind, HandleKind::Tx { .. });
+    let result = tx.commit();
+    if is_tx {
+        // commit 失败也移除句柄：底层已在出错时回滚，handle 不应继续可用。
+        lock_registry()?.remove(&handle);
+    }
+    result
 }
 
 pub fn rollback(handle: i64) -> Result<()> {
@@ -462,6 +516,94 @@ mod tests {
         rollback(tx).unwrap();
         assert_eq!(events.lock().unwrap().len(), 2, "回滚不应发布");
         close(handle).unwrap();
+    }
+
+    #[test]
+    fn read_only_transaction_rejects_writes() {
+        let path = temp_db("read_only_tx");
+        let handle = open(&path).unwrap();
+        let db = get(handle).unwrap();
+        db.execute_script("CREATE TABLE t(id INTEGER PRIMARY KEY, v TEXT)")
+            .unwrap();
+        db.execute("INSERT INTO t(id, v) VALUES(1, 'main')", "[]")
+            .unwrap();
+
+        let tx = begin(handle, false).unwrap();
+        let tx_handle = get(tx).unwrap();
+        let error = tx_handle
+            .execute("INSERT INTO t(id, v) VALUES(2, 'tx')", "[]")
+            .unwrap_err();
+        assert!(
+            format!("{error:#}").contains("readonly"),
+            "只读事务必须由 query_only 拒绝写入: {error:#}"
+        );
+        assert_eq!(
+            tx_handle
+                .query_json("SELECT COUNT(*) AS c FROM t", "[]")
+                .unwrap(),
+            r#"[{"c":1}]"#
+        );
+        rollback(tx).unwrap();
+        close(handle).unwrap();
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn read_only_transaction_keeps_a_stable_snapshot() {
+        let path = temp_db("read_only_snapshot");
+        let handle = open(&path).unwrap();
+        let db = get(handle).unwrap();
+        db.execute_script("CREATE TABLE t(id INTEGER PRIMARY KEY, v TEXT)")
+            .unwrap();
+        db.execute("INSERT INTO t(id, v) VALUES(1, 'before')", "[]")
+            .unwrap();
+
+        let tx = begin(handle, false).unwrap();
+        let tx_handle = get(tx).unwrap();
+        // 第一条真实读语句建立快照。
+        assert_eq!(
+            tx_handle
+                .query_json("SELECT COUNT(*) AS c FROM t", "[]")
+                .unwrap(),
+            r#"[{"c":1}]"#
+        );
+        db.execute("INSERT INTO t(id, v) VALUES(2, 'after')", "[]")
+            .unwrap();
+        assert_eq!(
+            tx_handle
+                .query_json("SELECT COUNT(*) AS c FROM t", "[]")
+                .unwrap(),
+            r#"[{"c":1}]"#,
+            "只读事务内的多次读取必须看到同一快照"
+        );
+        assert_eq!(
+            db.query_json("SELECT COUNT(*) AS c FROM t", "[]").unwrap(),
+            r#"[{"c":2}]"#
+        );
+        rollback(tx).unwrap();
+        close(handle).unwrap();
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn cached_statements_see_schema_changes() {
+        let path = temp_db("cached_schema");
+        let handle = open(&path).unwrap();
+        let db = get(handle).unwrap();
+        db.execute_script("CREATE TABLE t(id INTEGER PRIMARY KEY, v TEXT)")
+            .unwrap();
+        assert_eq!(db.query_json("SELECT * FROM t", "[]").unwrap(), "[]");
+        db.execute_script("ALTER TABLE t ADD COLUMN extra TEXT")
+            .unwrap();
+        db.execute("INSERT INTO t(id, v, extra) VALUES(1, 'v', 'e')", "[]")
+            .unwrap();
+        assert_eq!(
+            db.query_json("SELECT * FROM t", "[]").unwrap(),
+            r#"[{"extra":"e","id":1,"v":"v"}]"#,
+            "缓存的语句必须在 schema 变化后重新准备"
+        );
+        close(handle).unwrap();
+        let _ = std::fs::remove_file(path);
     }
 
     #[test]
