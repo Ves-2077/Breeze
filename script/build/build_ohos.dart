@@ -746,12 +746,24 @@ Future<_PubBackup?> _prepareOhosPubspec(
 /// 复制当前 package_config 中的 jni 到 .dart_tool 并补 mapping，只在 OHOS
 /// 构建的临时 pubspec 中 override，避免污染官方依赖。
 Future<String?> _preparePatchedJni(String projectRoot) async {
-  final configFile = File(
-    p.join(projectRoot, '.dart_tool', 'package_config.json'),
-  );
-  if (!await configFile.exists()) return null;
+  final target = Directory(p.join(projectRoot, '.dart_tool', 'ohos_jni_patch'));
+  final internal = File(p.join(target.path, 'lib', '_internal.dart'));
 
   try {
+    // 上一次 OHOS 构建已经生成过补丁：直接复用，不依赖 package_config 当前
+    // 是否仍指向补丁路径（Flutter pub get 可能把它改回 hosted）。
+    if (await internal.exists()) {
+      final existing = await internal.readAsString();
+      if (existing.contains('Abi.ohosArm64')) {
+        return p.relative(target.path, from: projectRoot);
+      }
+    }
+
+    final configFile = File(
+      p.join(projectRoot, '.dart_tool', 'package_config.json'),
+    );
+    if (!await configFile.exists()) return null;
+
     final config = jsonDecode(await configFile.readAsString());
     if (config is! Map || config['packages'] is! List) return null;
 
@@ -768,15 +780,14 @@ Future<String?> _preparePatchedJni(String projectRoot) async {
     final source = _packageDirectory(projectRoot, rootUri);
     if (source == null || !await source.exists()) return null;
 
-    final target = Directory(
-      p.join(projectRoot, '.dart_tool', 'ohos_jni_patch'),
-    );
-    if (await target.exists()) {
-      await target.delete(recursive: true);
+    final alreadyPatched = p.equals(source.path, target.path);
+    if (!alreadyPatched) {
+      if (await target.exists()) {
+        await target.delete(recursive: true);
+      }
+      await _copyDirectory(source, target);
     }
-    await _copyDirectory(source, target);
 
-    final internal = File(p.join(target.path, 'lib', '_internal.dart'));
     if (!await internal.exists()) return null;
     var content = await internal.readAsString();
     if (!content.contains('Abi.ohosArm64')) {

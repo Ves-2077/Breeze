@@ -256,3 +256,8 @@ OHOS 桌面与应用内图标来自 `asset/image/app-icon.png`，已同步到：
    `Int32 is missing mapping for ohos_arm64`。`build_ohos.dart --hap` 会把
    `package_config.json` 中的 jni 复制到 `.dart_tool/ohos_jni_patch` 并补三个
    mapping，只在 OHOS 临时 pubspec 中 override；官方 Android/桌面构建不受影响。
+7. **HAP 未压缩 .so**：hvigor 默认以 `store` 写入 HAP；当前 release 的
+   `libapp.so` + `libflutter.so` + `libwindcore.so` 约 61.5 MB。开启
+   `module.json5` 的 `compressNativeLibs` 可把 HAP 从 63.8 MB 降到约 29 MB，
+   但当前 Flutter OH + x64 模拟器实测启动失败，因此保持关闭；下载包通过外层
+   zip 压缩到约 27 MB。
