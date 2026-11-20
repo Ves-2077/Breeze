@@ -160,7 +160,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.96.1
-          targets: aarch64-unknown-linux-ohos
+          targets: aarch64-unknown-linux-ohos,x86_64-unknown-linux-ohos
 
       - name: 缓存 Rust 产物
         uses: Swatinem/rust-cache@v2
