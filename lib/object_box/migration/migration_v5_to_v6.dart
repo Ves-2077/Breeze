@@ -10,7 +10,7 @@ Future<void> migrateV5ToV6(Database database) async {
   var migrated = 0;
   var skipped = 0;
   final now = DateTime.now().toUtc().millisecondsSinceEpoch;
-  final deviceId = await ensureSyncDeviceId();
+  final deviceId = syncDeviceId;
 
   Future<void> ensureLink(String comicUniqueKey, ComicFolderType type) async {
     final linkKey = '$comicUniqueKey||${type.name}';

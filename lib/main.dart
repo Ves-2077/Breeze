@@ -173,8 +173,6 @@ Future<void> main(List<String> args) async {
     _installFallbackErrorHandlers();
   }
 
-  // 先生成本地同步设备 ID，后续文件夹/链接的版本向量会使用它
-  await ensureSyncDeviceId();
   await loadZoomedContinuousScrollEnabled();
 
   // desktop_webview_linux 必需的标题栏子进程入口
@@ -309,6 +307,9 @@ Future<void> _runDatabaseIncompatibleApp() async {
 Future<(GlobalSettingCubit, PluginRegistryCubit)> _initServices() async {
   // 初始化rust
   await initRustLib();
+  // 同步设备 ID 必须在打开数据库（v5→v6 迁移会用它提升版本向量）之前就绪。
+  // 写入 Rust 侧缓存后，后台 isolate 也能同步读到同一个值。
+  await ensureSyncDeviceId();
 
   // 初始化 i18n：先设置默认中文，待 GlobalSettingCubit 加载后再根据用户设置或系统语言切换。
   LocaleSettings.setLocale(AppLocale.enUs);

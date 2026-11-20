@@ -211,7 +211,11 @@ class ComicSyncCore {
   ) {
     return compute(
       _mergeUnifiedDataInIsolate,
-      _SyncMergeTask(handle: database.db.handle, data: data),
+      _SyncMergeTask(
+        handle: database.db.handle,
+        data: data,
+        deviceId: syncDeviceId,
+      ),
     );
   }
 
@@ -1343,10 +1347,15 @@ class _RemoteFileData {
 }
 
 class _SyncMergeTask {
-  const _SyncMergeTask({required this.handle, required this.data});
+  const _SyncMergeTask({
+    required this.handle,
+    required this.data,
+    required this.deviceId,
+  });
 
   final int handle;
   final Map<String, dynamic> data;
+  final String deviceId;
 }
 
 Future<List<int>> _buildCompressedPayloadInIsolate(int handle) async {
@@ -1358,6 +1367,9 @@ Future<List<int>> _buildCompressedPayloadInIsolate(int handle) async {
 Future<int> _mergeUnifiedDataInIsolate(_SyncMergeTask task) async {
   await initRustLib();
   markDbWorkerIsolate();
+  // 合并冲突会按设备 ID 提升版本向量；compute 隔离区没有主 isolate 的
+  // Dart 侧缓存，这里显式继承任务携带的值，避免退化成 device_default。
+  syncDeviceId = task.deviceId;
   return ComicSyncCore._mergeUnifiedData(
     Database.fromHandle(task.handle),
     task.data,

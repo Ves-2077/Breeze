@@ -35,7 +35,6 @@ Future<void> unifiedDownloadTask(
   DownloadProgressReporter reporter,
   DownloadTaskJson task,
 ) async {
-  await ensureSyncDeviceId();
   logger.d('unifiedDownloadTask received taskKey=${task.taskKey}');
   final pluginId = (task.from).trim();
   final from = pluginId;

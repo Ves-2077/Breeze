@@ -13,6 +13,7 @@ import 'api/logger.dart';
 import 'api/memory.dart';
 import 'api/qjs.dart';
 import 'api/simple.dart';
+import 'api/sync_device.dart';
 import 'api/system.dart';
 import 'api/user_utils.dart';
 import 'api/webdav.dart';

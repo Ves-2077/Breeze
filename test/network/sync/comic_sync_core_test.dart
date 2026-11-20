@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -102,6 +103,31 @@ void main() {
 
       final merged = (await database.folders.getAll()).single;
       expect(merged.syncId, local.syncId);
+    });
+
+    test('bumps version vector with the local device id in merge isolate', () async {
+      final local = createFolder(
+        'folderA',
+        versionVector: {'device_local': 1},
+        updatedAt: 1000,
+      );
+      final cloud = createFolder(
+        'folderA',
+        versionVector: {'device_cloud': 1},
+        updatedAt: 2000,
+      );
+
+      final data = buildPayload(folders: [cloud.toJson()]);
+      await putAll(database, folders: [local]);
+
+      await runMerge(database, data);
+
+      final merged = (await database.folders.getAll()).single;
+      final vector =
+          jsonDecode(merged.versionVectorJson) as Map<String, dynamic>;
+      // 冲突合并后按本机 ID 提升；占位值 device_default 只应在未初始化时出现。
+      expect(vector, {'device_local': 2, 'device_cloud': 1});
+      expect(vector.containsKey('device_default'), isFalse);
     });
 
     test('resolves folder uniqueKey conflict with active winner', () async {

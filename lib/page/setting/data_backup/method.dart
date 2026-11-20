@@ -293,7 +293,7 @@ Map<String, dynamic> _withDefaultId(Map<String, dynamic> json) {
 /// 对于 ComicFolder / ComicLink，还会用当前设备的 syncDeviceId 对
 /// versionVectorJson 做一次 bump，避免导入后同步时出现设备 ID 不一致的冲突。
 Future<GlobalSettingState?> _restoreAllData(Map<String, dynamic> json) async {
-  final currentDeviceId = await ensureSyncDeviceId();
+  final currentDeviceId = syncDeviceId;
   GlobalSettingState? restoredGlobal;
 
   String bumpVersionVector(String raw) {
