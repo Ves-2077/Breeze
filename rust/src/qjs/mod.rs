@@ -1093,7 +1093,16 @@ async fn replace_bundle_inner(
         ))
     })?;
 
+    // 先装新 bundle（同名直接覆盖注册表条目），再清理其它旧 bundle。
+    // 反过来「先 unload 再 install」会在两次调用之间留下空注册表窗口：
+    // 首页/云收藏等并发发起的 bundle_call 恰好落在窗口里就会报
+    // "bundle not found"，旧 bundle 也会在安装失败时一起丢掉。
+    let result = install_bundle(runtime, name, bundle_js, bundle_bytecode).await?;
+
     for existing in names {
+        if existing == name {
+            continue;
+        }
         runtime.bundle_unload(&existing).await.map_err(|err| {
             anyhow!(rquickjs_playground::tr!(
                 "failed-to-unload-old-bundle",
@@ -1103,7 +1112,7 @@ async fn replace_bundle_inner(
         })?;
     }
 
-    install_bundle(runtime, name, bundle_js, bundle_bytecode).await
+    Ok(result)
 }
 
 async fn call_loaded_bundle_start(
@@ -2366,6 +2375,105 @@ mod tests {
             .expect("drop bytecode-only runtime");
         let parsed: Value = serde_json::from_slice(&output.expect("call")).expect("parse result");
         assert_eq!(parsed["ok"], true);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn failed_bundle_replacement_keeps_previous_bundle_registered() {
+        let runtime_name = format!("test-qjs-replace-keeps-old-{}", std::process::id());
+        let bundle_name = format!("{runtime_name}-bundle");
+        QjsRuntimeBuilder::new(runtime_name.clone())
+            .bundle(
+                bundle_name.clone(),
+                "module.exports = { run: () => ({ version: 1 }) };",
+            )
+            .build()
+            .await
+            .expect("install first bundle");
+
+        let call = || {
+            qjs_task_call(
+                runtime_name.clone(),
+                "test-replace-keeps-old".to_string(),
+                false,
+                None,
+                None,
+                "run".to_string(),
+                "[]".to_string(),
+            )
+        };
+
+        let first: Value =
+            serde_json::from_slice(&call().await.expect("call first bundle")).expect("parse");
+        assert_eq!(first["version"], json!(1));
+
+        // 新 bundle 顶层直接抛错：安装失败。替换实现必须先装新的再 unload 旧的，
+        // 否则旧 bundle 会被提前摘掉，同 runtime 上并发的调用就会报
+        // "bundle not found"（首页/云收藏同时做首次初始化时触发）。
+        let failed = QjsRuntimeBuilder::new(runtime_name.clone())
+            .bundle(bundle_name, "throw new Error('bundle load failed');")
+            .build()
+            .await;
+        assert!(failed.is_err(), "throwing bundle should fail to install");
+
+        let again: Value = serde_json::from_slice(
+            &call()
+                .await
+                .expect("previous bundle must stay callable after failed replace"),
+        )
+        .expect("parse");
+        assert_eq!(again["version"], json!(1));
+
+        qjs_drop_runtime(runtime_name)
+            .await
+            .expect("drop test QJS runtime");
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn bundle_replacement_switches_calls_to_new_source() {
+        let runtime_name = format!("test-qjs-replace-success-{}", std::process::id());
+        let bundle_name = format!("{runtime_name}-bundle");
+        QjsRuntimeBuilder::new(runtime_name.clone())
+            .bundle(
+                bundle_name.clone(),
+                "module.exports = { run: () => ({ version: 1 }) };",
+            )
+            .build()
+            .await
+            .expect("install first bundle");
+
+        QjsRuntimeBuilder::new(runtime_name.clone())
+            .bundle(
+                bundle_name.clone(),
+                "module.exports = { run: () => ({ version: 2 }) };",
+            )
+            .build()
+            .await
+            .expect("replace bundle");
+
+        let output = qjs_task_call(
+            runtime_name.clone(),
+            "test-replace-success".to_string(),
+            false,
+            None,
+            None,
+            "run".to_string(),
+            "[]".to_string(),
+        )
+        .await
+        .expect("call replaced bundle");
+        let parsed: Value = serde_json::from_slice(&output).expect("parse");
+        assert_eq!(parsed["version"], json!(2));
+
+        // 同名替换后当前 bundle 仍是这个名字，不能因为跳过 unload 留下旧名。
+        let raw = super::qjs_current_bundle(runtime_name.clone())
+            .await
+            .expect("read current bundle");
+        let current: Option<String> = serde_json::from_str(&raw).expect("parse current bundle");
+        assert_eq!(current.as_deref(), Some(bundle_name.as_str()));
+
+        qjs_drop_runtime(runtime_name)
+            .await
+            .expect("drop test QJS runtime");
     }
 
     #[test]
