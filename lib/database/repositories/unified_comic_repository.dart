@@ -340,7 +340,8 @@ class UnifiedComicHistoryRepository {
   /// 阅读器周期保存专用：把单条 upsert 放进 worker 池执行。
   ///
   /// 参数里的 metadata/creator 等 JSON 文本在写入侧编码，阅读器每 500ms 触发
-  /// 一次，放到池里后编码与执行都不占 UI isolate。新行插入时 worker 内的
+  /// 一次，放到池里后编码与执行都不占 UI isolate。结果只有自增 id，零拷贝
+  /// 没有收益，保留常驻池避免每 500ms spawn。新行插入时 worker 内的
   /// id 回写不会传回调用方对象，因此把 id 返回给调用方自行赋值。
   Future<int> putInWorker(UnifiedComicHistory value) {
     final handle = db.activeHandle;

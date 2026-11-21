@@ -5,7 +5,7 @@ import 'package:zephyr/util/async/worker_pool.dart';
 
 /// 读取本地（已下载）章节的图片列表。
 ///
-/// 下载记录读取与 `chapters` JSON 解析全部在 worker 池完成，UI 只拿
+/// 下载记录读取与 `chapters` JSON 解析全部在后台 isolate 完成，UI 只拿
 /// 目标章节的 docs（章节切换时每章调用一次）。
 Future<NormalComicEpInfo> getPluginInfoFromLocal(
   String pluginId,
@@ -13,14 +13,13 @@ Future<NormalComicEpInfo> getPluginInfoFromLocal(
   int epsId,
 ) {
   final handle = database.db.handle;
-  return runInWorker(
-    () => readLocalChapterInIsolate(
-      LocalChapterReadTask(
-        handle: handle,
-        pluginId: pluginId,
-        comicId: comicId,
-        epsId: epsId,
-      ),
+  return runInIsolate(
+    readLocalChapterInIsolate,
+    LocalChapterReadTask(
+      handle: handle,
+      pluginId: pluginId,
+      comicId: comicId,
+      epsId: epsId,
     ),
   );
 }

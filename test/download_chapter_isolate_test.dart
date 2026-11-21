@@ -184,14 +184,12 @@ void main() {
       }),
     );
 
-    // 生产路径：详情页把整段读取+解析交给 worker 池。
+    // 生产路径：详情页把整段读取+解析交给后台 isolate。
     final task = DownloadComicInfoTask(
       handle: database.db.handle,
       downloadKey: 'test:123',
     );
-    final result = await runInWorker(
-      () => readDownloadedComicInfoInWorker(task),
-    );
+    final result = await runInIsolate(readDownloadedComicInfoInWorker, task);
 
     expect(result.record?.uniqueKey, 'test:123');
     expect(result.info?.comicInfo.title, '漫画');
@@ -201,10 +199,9 @@ void main() {
       'c3',
     ]);
 
-    final missing = await runInWorker(
-      () => readDownloadedComicInfoInWorker(
-        DownloadComicInfoTask(handle: task.handle, downloadKey: 'test:404'),
-      ),
+    final missing = await runInIsolate(
+      readDownloadedComicInfoInWorker,
+      DownloadComicInfoTask(handle: task.handle, downloadKey: 'test:404'),
     );
     expect(missing.record, isNull);
     expect(missing.info, isNull);

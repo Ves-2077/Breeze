@@ -676,10 +676,10 @@ Map<String, Map<String, dynamic>> _extractSyncableSettingsBlocks(
 
 Future<Map<String, dynamic>> _buildPluginBlockData() {
   final handle = database.db.handle;
-  return runInWorker(() => buildPluginBlockDataInWorker(handle));
+  return runInIsolate(buildPluginBlockDataInWorker, handle);
 }
 
-/// worker 池内组装插件同步块：`with-scripts` 查询与逐条 `toJson` 都不占 UI。
+/// 后台 isolate 内组装插件同步块：`with-scripts` 查询与逐条 `toJson` 都不占 UI。
 Future<Map<String, dynamic>> buildPluginBlockDataInWorker(int handle) async {
   await initRustLib();
   final db = Database.fromHandle(handle);

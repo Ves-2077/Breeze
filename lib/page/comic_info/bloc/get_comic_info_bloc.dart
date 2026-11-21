@@ -44,14 +44,15 @@ class GetComicInfoBloc extends Bloc<GetComicInfoEvent, GetComicInfoState> {
       normal.NormalComicAllInfo? downloadedInfo;
 
       if (event.type == ComicEntryType.download) {
-        // 记录读取、detailJson 解析与目录排序都在 worker 池内完成；
-        // 任务对象在 UI isolate 构造（worker 里没有全局 database）。
+        // 记录读取、detailJson 解析与目录排序都在后台 isolate 内完成；
+        // 任务对象在 UI isolate 构造（后台 isolate 里没有全局 database）。
         final task = DownloadComicInfoTask(
           handle: database.db.handle,
           downloadKey: '${event.from}:$inputComicId',
         );
-        final downloaded = await runInWorker(
-          () => readDownloadedComicInfoInWorker(task),
+        final downloaded = await runInIsolate(
+          readDownloadedComicInfoInWorker,
+          task,
         );
         comicInfo = downloaded.record;
         downloadedInfo = downloaded.info;

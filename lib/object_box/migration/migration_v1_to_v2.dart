@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
-import 'package:worker_manager/worker_manager.dart';
 import 'package:zephyr/database/database.dart';
 import 'package:zephyr/main.dart';
 import 'package:zephyr/object_box/model.dart';
@@ -10,6 +9,7 @@ import 'package:zephyr/page/comic_info/json/normal/normal_comic_all_info.dart'
     as normal;
 import 'package:zephyr/page/download/models/unified_comic_download.dart';
 import 'package:zephyr/src/rust/api/qjs.dart';
+import 'package:zephyr/util/async/worker_pool.dart';
 import 'package:zephyr/util/storage/get_path.dart';
 
 const _legacyJmImageBaseUrl = 'https://cdn-msp12.jmdanjonproxy.xyz';
@@ -443,7 +443,7 @@ Future<List<Map<String, dynamic>>> _buildFavoritesJsonOnWorker(
   final payload = jmFavoritesJson
       .map((item) => Map<String, dynamic>.from(item))
       .toList();
-  return workerManager.execute(() => _buildFavoritesOnCompute(payload));
+  return runInIsolate(_buildFavoritesOnCompute, payload);
 }
 
 Future<List<Map<String, dynamic>>> _buildHistoriesJsonOnWorker(
@@ -458,7 +458,7 @@ Future<List<Map<String, dynamic>>> _buildHistoriesJsonOnWorker(
         .map((item) => Map<String, dynamic>.from(item as Map))
         .toList(),
   };
-  return workerManager.execute(() => _buildHistoriesOnCompute(safePayload));
+  return runInIsolate(_buildHistoriesOnCompute, safePayload);
 }
 
 Future<List<Map<String, dynamic>>> _buildDownloadsJsonOnWorker(
@@ -474,7 +474,7 @@ Future<List<Map<String, dynamic>>> _buildDownloadsJsonOnWorker(
         .map((item) => Map<String, dynamic>.from(item as Map))
         .toList(),
   };
-  return workerManager.execute(() => _buildDownloadsOnCompute(safePayload));
+  return runInIsolate(_buildDownloadsOnCompute, safePayload);
 }
 
 List<Map<String, dynamic>> _buildFavoritesOnCompute(

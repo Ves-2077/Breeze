@@ -132,7 +132,7 @@ class DownloadTaskRepository {
     }
   }
 
-  /// 一次 worker 池调用完成：读下载记录、解析章节、匹配目标章节，可选返回记录本体。
+  /// 一次后台 isolate 调用完成：读下载记录、解析章节、匹配目标章节，可选返回记录本体。
   Future<DownloadChapterLookup> lookupDownloadedChapter({
     required String from,
     required String comicId,
@@ -142,16 +142,15 @@ class DownloadTaskRepository {
     bool includeRecord = false,
   }) {
     final handle = database.db.handle;
-    return runInWorker(
-      () => lookupDownloadedChapterInIsolate(
-        DownloadChapterLookupTask(
-          handle: handle,
-          downloadKey: buildDownloadTaskKey(from, comicId),
-          chapterKeys: chapterKeys,
-          order: order,
-          fallbackFirst: fallbackFirst,
-          includeRecord: includeRecord,
-        ),
+    return runInIsolate(
+      lookupDownloadedChapterInIsolate,
+      DownloadChapterLookupTask(
+        handle: handle,
+        downloadKey: buildDownloadTaskKey(from, comicId),
+        chapterKeys: chapterKeys,
+        order: order,
+        fallbackFirst: fallbackFirst,
+        includeRecord: includeRecord,
       ),
     );
   }
@@ -159,6 +158,8 @@ class DownloadTaskRepository {
   /// 已下载章节 id 集合：读取 `chapters`/`detailJson` + 解析全在 worker 池。
   ///
   /// 详情页章节角标只需要 id；图片信息多的漫画章节 JSON 很大，不能搬回 UI。
+  /// 结果只有 id 集合，零拷贝没有收益，且下载期间表每次变更都会重查，保留
+  /// 常驻池避免反复 spawn。
   Future<Set<String>> downloadedChapterIds({
     required String from,
     required String comicId,

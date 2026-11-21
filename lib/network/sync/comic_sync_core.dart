@@ -126,7 +126,7 @@ class ComicSyncCore {
 
   static Future<List<int>> buildCompressedPayload() {
     final handle = database.db.handle;
-    return runInWorker(() => _buildCompressedPayloadInWorker(handle));
+    return runInIsolate(_buildCompressedPayloadInWorker, handle);
   }
 
   static Future<List<int>> _buildCompressedPayload(Database db) async {
@@ -176,8 +176,9 @@ class ComicSyncCore {
   static Future<Map<String, dynamic>> decodeCompressedPayload(
     List<int> encryptedCompressedBytes,
   ) {
-    return runInWorker(
-      () => _decodeCompressedPayloadInWorker(encryptedCompressedBytes),
+    return runInIsolate(
+      _decodeCompressedPayloadInWorker,
+      encryptedCompressedBytes,
     );
   }
 

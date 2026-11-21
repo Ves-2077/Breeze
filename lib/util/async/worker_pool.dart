@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:worker_manager/worker_manager.dart';
 
 bool _inWorkerTask = false;
@@ -27,4 +28,43 @@ Future<R> runInWorker<R>(FutureOr<R> Function() task) {
 Future<R> _runWorkerTask<R>(FutureOr<R> Function() task) {
   _inWorkerTask = true;
   return Future<R>.sync(task);
+}
+
+/// 在后台 isolate 执行 [callback]，入参 [message]，出参 [R]。
+///
+/// 对外行为只有「在别的 isolate 跑完再回来」，调用方不需要感知实现：
+///
+/// - debug：走 [runInWorker] 的常驻 worker 池，避开 debug/断点下每次
+///   新建 isolate 的固定开销（Windows debug 实测平凡 `compute` 单次约 1.7s）。
+/// - release / profile：走 [compute]（内部即 `Isolate.run` + `Isolate.exit`），
+///   结果零拷贝返回，大结果不付 `SendPort` 深拷贝成本。
+///
+/// 两条路径的传输约束相同：[callback]、[message] 与返回值都必须可跨
+/// isolate 发送。用顶层/静态函数接收数据，多参数用 record 打包，不要捕获
+/// `Database`、`Cubit`、`BuildContext` 等对象，任务内也没有 `main.dart` 的
+/// 全局状态。池内 isolate 会被复用，任务必须是 [message] 的纯函数，不要
+/// 依赖或修改 isolate 内的静态状态。
+///
+/// 已在 worker 内时直接执行；`compute` 分支也会在 spawned isolate 里打上
+/// 同样的标记，因此任务内部嵌套的 [runInWorker] / [runInIsolate] 不会二次
+/// spawn。
+Future<R> runInIsolate<R, M>(ComputeCallback<M, R> callback, M message) {
+  if (_inWorkerTask) return Future<R>.sync(() => callback(message));
+  if (kDebugMode) {
+    return runInWorker<R>(() => callback(message));
+  }
+  return runInIsolateSpawned(callback, message);
+}
+
+/// [runInIsolate] 的 release / profile 分支：`compute`（即 `Isolate.run` +
+/// `Isolate.exit`），结果零拷贝返回。
+///
+/// spawned isolate 内同样打上 `_inWorkerTask` 标记，嵌套任务直接执行。
+/// 单独暴露只为在 debug 测试里覆盖该分支；业务代码一律使用 [runInIsolate]。
+@visibleForTesting
+Future<R> runInIsolateSpawned<R, M>(ComputeCallback<M, R> callback, M message) {
+  return compute<M, R>((message) {
+    _inWorkerTask = true;
+    return callback(message);
+  }, message);
 }

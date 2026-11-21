@@ -1,18 +1,17 @@
 import 'dart:typed_data';
 
 import 'package:cbor/simple.dart' as cbor;
-import 'package:worker_manager/worker_manager.dart';
 import 'package:zephyr/network/http/plugin/qjs_download_runtime.dart';
 import 'package:zephyr/network/http/plugin/qjs_fetch_image_result.dart';
 import 'package:zephyr/src/rust/api/qjs.dart';
+import 'package:zephyr/util/async/worker_pool.dart';
 
-QjsFetchImageHttpResult _decodeQjsFetchImageResult(
-  Uint8List encoded, {
-  required String source,
-}) {
+typedef _QjsImageDecodeTask = ({Uint8List encoded, String source});
+
+QjsFetchImageHttpResult _decodeQjsFetchImageResult(_QjsImageDecodeTask task) {
   return QjsFetchImageHttpResult.fromCbor(
-    cbor.cbor.decode(encoded),
-    source: source,
+    cbor.cbor.decode(task.encoded),
+    source: task.source,
   );
 }
 
@@ -36,8 +35,9 @@ Future<QjsFetchImageHttpResult> executeQjsFetchImageResult({
   );
   final bytes = result.bytes;
   final source = result.source;
-  // 大图 CBOR 解码会阻塞 UI isolate（Sentry ANR: _readBytes），放到 worker 池。
-  return workerManager.execute<QjsFetchImageHttpResult>(
-    () => _decodeQjsFetchImageResult(bytes, source: source),
-  );
+  // 大图 CBOR 解码会阻塞 UI isolate（Sentry ANR: _readBytes），放到后台 isolate。
+  return runInIsolate(_decodeQjsFetchImageResult, (
+    encoded: bytes,
+    source: source,
+  ));
 }

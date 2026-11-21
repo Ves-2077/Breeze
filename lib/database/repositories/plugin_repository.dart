@@ -74,8 +74,8 @@ class PluginRepository {
 
   /// 同步/备份等确实需要脚本的场景：一次性把脚本和元数据取回。
   ///
-  /// 脚本是大字段（单个可达数百 KB），整条查询放进 worker 池，行解码不占
-  /// UI isolate；已在 worker 内时直接执行。
+  /// 脚本是大字段（单个可达数百 KB），整条查询放进后台 isolate，
+  /// 行解码不占 UI isolate；已在后台 isolate 内时直接执行。
   Future<List<PluginInfo>> listInfosWithScripts() => runDbReadInWorker(
     db,
     sql: '$_pluginInfoWithScriptSelect ORDER BY i."id"',
@@ -108,7 +108,7 @@ class PluginRepository {
 
   /// 按 uuid 读取脚本；不存在或为空时返回空串。
   ///
-  /// 脚本是大字段，读取与行解码放进 worker 池。
+  /// 脚本是大字段，读取与行解码放进后台 isolate。
   Future<String> getScriptByUuid(String uuid) => runDbReadInWorker(
     db,
     sql: 'SELECT "originScript" FROM "PluginScript" WHERE "uuid" = ? LIMIT 1',

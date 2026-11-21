@@ -62,7 +62,7 @@ void main() {
     await database.favorites.put(favorite);
     await _addLink(favorite.uniqueKey, ComicFolderType.favorite.name);
 
-    // 生产路径：bloc 通过 runInWorker 提交整个书架任务。
+    // 生产路径：bloc 通过 runInIsolate 提交整个书架任务。
     final task = ShelfLoadTask(
       handle: database.db.handle,
       mode: 'favorite',
@@ -71,7 +71,7 @@ void main() {
       sort: 'dd',
       sources: const <String>[],
     );
-    final result = await runInWorker(() => loadShelfInIsolate(task));
+    final result = await runInIsolate(loadShelfInIsolate, task);
     expect(result.comics, hasLength(1));
     expect(result.comics.single.id, favorite.comicId);
     expect(result.searchTexts, isNotEmpty);

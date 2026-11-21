@@ -67,7 +67,7 @@ class FolderShelfBloc extends Bloc<FolderShelfEvent, FolderShelfState> {
         sources: search?.sources ?? const <String>[],
         limit: shelfPageSize(state.mode),
       );
-      final result = await runInWorker(() => loadShelfInIsolate(task));
+      final result = await runInIsolate(loadShelfInIsolate, task);
       emit(
         state.copyWith(
           folders: result.folders,
@@ -119,7 +119,7 @@ class FolderShelfBloc extends Bloc<FolderShelfEvent, FolderShelfState> {
         offset: offset,
         limit: shelfPageSize(mode),
       );
-      final result = await runInWorker(() => loadShelfInIsolate(task));
+      final result = await runInIsolate(loadShelfInIsolate, task);
       if (isClosed) return;
       // 加载期间发生了刷新/切目录/换排序：丢弃这一页。
       if (state.nextOffset != offset ||
@@ -439,4 +439,4 @@ class FolderShelfBloc extends Bloc<FolderShelfEvent, FolderShelfState> {
   }
 }
 
-/// 历史无文件夹体系：查询、解码、映射与搜索文本全部在 worker 池任务中完成。
+/// 历史无文件夹体系：查询、解码、映射与搜索文本全部在后台 isolate 任务中完成。

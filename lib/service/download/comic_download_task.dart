@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:worker_manager/worker_manager.dart';
 import 'package:path/path.dart' as p;
 import 'package:zephyr/config/global/global.dart';
 import 'package:zephyr/main.dart';
@@ -24,6 +23,7 @@ import 'package:zephyr/i18n/strings.g.dart';
 import 'package:zephyr/service/download/image_download.dart';
 import 'package:zephyr/network/sync/sync_device_id.dart';
 import 'package:zephyr/src/rust/api/simple.dart';
+import 'package:zephyr/util/async/worker_pool.dart';
 import 'package:zephyr/util/storage/get_path.dart';
 
 /// 单章节下载任务。
@@ -443,7 +443,7 @@ Future<void> _saveUnifiedDownloadChapter({
   final key = buildDownloadTaskKey(from, comicId);
   final existing = await database.downloads.getByKey(key);
   final downloadPath = await getDownloadPath();
-  // JSON 拼装是纯计算，走全局 worker 池；主线程只做 put。
+  // JSON 拼装是纯计算，走后台 isolate；主线程只做 put。
   final buildArgs = <String, dynamic>{
     'normalInfo': normalInfo.toJson(),
     'existing': existing == null
@@ -473,9 +473,7 @@ Future<void> _saveUnifiedDownloadChapter({
     'onlineCatalog': onlineCatalog,
     'skippedPaths': skippedPaths.toList(),
   };
-  final built = await workerManager.execute<Map<String, dynamic>>(
-    () => _buildDownloadRecordJson(buildArgs),
-  );
+  final built = await runInIsolate(_buildDownloadRecordJson, buildArgs);
 
   // 记录落库 + 根目录下载链接同事务提交。
   final record = UnifiedComicDownload(

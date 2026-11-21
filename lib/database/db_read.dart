@@ -17,27 +17,35 @@ Future<R> runDbRead<R>(
   return decode(await db.query(sql, params));
 }
 
-/// 大字段读取（插件脚本、含脚本的插件信息）：整条查询与解码放进 worker 池。
+/// 大字段读取（插件脚本、含脚本的插件信息）：整条查询与解码放进后台 isolate。
 ///
-/// 事务内调用时把事务连接句柄带进 worker；已在 worker 内时直接执行，不重复入池。
+/// 调度细节见 [runInIsolate]；事务内调用时把事务连接句柄带进去。
 Future<R> runDbReadInWorker<R>(
   BreezeDatabase db, {
   required String sql,
   List<Object?> params = const <Object?>[],
   required R Function(List<Map<String, dynamic>> rows) decode,
 }) {
-  final handle = db.activeHandle;
-  return runInWorker(() => _queryAndDecode<R>(handle, sql, params, decode));
+  return runInIsolate<R, _DbReadTask<R>>(_queryAndDecode<R>, (
+    handle: db.activeHandle,
+    sql: sql,
+    params: params,
+    decode: decode,
+  ));
 }
 
-Future<R> _queryAndDecode<R>(
+typedef _DbReadTask<R> = ({
   int handle,
   String sql,
   List<Object?> params,
   R Function(List<Map<String, dynamic>> rows) decode,
-) async {
+});
+
+Future<R> _queryAndDecode<R>(_DbReadTask<R> task) async {
   await initRustLib();
-  return decode(await BreezeDatabase.fromHandle(handle).query(sql, params));
+  return task.decode(
+    await BreezeDatabase.fromHandle(task.handle).query(task.sql, task.params),
+  );
 }
 
 /// `SELECT COUNT(*) AS c ...` 的通用解码。

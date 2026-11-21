@@ -245,7 +245,7 @@ class ReaderHistoryService {
     }
   }
 
-  /// 下载记录只取 detailJson，并在 worker 池内解析成 ComicInfo。
+  /// 下载记录只取 detailJson，并在后台 isolate 内解析成 ComicInfo。
   Future<normal.ComicInfo> _resolveComicInfo({
     required String source,
     required String comicId,
@@ -253,10 +253,9 @@ class ReaderHistoryService {
   }) async {
     if (comicInfo is UnifiedComicDownload) {
       final handle = database.db.handle;
-      final info = await runInWorker(
-        () => _resolveDownloadComicInfoInWorker(
-          _HistoryDetailTask(handle: handle, downloadKey: '$source:$comicId'),
-        ),
+      final info = await runInIsolate(
+        _resolveDownloadComicInfoInWorker,
+        _HistoryDetailTask(handle: handle, downloadKey: '$source:$comicId'),
       );
       if (info == null) {
         throw StateError('本地下载信息不存在: $source:$comicId');
