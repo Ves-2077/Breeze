@@ -89,13 +89,47 @@ final flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
 final navigatorKey = appRouter.navigatorKey;
 
 class AppScrollBehavior extends MaterialScrollBehavior {
-  const AppScrollBehavior();
+  const AppScrollBehavior({
+    this.showScrollbar = true,
+    this.alwaysVisible = false,
+  });
+
+  final bool showScrollbar;
+  final bool alwaysVisible;
 
   @override
   Set<PointerDeviceKind> get dragDevices => {
     ...super.dragDevices,
     PointerDeviceKind.mouse,
   };
+
+  @override
+  bool shouldNotify(covariant ScrollBehavior oldDelegate) {
+    return oldDelegate is! AppScrollBehavior ||
+        showScrollbar != oldDelegate.showScrollbar ||
+        alwaysVisible != oldDelegate.alwaysVisible;
+  }
+
+  @override
+  Widget buildScrollbar(
+    BuildContext context,
+    Widget child,
+    ScrollableDetails details,
+  ) {
+    // 与 Material 默认一致：横向 ScrollView 不自动加滚动条，
+    // 避免 PageView / TabBarView 等周期滚动容器被加上常驻横条。
+    if (!showScrollbar ||
+        axisDirectionToAxis(details.direction) == Axis.horizontal) {
+      return child;
+    }
+    return Scrollbar(
+      controller: details.controller,
+      thumbVisibility: alwaysVisible,
+      thickness: 6,
+      radius: const Radius.circular(3),
+      child: child,
+    );
+  }
 }
 
 class RemoteOutput extends LogOutput {
@@ -839,7 +873,10 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                 routerConfig: appRouter.config(
                   navigatorObservers: () => [AutoRouteObserver()],
                 ),
-                scrollBehavior: const AppScrollBehavior(),
+                scrollBehavior: AppScrollBehavior(
+                  showScrollbar: globalSettingState.effectiveShowScrollbar,
+                  alwaysVisible: globalSettingState.alwaysShowScrollbar,
+                ),
                 builder: (context, child) {
                   Widget content = Actions(
                     actions: <Type, Action<Intent>>{

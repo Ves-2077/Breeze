@@ -26,6 +26,8 @@ _GlobalSettingState _$GlobalSettingStateFromJson(
   showPluginHome: json['showPluginHome'] as bool? ?? true,
   showPluginCloudFavorite: json['showPluginCloudFavorite'] as bool? ?? true,
   showSearchBookmark: json['showSearchBookmark'] as bool? ?? true,
+  showScrollbar: json['showScrollbar'] as bool?,
+  alwaysShowScrollbar: json['alwaysShowScrollbar'] as bool? ?? false,
   syncSetting: json['syncSetting'] == null
       ? const SyncSettingState()
       : SyncSettingState.fromJson(json['syncSetting'] as Map<String, dynamic>),
@@ -122,6 +124,8 @@ Map<String, dynamic> _$GlobalSettingStateToJson(
   'showPluginHome': instance.showPluginHome,
   'showPluginCloudFavorite': instance.showPluginCloudFavorite,
   'showSearchBookmark': instance.showSearchBookmark,
+  'showScrollbar': instance.showScrollbar,
+  'alwaysShowScrollbar': instance.alwaysShowScrollbar,
   'syncSetting': instance.syncSetting.toJson(),
   'maskedKeywords': instance.maskedKeywords,
   'socks5ProxyEnabled': instance.socks5ProxyEnabled,

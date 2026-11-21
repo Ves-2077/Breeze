@@ -491,6 +491,18 @@ class Translations$settings$zh_CN {
 	/// zh-CN: '关闭后隐藏更多页搜索书签入口与搜索结果页添加按钮'
 	String get showSearchBookmarkSubtitle => '关闭后隐藏更多页搜索书签入口与搜索结果页添加按钮';
 
+	/// zh-CN: '显示滚动条'
+	String get showScrollbar => '显示滚动条';
+
+	/// zh-CN: '桌面端默认开启，移动端默认关闭'
+	String get showScrollbarSubtitle => '桌面端默认开启，移动端默认关闭';
+
+	/// zh-CN: '滚动条常驻'
+	String get alwaysShowScrollbar => '滚动条常驻';
+
+	/// zh-CN: '开启后滚动条不会在停止滚动时自动隐藏'
+	String get alwaysShowScrollbarSubtitle => '开启后滚动条不会在停止滚动时自动隐藏';
+
 	/// zh-CN: '内容与网络'
 	String get contentAndNetwork => '内容与网络';
 
@@ -4552,6 +4564,10 @@ extension on Translations {
 			'settings.showPluginCloudFavoriteSubtitle' => '关闭后隐藏底部导航的云收藏页签',
 			'settings.showSearchBookmark' => '显示搜索书签',
 			'settings.showSearchBookmarkSubtitle' => '关闭后隐藏更多页搜索书签入口与搜索结果页添加按钮',
+			'settings.showScrollbar' => '显示滚动条',
+			'settings.showScrollbarSubtitle' => '桌面端默认开启，移动端默认关闭',
+			'settings.alwaysShowScrollbar' => '滚动条常驻',
+			'settings.alwaysShowScrollbarSubtitle' => '开启后滚动条不会在停止滚动时自动隐藏',
 			'settings.contentAndNetwork' => '内容与网络',
 			'settings.content' => '内容',
 			'settings.network' => '网络',
@@ -4938,12 +4954,12 @@ extension on Translations {
 			'comicInfo.removingCloudCollection' => '取消云收藏中...',
 			'comicInfo.cloudCollectSuccess' => '云收藏成功',
 			'comicInfo.cloudUncollectSuccess' => '已取消云收藏',
+			_ => null,
+		} ?? switch (path) {
 			'comicInfo.cloudCollectIncomplete' => '云收藏操作未完成',
 			'comicInfo.discontinued' => '此漫画已下架',
 			'comicInfo.likes' => ({required Object count}) => '点赞 ${count}',
 			'comicInfo.comments' => ({required Object count}) => '评论 ${count}',
-			_ => null,
-		} ?? switch (path) {
 			'comicInfo.collected' => '已收藏',
 			'comicInfo.collect' => '收藏',
 			'comicInfo.download' => '下载',
@@ -5452,12 +5468,12 @@ extension on Translations {
 			'about.fetchFailed' => '获取失败',
 			'about.networkError' => '网络错误',
 			'about.projectAddress' => '项目地址',
+			_ => null,
+		} ?? switch (path) {
 			'about.projectAddressDesc' => '喜欢这个项目吗？点个star支持一下吧！',
 			'about.projectLink' => '前往 GitHub 仓库 (breeze-project-org/Breeze) ⭐',
 			'about.contact' => '联系方式',
 			'about.contactDesc' => '有任何想法或问题，欢迎来找我聊聊~',
-			_ => null,
-		} ?? switch (path) {
 			'about.feedback' => '反馈与建议',
 			'about.feedbackDesc' => '发现BUG或者有新的点子？',
 			'about.feedbackLink' => '在 GitHub Issues 中提出',

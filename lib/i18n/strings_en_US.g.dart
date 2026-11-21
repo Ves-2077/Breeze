@@ -243,6 +243,10 @@ class _Translations$settings$en_US extends Translations$settings$zh_CN {
 	@override String get showPluginCloudFavoriteSubtitle => 'Hide the cloud favorites tab in the bottom navigation when off';
 	@override String get showSearchBookmark => 'Show search bookmarks';
 	@override String get showSearchBookmarkSubtitle => 'Hide the search bookmarks entry in More and the add button in search results when off';
+	@override String get showScrollbar => 'Show scrollbars';
+	@override String get showScrollbarSubtitle => 'On by default on desktop, off by default on mobile';
+	@override String get alwaysShowScrollbar => 'Always show scrollbars';
+	@override String get alwaysShowScrollbarSubtitle => 'Keep scrollbar thumbs visible after scrolling stops';
 	@override String get contentAndNetwork => 'Content & Network';
 	@override String get content => 'Content';
 	@override String get network => 'Network';
@@ -1876,6 +1880,10 @@ extension on TranslationsEnUs {
 			'settings.showPluginCloudFavoriteSubtitle' => 'Hide the cloud favorites tab in the bottom navigation when off',
 			'settings.showSearchBookmark' => 'Show search bookmarks',
 			'settings.showSearchBookmarkSubtitle' => 'Hide the search bookmarks entry in More and the add button in search results when off',
+			'settings.showScrollbar' => 'Show scrollbars',
+			'settings.showScrollbarSubtitle' => 'On by default on desktop, off by default on mobile',
+			'settings.alwaysShowScrollbar' => 'Always show scrollbars',
+			'settings.alwaysShowScrollbarSubtitle' => 'Keep scrollbar thumbs visible after scrolling stops',
 			'settings.contentAndNetwork' => 'Content & Network',
 			'settings.content' => 'Content',
 			'settings.network' => 'Network',
@@ -2262,12 +2270,12 @@ extension on TranslationsEnUs {
 			'comicInfo.removingCloudCollection' => 'Removing cloud collection...',
 			'comicInfo.cloudCollectSuccess' => 'Added to cloud collection',
 			'comicInfo.cloudUncollectSuccess' => 'Removed from cloud collection',
+			_ => null,
+		} ?? switch (path) {
 			'comicInfo.cloudCollectIncomplete' => 'Cloud collection operation incomplete',
 			'comicInfo.discontinued' => 'This comic is discontinued',
 			'comicInfo.likes' => ({required Object count}) => 'Likes ${count}',
 			'comicInfo.comments' => ({required Object count}) => 'Comments ${count}',
-			_ => null,
-		} ?? switch (path) {
 			'comicInfo.collected' => 'Collected',
 			'comicInfo.collect' => 'Collect',
 			'comicInfo.download' => 'Download',
@@ -2776,12 +2784,12 @@ extension on TranslationsEnUs {
 			'about.networkError' => 'Network error',
 			'about.projectAddress' => 'Project',
 			'about.projectAddressDesc' => 'Like this project? Give it a star on GitHub!',
+			_ => null,
+		} ?? switch (path) {
 			'about.projectLink' => 'Go to GitHub repo (breeze-project-org/Breeze) ⭐',
 			'about.contact' => 'Contact',
 			'about.contactDesc' => 'Have ideas or questions? Feel free to reach out~',
 			'about.feedback' => 'Feedback',
-			_ => null,
-		} ?? switch (path) {
 			'about.feedbackDesc' => 'Found a bug or have a new idea?',
 			'about.feedbackLink' => 'Open a GitHub Issue',
 			'about.contributors' => 'Contributors',

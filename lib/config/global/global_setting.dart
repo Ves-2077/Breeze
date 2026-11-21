@@ -2,6 +2,7 @@
 
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:material_ui/material_ui.dart';
@@ -159,6 +160,14 @@ GlobalSettingState _globalSettingState = const GlobalSettingState();
 
 GlobalSettingState get globalSetting => _globalSettingState;
 
+/// 滚动条显示开关的平台默认值：桌面端显示，移动端隐藏。
+bool get defaultShowScrollbar {
+  if (kIsWeb) return true;
+  return defaultTargetPlatform == TargetPlatform.windows ||
+      defaultTargetPlatform == TargetPlatform.linux ||
+      defaultTargetPlatform == TargetPlatform.macOS;
+}
+
 @freezed
 abstract class GlobalSettingState with _$GlobalSettingState {
   const factory GlobalSettingState({
@@ -173,6 +182,9 @@ abstract class GlobalSettingState with _$GlobalSettingState {
     @Default(true) bool showPluginHome,
     @Default(true) bool showPluginCloudFavorite,
     @Default(true) bool showSearchBookmark,
+    // null = 跟随平台默认值（桌面端显示、移动端隐藏），用户切换后写入显式值。
+    bool? showScrollbar,
+    @Default(false) bool alwaysShowScrollbar,
     @Default(SyncSettingState()) SyncSettingState syncSetting,
     @Default([]) List<String> maskedKeywords,
     @Default(true) bool socks5ProxyEnabled,
@@ -218,6 +230,11 @@ abstract class GlobalSettingState with _$GlobalSettingState {
 
   factory GlobalSettingState.fromJson(Map<String, dynamic> json) =>
       _$GlobalSettingStateFromJson(json);
+}
+
+extension GlobalSettingStateScrollbarX on GlobalSettingState {
+  /// 实际是否显示滚动条；用户未切换过时按平台默认值。
+  bool get effectiveShowScrollbar => showScrollbar ?? defaultShowScrollbar;
 }
 
 @freezed

@@ -42,6 +42,8 @@ class AppearanceSettingPage extends StatelessWidget {
           _showPluginHome(state, cubit),
           _showPluginCloudFavorite(state, cubit),
           _showSearchBookmark(state, cubit),
+          _showScrollbar(state, cubit),
+          if (state.effectiveShowScrollbar) _alwaysShowScrollbar(state, cubit),
           _fontSettings(context),
         ],
       ),
@@ -236,6 +238,37 @@ class AppearanceSettingPage extends StatelessWidget {
       onChanged: (bool value) {
         cubit.updateState(
           (current) => current.copyWith(showSearchBookmark: value),
+        );
+      },
+    );
+  }
+
+  Widget _showScrollbar(GlobalSettingState state, GlobalSettingCubit cubit) {
+    return SwitchListTile(
+      secondary: const Icon(Icons.swap_vert),
+      title: Text(t.settings.showScrollbar),
+      subtitle: Text(t.settings.showScrollbarSubtitle),
+      thumbIcon: kSettingSwitchThumbIcon,
+      value: state.effectiveShowScrollbar,
+      onChanged: (bool value) {
+        cubit.updateState((current) => current.copyWith(showScrollbar: value));
+      },
+    );
+  }
+
+  Widget _alwaysShowScrollbar(
+    GlobalSettingState state,
+    GlobalSettingCubit cubit,
+  ) {
+    return SwitchListTile(
+      secondary: const Icon(Icons.push_pin_outlined),
+      title: Text(t.settings.alwaysShowScrollbar),
+      subtitle: Text(t.settings.alwaysShowScrollbarSubtitle),
+      thumbIcon: kSettingSwitchThumbIcon,
+      value: state.alwaysShowScrollbar,
+      onChanged: (bool value) {
+        cubit.updateState(
+          (current) => current.copyWith(alwaysShowScrollbar: value),
         );
       },
     );
