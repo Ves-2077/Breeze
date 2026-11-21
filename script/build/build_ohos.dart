@@ -424,6 +424,7 @@ Future<void> _hap(String projectRoot, _Options options) async {
   }
 
   final flutter = _resolveFlutterExecutable(_findFlutter(options.flutter));
+  final flutterRoot = _flutterSdkRoot(flutter);
   // OHOS fork 的 Dart 3.13 无法解析桌面栈（要求 ^3.14）；构建期间临时裁剪，
   // 结束后恢复。备份在 .dart_tool/ohos_pub_backup/，进程被杀也能手动恢复。
   final pubBackup = await _prepareOhosPubspec(projectRoot, flutter);
@@ -458,22 +459,57 @@ Future<void> _hap(String projectRoot, _Options options) async {
       arch: options.arch,
     );
     if (exitCode != 0) return;
-    code = await _runCommand(
-      flutter,
-      <String>[
-        'build',
-        'hap',
-        '-t',
-        options.entry,
-        '--target-platform',
-        options.arch == 'x64' ? 'ohos-x64' : 'ohos-arm64',
-        if (options.debug) '--debug',
-        if (options.rustLog) '--dart-define=rust_log=true',
-        if (Platform.environment['BREEZE_OHOS_VERBOSE'] == '1') '--verbose',
-      ],
-      workingDirectory: projectRoot,
-      environment: _ohosToolEnvironment(nativeDir),
-    );
+    // 自己先跑 pub get，构建时用 --no-pub：OHOS Flutter 的 hvigorconfig.ts 会读
+    // `.flutter-plugins-dependencies` 的 `plugins.ohos`；官方 Flutter 的 pub get 重写
+    // 该文件时不带 ohos 键（本应用没有 OHOS 平台插件），hvigor 会报
+    // “Cannot read properties of undefined (reading 'filter')”。这里补一个空列表再打包。
+    for (var attempt = 0; ; attempt++) {
+      final pubCode = await _runCommand(
+        flutter,
+        <String>['pub', 'get'],
+        workingDirectory: projectRoot,
+        environment: _ohosToolEnvironment(
+          nativeDir,
+          flutterRoot: flutterRoot,
+        ),
+      );
+      if (pubCode != 0) {
+        exitCode = pubCode;
+        return;
+      }
+      _ensureOhosPluginList(projectRoot);
+      code = await _runCommand(
+        flutter,
+        <String>[
+          'build',
+          'hap',
+          '-t',
+          options.entry,
+          '--target-platform',
+          options.arch == 'x64' ? 'ohos-x64' : 'ohos-arm64',
+          '--no-pub',
+          if (options.debug) '--debug',
+          if (options.rustLog) '--dart-define=rust_log=true',
+          if (Platform.environment['BREEZE_OHOS_VERBOSE'] == '1') '--verbose',
+        ],
+        workingDirectory: projectRoot,
+        environment: _ohosToolEnvironment(
+          nativeDir,
+          flutterRoot: flutterRoot,
+        ),
+      );
+      // IDE 在构建期间对临时 pubspec 跑官方 Flutter 的 pub get 时，会把
+      // package_config.json 改成官方 SDK，AOT 随即报 ui.Hyphens 缺失。
+      // 检测到这种覆盖就重新解析并重试一次。
+      if (attempt >= 1 || _packageConfigMatchesSdk(projectRoot, flutterRoot)) {
+        break;
+      }
+      _printColor(
+        'package_config.json 已指向其它 Flutter SDK（通常是 IDE 在构建期间执行了 '
+        'pub get），重新解析依赖后重试一次',
+        _yellow,
+      );
+    }
   } finally {
     if (await marker.exists()) await marker.delete();
     if (impellerBackup != null) {
@@ -535,6 +571,51 @@ void _syncAppVersion(String projectRoot) {
     'app.json5 版本已同步: $versionName (${versionCode ?? 'versionCode 未变'})',
     _green,
   );
+}
+
+/// 补齐 `.flutter-plugins-dependencies` 的 `plugins.ohos` 列表。
+///
+/// OHOS Flutter 的 `hvigorconfig.ts`（flutter-hvigor-plugin）会执行
+/// `plugins.ohos.filter(plugin => plugin.native_build !== false)`；官方 Flutter 的
+/// pub get 重写该文件时不带 ohos 键（本应用不用 OHOS 平台插件，走 app-level 实现），
+/// hvigor 会抛 TypeError 并以 “Syntax Error / hvigorconfig.ts” 失败。补空列表即可。
+void _ensureOhosPluginList(String projectRoot) {
+  final file = File(p.join(projectRoot, '.flutter-plugins-dependencies'));
+  if (!file.existsSync()) return;
+  final content = file.readAsStringSync();
+  if (content.contains('"ohos"')) return;
+
+  final match = RegExp(r'"plugins"\s*:\s*\{').firstMatch(content);
+  if (match == null) return;
+  file.writeAsStringSync(content.replaceRange(match.end, match.end, '"ohos":[],'));
+  _printColor('.flutter-plugins-dependencies 缺少 ohos 列表，已补齐', _yellow);
+}
+
+/// `package_config.json` 里 `flutter` 包是否来自 [flutterRoot]（OHOS SDK）。
+bool _packageConfigMatchesSdk(String projectRoot, String? flutterRoot) {
+  if (flutterRoot == null) return true;
+  final file = File(p.join(projectRoot, '.dart_tool', 'package_config.json'));
+  if (!file.existsSync()) return false;
+  try {
+    final config = jsonDecode(file.readAsStringSync());
+    if (config is! Map || config['packages'] is! List) return false;
+    final expected = p.normalize(p.join(flutterRoot, 'packages', 'flutter'));
+    for (final item in config['packages'] as List) {
+      if (item is! Map || item['name'] != 'flutter') continue;
+      final rootUri = item['rootUri'];
+      if (rootUri is! String) return false;
+      final uri = Uri.parse(rootUri);
+      final actual = p.normalize(
+        uri.isScheme('file')
+            ? uri.toFilePath()
+            : p.join(projectRoot, '.dart_tool', rootUri),
+      );
+      return p.equals(actual, expected);
+    }
+  } catch (_) {
+    return false;
+  }
+  return false;
 }
 
 /// 把 Rust 产物放进 OHOS 模块的 native libs 目录。
@@ -614,8 +695,16 @@ Future<void> _stageWindcore(
 }
 
 /// OHOS Flutter/hvigor 需要的环境变量：DevEco SDK 根目录和内置工具链。
-Map<String, String> _ohosToolEnvironment(String nativeDir) {
+///
+/// [flutterRoot] 用于覆盖外部注入的 `FLUTTER_ROOT`：用 `puro dart` 启动脚本时，puro 会把
+/// 自己的 3.50 SDK 塞进环境，OHOS 的 flutter.bat 会照着它解析 framework/sky_engine，
+/// 于是 package_config 指向官方 SDK（AOT 报 `ui.Hyphens` 缺失），
+/// `.flutter-plugins-dependencies` 也按官方格式重写（缺 `ohos` 键，hvigor 直接崩溃）。
+Map<String, String> _ohosToolEnvironment(String nativeDir, {String? flutterRoot}) {
   final environment = <String, String>{};
+  if (flutterRoot != null && flutterRoot.isNotEmpty) {
+    environment['FLUTTER_ROOT'] = flutterRoot;
+  }
   final sdkHome = _devecoSdkHome(nativeDir);
   if (sdkHome != null &&
       (Platform.environment['DEVECO_SDK_HOME'] ?? '').isEmpty) {
@@ -685,7 +774,10 @@ Future<_PubBackup?> _prepareOhosPubspec(
     flutter,
     ['--version'],
     runInShell: true,
-    environment: _ohosToolEnvironment(findOhosNativeDir()),
+    environment: _ohosToolEnvironment(
+      findOhosNativeDir(),
+      flutterRoot: _flutterSdkRoot(flutter),
+    ),
   );
   final text = '${version.stdout}\n${version.stderr}';
   final match = RegExp(r'Dart (\d+)\.(\d+)\.').firstMatch(text);
@@ -928,6 +1020,14 @@ String _findFlutter(String? explicit) {
     return fromEnvironment;
   }
   return Platform.isWindows ? 'flutter.bat' : 'flutter';
+}
+
+/// 由 flutter 可执行文件反推 SDK 根目录（`<sdk>/bin/flutter(.bat)`）；路径不合法时返回 null。
+String? _flutterSdkRoot(String flutter) {
+  final root = p.dirname(p.dirname(flutter));
+  return File(p.join(root, 'bin', p.basename(flutter))).existsSync()
+      ? root
+      : null;
 }
 
 String _resolveFlutterExecutable(String value) {

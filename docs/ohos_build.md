@@ -267,3 +267,11 @@ OHOS 桌面与应用内图标来自 `asset/image/app-icon.png`，已同步到：
    `5.0.5(17)`）。HAP 从 63.8 MB 降到约 29.2 MB，native 库在安装时解压；
    release x64 包已在 API 17 模拟器安装并正常启动。只开
    `compressNativeLibs`、不配 `extractNativeLibs` 会安装成功但启动失败。
+8. **pub get 覆盖**：`build_ohos.dart --hap` 会临时改写 `pubspec.yaml` 注入 OHOS override，
+   这期间若有别的 Flutter（IDE 的自动 pub get、Puro 的 3.50）跑 `pub get`，会覆盖两处产物：
+   `.dart_tool/package_config.json` 里 `flutter` / `sky_engine` 指回官方 SDK（AOT 报
+   `Type 'ui.Hyphens' not found`），`.flutter-plugins-dependencies` 丢掉 `plugins.ohos`
+   （hvigor 报 `00305010 Syntax Error` / `Cannot read properties of undefined (reading 'filter')`）。
+   脚本已固定 `FLUTTER_ROOT` 指向 OHOS SDK、构建前补齐 `plugins.ohos`、并在检测到 SDK 被换掉时
+   重试一次；`ohos/hvigorconfig.ts` 也把 `injectNativeModules` 包进 try/catch。
+   反复失败时关闭 IDE 的自动 pub get 再构建。

@@ -346,6 +346,8 @@ dart ./script/build/sign_ohos_hap.dart \
 | HAP 安装成功但启动卡死/闪退 | 检查 `compressNativeLibs` 是否同时配了 `extractNativeLibs`，以及 targetSdk 是否为 API 20+ |
 | 模拟器白屏 | `--hap --no-impeller`（构建后会自动恢复 `buildinfo.json5`） |
 | `hdc` 日志中文乱码 | 日志是 UTF-8，重定向到文件再打开，或先 `chcp 65001` |
+| hvigor 报 `00305010 Syntax Error` / `Cannot read properties of undefined (reading 'filter')` | `.flutter-plugins-dependencies` 缺 `plugins.ohos`（官方 Flutter 的 pub get 会这样重写）。`ohos/hvigorconfig.ts` 已 try/catch 跳过注入，`build_ohos.dart` 构建前也会补齐该键 |
+| AOT 报 `Type 'ui.Hyphens' not found` | `.dart_tool/package_config.json` 的 `flutter` / `sky_engine` 指向了官方 Flutter（IDE 在构建期间对临时 pubspec 跑了 pub get）。`build_ohos.dart` 已固定 `FLUTTER_ROOT` 并在检测到覆盖时重试一次；仍失败就关掉 IDE 的自动 pub get 再构建 |
 
 ### 5.5 调试代理
 
