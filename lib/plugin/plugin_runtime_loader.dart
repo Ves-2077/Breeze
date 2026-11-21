@@ -9,13 +9,16 @@ import 'package:zephyr/src/rust/qjs.dart';
 ///
 /// 字节码文件名包含脚本 revision；revision 不匹配时 [PluginBytecodeCache.load]
 /// 直接 miss，因此这里可以不带源码就信任字节码头（引擎/应用版本仍由 Rust 校验）。
+///
+/// [revision] 由调用方（[PluginRuntimeManager]）读取并作为安装去重的 key，
+/// 这里不再重复查库，避免两处读到的 revision 不一致。
 Future<QjsBundleInstallResult> installPluginRuntimeBundle({
   required String pluginId,
   required String runtimeName,
   required bool pluginDebug,
+  required String revision,
   required Future<String> Function() loadSource,
 }) async {
-  final revision = await database.plugins.getScriptRevisionByUuid(pluginId);
   final bytecode = await PluginBytecodeCache.instance.load(
     pluginId: pluginId,
     pluginDebug: pluginDebug,

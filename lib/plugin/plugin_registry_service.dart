@@ -10,7 +10,7 @@ import 'package:zephyr/page/bookshelf/service/comic_link_service.dart';
 import 'package:zephyr/plugin/local_comic_plugin.dart';
 import 'package:zephyr/plugin/models/plugin_runtime_state.dart';
 import 'package:zephyr/plugin/plugin_bytecode_cache.dart';
-import 'package:zephyr/plugin/plugin_runtime_loader.dart';
+import 'package:zephyr/plugin/plugin_runtime_manager.dart';
 import 'package:zephyr/src/rust/api/qjs.dart';
 import 'package:zephyr/src/rust/qjs.dart';
 import 'package:zephyr/util/storage/get_path.dart';
@@ -214,10 +214,7 @@ class PluginRegistryService {
 
       final runtimeName = resolveRuntimeName(uuid);
       try {
-        final runtimeReady = await isQjsRuntimeInitialized(name: runtimeName);
-        if (runtimeReady) {
-          await qjsDropRuntime(runtimeName: runtimeName);
-        }
+        await PluginRuntimeManager.I.dropIfPresent(runtimeName);
       } catch (e, st) {
         logger.w('同步后清理插件 runtime 失败: $uuid', error: e, stackTrace: st);
       }
@@ -332,7 +329,7 @@ class PluginRegistryService {
     Map<String, dynamic> decoded;
     try {
       // getInfo 预热也走常驻 runtime：字节码命中时不读完整脚本。
-      await installPluginRuntimeBundle(
+      await PluginRuntimeManager.I.install(
         pluginId: uuid,
         runtimeName: onceRuntimeName,
         pluginDebug: plugin.debug,
@@ -551,10 +548,7 @@ class PluginRegistryService {
       }
     } else {
       try {
-        final runtimeReady = await isQjsRuntimeInitialized(name: runtimeName);
-        if (runtimeReady) {
-          await qjsDropRuntime(runtimeName: runtimeName);
-        }
+        await PluginRuntimeManager.I.dropIfPresent(runtimeName);
       } catch (e, st) {
         logger.w('禁用插件时释放 runtime 失败: $uuid', error: e, stackTrace: st);
       }
@@ -621,10 +615,7 @@ class PluginRegistryService {
     final infoRuntimeName = 'plugin_info_${uuid.replaceAll('-', '_')}';
     for (final name in <String>[runtimeName, infoRuntimeName]) {
       try {
-        final runtimeReady = await isQjsRuntimeInitialized(name: name);
-        if (runtimeReady) {
-          await qjsDropRuntime(runtimeName: name);
-        }
+        await PluginRuntimeManager.I.dropIfPresent(name);
       } catch (e, st) {
         logger.e(e, stackTrace: st);
         // runtime 失败不阻断删除主流程
@@ -775,7 +766,7 @@ class PluginRegistryService {
     PluginRuntimeState plugin, {
     required String runtimeName,
   }) async {
-    await installPluginRuntimeBundle(
+    await PluginRuntimeManager.I.install(
       pluginId: plugin.uuid,
       runtimeName: runtimeName,
       pluginDebug: plugin.debug,
@@ -794,41 +785,34 @@ class PluginRegistryService {
     }
 
     // init 不需要等待结果，触发后即返回，避免阻塞安装/启用流程。
-    // 另起后台任务等 init 跑完：成功（或未实现视为成功）才记 _pluginInitOk，
-    // 失败不记，不阻塞、不抛。
-    Future(() async {
+    // 执行与去重由 PluginRuntimeManager 负责：成功（或未实现）才记
+    // _pluginInitOk，失败不记，不阻塞、不抛。
+    unawaited(() async {
       try {
-        // init 只等跑完：直接拿原始字节丢弃，不解码不解析返回值，
-        // void/undefined/空对象都算成功只有抛错才算失败。
-        await qjsTaskCall(
+        final outcome = await PluginRuntimeManager.I.ensureInit(
+          pluginId: plugin.uuid,
           runtimeName: runtimeName,
-          source: plugin.uuid,
-          taskGroupKey: '',
-          isOnce: false,
-          fnPath: 'init',
-          argsJson: '{}',
         );
+        if (!outcome.success) {
+          await updateLoadResult(
+            plugin.uuid,
+            success: false,
+            error: 'init 执行失败: ${outcome.error}',
+          );
+          logger.w('插件 init 执行失败: ${plugin.uuid}', error: outcome.error);
+          return;
+        }
         _pluginInitDone.add(plugin.uuid);
         _markInitOk(plugin.uuid);
-        await updateLoadResult(plugin.uuid, success: true, error: null);
-      } catch (e) {
-        final err = _qjsCallErrorMessage(e);
-        if (err.contains('target is not function: init')) {
-          _pluginInitDone.add(plugin.uuid);
-          _markInitOk(plugin.uuid);
+        if (outcome.notImplemented) {
           logger.w('插件未实现 init，已跳过: ${plugin.uuid}');
           return;
         }
-        await updateLoadResult(
-          plugin.uuid,
-          success: false,
-          error: 'init 执行失败: $err',
-        );
-        logger.w('插件 init 执行失败: ${plugin.uuid}', error: e);
+        await updateLoadResult(plugin.uuid, success: true, error: null);
+      } catch (e) {
+        logger.w('插件 init 异步执行失败: ${plugin.uuid}', error: e);
       }
-    }).catchError((e) {
-      logger.w('插件 init 异步执行失败: ${plugin.uuid}', error: e);
-    });
+    }());
   }
 
   Future<String> _resolveBundleJs(PluginRuntimeState plugin) async {

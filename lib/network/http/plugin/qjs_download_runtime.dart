@@ -5,14 +5,13 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:zephyr/main.dart';
 import 'package:zephyr/network/http/plugin/qjs_call_exception.dart';
 import 'package:zephyr/plugin/plugin_registry_service.dart';
-import 'package:zephyr/plugin/plugin_runtime_loader.dart';
+import 'package:zephyr/plugin/plugin_runtime_manager.dart';
 import 'package:zephyr/service/download/download_cancel_signal.dart';
 import 'package:zephyr/src/rust/api/qjs.dart';
 import 'package:zephyr/src/rust/api/simple.dart';
 import 'package:zephyr/type/pipe.dart';
 
 final Map<String, Set<String>> _trackedRuntimesByGroup = {};
-final Set<String> _runtimeInitDone = <String>{};
 
 String _rawQjsErrorText(Object error) {
   if (error is QjsCallFailure) {
@@ -95,48 +94,25 @@ Future<void> ensureQjsRuntimeReady({required String pluginId}) async {
   final runtimeName = runtimeNameForPluginId(normalizedPluginId);
 
   try {
-    Future<void> installBundle() async {
-      final pluginDebug =
-          PluginRegistryService.I.getByUuid(normalizedPluginId)?.debug == true;
-      await installPluginRuntimeBundle(
+    final pluginDebug =
+        PluginRegistryService.I.getByUuid(normalizedPluginId)?.debug == true;
+    await PluginRuntimeManager.I.ensureReady(
+      pluginId: normalizedPluginId,
+      runtimeName: runtimeName,
+      pluginDebug: pluginDebug,
+      loadSource: () => loadQjsBundleJs(normalizedPluginId),
+    );
+    // init 只做 URL 测速/登录预热，不应阻塞搜索、浏览等实际调用；
+    // 失败只记录日志，去重与重试由 PluginRuntimeManager 负责。
+    if (PluginRegistryService.I.isPluginInitOk(normalizedPluginId)) {
+      return;
+    }
+    unawaited(
+      _runRuntimeInitIfNeeded(
         pluginId: normalizedPluginId,
         runtimeName: runtimeName,
-        pluginDebug: pluginDebug,
-        loadSource: () => loadQjsBundleJs(normalizedPluginId),
-      );
-      _runtimeInitDone.remove(runtimeName);
-    }
-
-    final ready = await isQjsRuntimeInitialized(name: runtimeName);
-    if (!ready) {
-      await installBundle();
-    } else {
-      String? currentBundle;
-      try {
-        final currentBundleRaw = await qjsCurrentBundle(
-          runtimeName: runtimeName,
-        );
-        currentBundle = jsonDecode(currentBundleRaw) as String?;
-      } catch (e, st) {
-        logger.e(e, stackTrace: st);
-        currentBundle = null;
-      }
-      if (currentBundle == null || currentBundle.trim().isEmpty) {
-        await installBundle();
-      }
-    }
-    // init 只做 URL 测速/登录预热，不应阻塞搜索、浏览等实际调用；
-    // 失败只记录日志，下次调用再重试 init。
-    if (PluginRegistryService.I.isPluginInitOk(normalizedPluginId)) {
-      _runtimeInitDone.add(runtimeName);
-    } else {
-      unawaited(
-        _runRuntimeInitIfNeeded(
-          pluginId: normalizedPluginId,
-          runtimeName: runtimeName,
-        ),
-      );
-    }
+      ),
+    );
   } catch (e) {
     logger.w('初始化 QJS 失败: $runtimeName', error: e);
     rethrow;
@@ -145,35 +121,20 @@ Future<void> ensureQjsRuntimeReady({required String pluginId}) async {
 
 /// 后台执行一次插件 init。失败只记录日志，不影响当前/后续实际调用。
 ///
-/// 先标记 in-flight，避免多个并发调用同时跑 init；失败时移除标记，
-/// 让下一次调用可以重试。未实现 init 视为成功。
+/// 同一 runtime 的并发调用由 [PluginRuntimeManager.ensureInit] 合并；
+/// 未实现 init 视为成功，不再输出失败日志。
 Future<void> _runRuntimeInitIfNeeded({
   required String pluginId,
   required String runtimeName,
 }) async {
-  if (_runtimeInitDone.contains(runtimeName)) {
+  final outcome = await PluginRuntimeManager.I.ensureInit(
+    pluginId: pluginId,
+    runtimeName: runtimeName,
+  );
+  if (outcome.success) {
     return;
   }
-  _runtimeInitDone.add(runtimeName);
-  try {
-    await _guardQjsCall(
-      qjsTaskCall(
-        runtimeName: runtimeName,
-        source: pluginId,
-        taskGroupKey: '',
-        isOnce: false,
-        fnPath: 'init',
-        argsJson: '{}',
-      ),
-      fallbackSource: pluginId,
-    );
-  } catch (e) {
-    if (e.toString().contains('target is not function: init')) {
-      return;
-    }
-    _runtimeInitDone.remove(runtimeName);
-    logger.w('插件 init 执行失败（不影响调用）: $runtimeName', error: e);
-  }
+  logger.w('插件 init 执行失败（不影响调用）: $runtimeName', error: outcome.error);
 }
 
 /// 统一执行插件 JS 任务,返回原始字节。
