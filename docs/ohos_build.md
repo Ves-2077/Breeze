@@ -177,7 +177,11 @@ HarmonyOS 模拟器上 Impeller 会白屏。`--hap` 加 `--no-impeller` 可临�
   下载完成/追更通知已接入；probe 验证通知中心可见。
 - **应用版本**：OHOS 从 `bundleManager.getBundleInfoForSelfSync` 读取，
   避免 `package_info_plus` 缺失导致备份导出失败；插件字节码缓存也改用该桥，
-  不再回退成 `unknown`。
+  不再回退成 `unknown`。包内 `versionName` / `versionCode` 以 `pubspec.yaml`
+  的 `version: x.y.z+build` 为准：`build_ohos.dart --hap` 会先同步
+  `ohos/AppScope/app.json5`，Flutter 再用 `ohos/local.properties` +
+  flutter-hvigor-plugin 覆盖一遍。直接用 DevEco / `hvigorw` 打包时不经过
+  Flutter 覆盖，`app.json5` 的值就是最终值，所以不要在 `app.json5` 里手写版本。
 - **设备信息**：`BreezeOhosPlugin.getDeviceInfo` 读取 `@ohos.deviceInfo`
   （品牌、厂商、型号、系统版本、SDK、ABI）；更新页的架构判断已接入。
 - **打开链接**：`lib/util/system/external_link.dart` 在 OHOS 走

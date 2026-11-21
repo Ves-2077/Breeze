@@ -416,6 +416,7 @@ Future<void> _hap(String projectRoot, _Options options) async {
   }
 
   final nativeDir = findOhosNativeDir();
+  _syncAppVersion(projectRoot);
 
   if (!options.noRust) {
     await _rust(projectRoot, options);
@@ -491,6 +492,49 @@ Future<void> _hap(String projectRoot, _Options options) async {
   } else {
     _printColor('HAP 产物目录: ohos/entry/build/default/outputs/default', _green);
   }
+}
+
+/// 把 pubspec 的 `version: x.y.z+build` 写进 `ohos/AppScope/app.json5`。
+///
+/// `flutter build hap` 会写 `ohos/local.properties`，再由 flutter-hvigor-plugin 覆盖
+/// 产物里的 versionCode / versionName；但这条链路要求插件已安装，直接用 DevEco 或
+/// `hvigorw` 打包、以及插件缺失时，静态的 app.json5 才是真实来源（`application_package.dart`
+/// 也读它）。两边都对齐到 pubspec，避免残留 300038 这类手写值。
+void _syncAppVersion(String projectRoot) {
+  final pubspec = File(p.join(projectRoot, 'pubspec.yaml'));
+  final appJson = File(p.join(projectRoot, 'ohos', 'AppScope', 'app.json5'));
+  if (!pubspec.existsSync() || !appJson.existsSync()) return;
+
+  final match = RegExp(
+    r'^version:\s*(\d+)\.(\d+)\.(\d+)(?:\+(\d+))?\s*$',
+    multiLine: true,
+  ).firstMatch(pubspec.readAsStringSync());
+  if (match == null) {
+    _printColor('未在 pubspec.yaml 解析到 version，跳过 app.json5 版本同步', _yellow);
+    return;
+  }
+
+  final versionName = '${match.group(1)}.${match.group(2)}.${match.group(3)}';
+  final versionCode = match.group(4);
+  final content = appJson.readAsStringSync();
+  var updated = content.replaceFirst(
+    RegExp(r'"versionName":\s*"[^"]*"'),
+    '"versionName": "$versionName"',
+  );
+  // pubspec 没写 +build 时不动 versionCode，避免写入非法的 0。
+  if (versionCode != null) {
+    updated = updated.replaceFirst(
+      RegExp(r'"versionCode":\s*\d+'),
+      '"versionCode": $versionCode',
+    );
+  }
+  if (updated == content) return;
+
+  appJson.writeAsStringSync(updated);
+  _printColor(
+    'app.json5 版本已同步: $versionName (${versionCode ?? 'versionCode 未变'})',
+    _green,
+  );
 }
 
 /// 把 Rust 产物放进 OHOS 模块的 native libs 目录。

@@ -319,7 +319,7 @@ dart ./script/build/sign_ohos_hap.dart \
 - 构建期间会临时修改 `pubspec.yaml`：注入 `material_ui_ohos` / `cupertino_ui_ohos` / `easy_refresh_ohos` 等 git override、桌面依赖 stub、以及 jni AOT 补丁；结束后恢复并保留 `.dart_tool/ohos_pub_backup/`。若进程被强杀，从该目录手动恢复。
 - `.dart_tool/ohos_jni_patch` 是 `package:jni` 的 `Int32` OHOS ABI 补丁，**不要删除**；否则 release AOT 会报 `Int32 is missing mapping for ohos_arm64`。
 - 未配置签名时 hvigor 仍可能产出 `entry-default-unsigned.hap`，但命令退出码可能非 0；以产物是否存在为准，CI 也按此判断。
-- HAP 内 `versionCode` / `versionName` 来自构建生成的 `ohos/local.properties`（Flutter 写入），不是 `ohos/AppScope/app.json5` 里的静态值。
+- HAP 内 `versionCode` / `versionName` 有两处来源，必须都与 `pubspec.yaml` 的 `version: x.y.z+build` 一致：`build_ohos.dart --hap` 先把 `ohos/AppScope/app.json5` 的这两个字段同步成 `x.y.z` / `build`，Flutter 再写 `ohos/local.properties`（`flutter.versionName` / `flutter.versionCode`）并由 flutter-hvigor-plugin 覆盖产物。直接用 DevEco / `hvigorw` 打包或插件缺失时，静态的 `app.json5` 才是真实来源，不要手写 300038 这类值。
 
 **设备与打包注意**
 
