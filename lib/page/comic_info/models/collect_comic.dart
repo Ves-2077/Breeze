@@ -77,7 +77,8 @@ Future<String> _ensureLocalFavoriteRecord({
   final now = DateTime.now().toUtc();
   final unified = await database.favorites.getByKey(key);
 
-  final download = await database.downloads.getByKey(key);
+  final downloadRows = await database.downloads.getShelfByKeys([key]);
+  final download = downloadRows.isEmpty ? null : downloadRows.first;
   final titleOverride = download != null && !download.deleted
       ? download.titleOverride?.trim() ?? ''
       : '';

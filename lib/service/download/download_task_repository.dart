@@ -1,9 +1,10 @@
-import 'package:flutter/foundation.dart' show compute;
 import 'package:zephyr/main.dart';
+import 'package:zephyr/database/repositories/unified_comic_repository.dart';
 import 'package:zephyr/object_box/model.dart';
 import 'package:zephyr/page/download/models/download_chapter.dart';
 import 'package:zephyr/service/download/download_chapter_isolate.dart';
 import 'package:zephyr/service/download/models/download_task_json.dart';
+import 'package:zephyr/util/async/worker_pool.dart';
 
 /// DownloadTask 的唯一读写入口。
 ///
@@ -131,7 +132,7 @@ class DownloadTaskRepository {
     }
   }
 
-  /// 一次 worker 调用完成：读下载记录、解析章节、匹配目标章节，可选返回记录本体。
+  /// 一次 worker 池调用完成：读下载记录、解析章节、匹配目标章节，可选返回记录本体。
   Future<DownloadChapterLookup> lookupDownloadedChapter({
     required String from,
     required String comicId,
@@ -140,17 +141,50 @@ class DownloadTaskRepository {
     bool fallbackFirst = false,
     bool includeRecord = false,
   }) {
-    return compute(
-      lookupDownloadedChapterInIsolate,
-      DownloadChapterLookupTask(
-        handle: database.db.handle,
-        downloadKey: buildDownloadTaskKey(from, comicId),
-        chapterKeys: chapterKeys,
-        order: order,
-        fallbackFirst: fallbackFirst,
-        includeRecord: includeRecord,
+    final handle = database.db.handle;
+    return runInWorker(
+      () => lookupDownloadedChapterInIsolate(
+        DownloadChapterLookupTask(
+          handle: handle,
+          downloadKey: buildDownloadTaskKey(from, comicId),
+          chapterKeys: chapterKeys,
+          order: order,
+          fallbackFirst: fallbackFirst,
+          includeRecord: includeRecord,
+        ),
       ),
     );
+  }
+
+  /// 已下载章节 id 集合：读取 `chapters`/`detailJson` + 解析全在 worker 池。
+  ///
+  /// 详情页章节角标只需要 id；图片信息多的漫画章节 JSON 很大，不能搬回 UI。
+  Future<Set<String>> downloadedChapterIds({
+    required String from,
+    required String comicId,
+  }) {
+    final handle = database.db.handle;
+    return runInWorker(
+      () => readDownloadedChapterIdsInWorker(
+        DownloadChapterIdsTask(
+          handle: handle,
+          downloadKey: buildDownloadTaskKey(from, comicId),
+        ),
+      ),
+    );
+  }
+
+  /// 下载记录变化时重算已下载章节 id（详情页章节角标订阅）。
+  Stream<Set<String>> watchDownloadedChapterIds({
+    required String from,
+    required String comicId,
+  }) async* {
+    yield await downloadedChapterIds(from: from, comicId: comicId);
+    yield* database.db.changes
+        .where(
+          (tables) => tables.contains(UnifiedComicDownloadRepository.table),
+        )
+        .asyncMap((_) => downloadedChapterIds(from: from, comicId: comicId));
   }
 
   /// 按章节查找未完成任务。章节 key 必须是逻辑身份

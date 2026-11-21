@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import 'package:bloc/bloc.dart';
 import 'package:bloc_concurrency/bloc_concurrency.dart';
 import 'package:zephyr/cubit/string_select.dart';
@@ -8,11 +6,10 @@ import 'package:zephyr/object_box/model.dart';
 import 'package:zephyr/page/comic_info/comic_info.dart';
 import 'package:zephyr/page/comic_info/json/normal/normal_comic_all_info.dart'
     as normal;
-import 'package:zephyr/page/download/adapters/download_chapter_adapter.dart';
-import 'package:zephyr/page/download/models/download_chapter.dart';
-import 'package:zephyr/page/download/models/unified_comic_download.dart';
+import 'package:zephyr/service/download/download_chapter_isolate.dart';
 import 'package:zephyr/service/reader/comic_read_chapter_repository.dart';
 import 'package:zephyr/type/enum.dart';
+import 'package:zephyr/util/async/worker_pool.dart';
 import 'package:zephyr/util/error/error_filter.dart';
 
 export 'package:zephyr/page/comic_info/bloc/get_comic_info_event.dart';
@@ -44,11 +41,20 @@ class GetComicInfoBloc extends Bloc<GetComicInfoEvent, GetComicInfoState> {
       late normal.NormalComicAllInfo normalComicInfo;
       late String resolvedComicId;
       dynamic comicInfo;
+      normal.NormalComicAllInfo? downloadedInfo;
 
       if (event.type == ComicEntryType.download) {
-        comicInfo = await database.downloads.getByKey(
-          '${event.from}:$inputComicId',
+        // 记录读取、detailJson 解析与目录排序都在 worker 池内完成；
+        // 任务对象在 UI isolate 构造（worker 里没有全局 database）。
+        final task = DownloadComicInfoTask(
+          handle: database.db.handle,
+          downloadKey: '${event.from}:$inputComicId',
         );
+        final downloaded = await runInWorker(
+          () => readDownloadedComicInfoInWorker(task),
+        );
+        comicInfo = downloaded.record;
+        downloadedInfo = downloaded.info;
       }
 
       if (comicInfo == null) {
@@ -62,16 +68,7 @@ class GetComicInfoBloc extends Bloc<GetComicInfoEvent, GetComicInfoState> {
         resolvedComicId = pluginResult.comicId;
       } else {
         final download = comicInfo as UnifiedComicDownload;
-        var localized = _localizeDownloadDetail(download);
-        // 下载入口用记录里的目录快照给已下载章节排序（内存里排，不写库）。
-        // 快照缺失的章节缀在最后，保证入口不丢。
-        final catalog = readChapterCatalog(download);
-        if (catalog.isNotEmpty) {
-          localized = localized.copyWith(
-            eps: _sortEpsByCatalog(localized.eps, catalog),
-          );
-        }
-        normalComicInfo = localized;
+        normalComicInfo = downloadedInfo!;
         resolvedComicId = download.comicId;
       }
 
@@ -172,45 +169,5 @@ class GetComicInfoBloc extends Bloc<GetComicInfoEvent, GetComicInfoState> {
     return '$prefix$chapterTitle / '
         '${history.pageIndex - 1} / '
         '${history.lastReadAt.toLocal().toString().substring(0, 19)}';
-  }
-
-  /// 按目录快照顺序排列本地 eps，快照里没有的缀在最后（保持原相对顺序）。
-  List<normal.Ep> _sortEpsByCatalog(
-    List<normal.Ep> localEps,
-    List<DownloadChapter> catalog,
-  ) {
-    if (localEps.isEmpty || catalog.isEmpty) return localEps;
-    const adapter = DownloadChapterAdapter();
-    final chapters = localEps.map(adapter.fromEp).toList();
-    final sorted = sortDownloadChaptersByCatalog(chapters, catalog);
-    if (identical(sorted, chapters)) return localEps;
-    return sorted.map((c) => localEps[chapters.indexOf(c)]).toList();
-  }
-
-  normal.NormalComicAllInfo _localizeDownloadDetail(
-    UnifiedComicDownload comicInfo,
-  ) {
-    var normalComicInfo = normal.NormalComicAllInfo.fromJson(
-      jsonDecode(comicInfo.detailJson) as Map<String, dynamic>,
-    );
-    final localCover = _deepCopyMap(normalComicInfo.comicInfo.cover.toJson());
-
-    final localCreator = _deepCopyMap(
-      normalComicInfo.comicInfo.creator.toJson(),
-    );
-
-    final localComicInfo = _deepCopyMap(normalComicInfo.comicInfo.toJson())
-      ..['cover'] = localCover
-      ..['creator'] = localCreator;
-
-    return normalComicInfo.copyWith(
-      comicInfo: normal.ComicInfo.fromJson(localComicInfo),
-    );
-  }
-
-  Map<String, dynamic> _deepCopyMap(Object value) {
-    final encoded = jsonEncode(value);
-    final decoded = jsonDecode(encoded) as Map;
-    return Map<String, dynamic>.from(decoded);
   }
 }

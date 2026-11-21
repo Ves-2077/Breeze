@@ -204,8 +204,11 @@ class _InfoColumnState extends State<_InfoColumn> {
 
     // 旧数据库记录可能保存了当时实际使用的绝对 storageRoot。
     for (final source in sourceCandidates) {
-      final download = await database.downloads.getByKey('$source:$comicId');
-      final storedRoot = download?.storageRoot.trim() ?? '';
+      // 只取 storageRoot：不把 chapters/detailJson 这些大列拉进 UI isolate。
+      final rows = await database.downloads.getShelfByKeys([
+        '$source:$comicId',
+      ]);
+      final storedRoot = rows.isEmpty ? '' : rows.first.storageRoot.trim();
       if (storedRoot.isNotEmpty && p.isAbsolute(storedRoot)) {
         addRoot(storedRoot);
       }

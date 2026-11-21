@@ -8,9 +8,9 @@ import 'package:zephyr/page/comic_info/cubit/episode_download_status_cubit.dart'
 import 'package:zephyr/page/comic_info/cubit/episode_selection_cubit.dart';
 import 'package:zephyr/page/download/adapters/download_chapter_adapter.dart';
 import 'package:zephyr/page/download/models/download_chapter.dart';
-import 'package:zephyr/page/download/models/unified_comic_download.dart';
 import 'package:zephyr/service/download/download_delete_service.dart';
 import 'package:zephyr/service/download/download_queue_manager.dart';
+import 'package:zephyr/service/download/download_task_repository.dart';
 import 'package:zephyr/service/download/models/download_task_json.dart';
 import 'package:zephyr/widgets/toast.dart';
 
@@ -82,11 +82,7 @@ class EpisodeDownloadController {
     statusCubit.update(downloadedIds: downloadedIds, taskSnaps: taskSnaps);
   }
 
-  static Set<String> _resolveDownloadedIds(UnifiedComicDownload? record) {
-    return record == null
-        ? <String>{}
-        : resolveDownloadChapters(record).map((c) => c.id).toSet();
-  }
+  static const _downloadTaskRepository = DownloadTaskRepository();
 
   void _resubscribe() {
     unawaited(_recordSubscription?.cancel());
@@ -97,12 +93,15 @@ class EpisodeDownloadController {
 
     final recordKey = _recordKey;
     final comicId = _comicId;
-    _recordSubscription = database.downloads.watchByKey(recordKey).listen((
-      record,
-    ) {
-      if (recordKey != _recordKey) return;
-      _updateStatus(downloadedIds: _resolveDownloadedIds(record));
-    });
+    final from = _from;
+    // 只订阅已下载章节 id：整条记录（含 chapters/detailJson）留在 worker 侧，
+    // 图片信息多的漫画不会在 UI isolate 解析大 JSON。
+    _recordSubscription = _downloadTaskRepository
+        .watchDownloadedChapterIds(from: from, comicId: comicId)
+        .listen((ids) {
+          if (recordKey != _recordKey) return;
+          _updateStatus(downloadedIds: ids);
+        });
 
     _taskSubscription = database.downloadTasks.watchIncomplete().listen((
       tasks,
@@ -115,11 +114,15 @@ class EpisodeDownloadController {
   Future<void> _loadInitial() async {
     final recordKey = _recordKey;
     final comicId = _comicId;
-    final record = await database.downloads.getByKey(recordKey);
+    final from = _from;
+    final downloadedIds = await _downloadTaskRepository.downloadedChapterIds(
+      from: from,
+      comicId: comicId,
+    );
     final tasks = await database.downloadTasks.listByComicId(comicId);
     if (recordKey != _recordKey || comicId != _comicId) return;
     _updateStatus(
-      downloadedIds: _resolveDownloadedIds(record),
+      downloadedIds: downloadedIds,
       taskSnaps: _buildTaskSnaps(tasks),
     );
   }

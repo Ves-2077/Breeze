@@ -1,6 +1,6 @@
 import 'package:zephyr/database/db.dart';
 import 'package:zephyr/database/migration/legacy_columns.dart';
-import 'package:zephyr/database/query_isolate.dart';
+import 'package:zephyr/database/db_read.dart';
 import 'package:zephyr/database/row_codec.dart';
 import 'package:zephyr/object_box/model.dart';
 

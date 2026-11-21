@@ -1,11 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart' show compute;
 import 'package:zephyr/database/database.dart';
-import 'package:zephyr/database/query_isolate.dart';
 import 'package:zephyr/main.dart';
 import 'package:zephyr/object_box/model.dart';
+import 'package:zephyr/util/async/worker_pool.dart';
 import 'package:zephyr/util/rust/rust_loader.dart';
 import 'package:zephyr/page/comic_info/json/normal/normal_comic_all_info.dart'
     as normal;
@@ -234,7 +233,8 @@ class ReaderHistoryService {
         ..updatedAt = timestamp
         ..deleted = false;
 
-      await database.histories.put(entity);
+      final id = await database.histories.putInWorker(entity);
+      if (entity.id != id) entity.id = id;
       _history = entity;
     } catch (e, s) {
       logger.w('后台写入历史记录失败', error: e);
@@ -245,18 +245,17 @@ class ReaderHistoryService {
     }
   }
 
-  /// 下载记录只取 detailJson，并在 worker isolate 内解析成 ComicInfo。
+  /// 下载记录只取 detailJson，并在 worker 池内解析成 ComicInfo。
   Future<normal.ComicInfo> _resolveComicInfo({
     required String source,
     required String comicId,
     required dynamic comicInfo,
   }) async {
     if (comicInfo is UnifiedComicDownload) {
-      final info = await compute(
-        _resolveDownloadComicInfoInIsolate,
-        _HistoryDetailTask(
-          handle: database.db.handle,
-          downloadKey: '$source:$comicId',
+      final handle = database.db.handle;
+      final info = await runInWorker(
+        () => _resolveDownloadComicInfoInWorker(
+          _HistoryDetailTask(handle: handle, downloadKey: '$source:$comicId'),
         ),
       );
       if (info == null) {
@@ -315,11 +314,10 @@ class _HistoryDetailTask {
 }
 
 /// 只读 detailJson 并解析：阅读页打开时那次 2ms 的同步解析移到这里。
-Future<normal.ComicInfo?> _resolveDownloadComicInfoInIsolate(
+Future<normal.ComicInfo?> _resolveDownloadComicInfoInWorker(
   _HistoryDetailTask task,
 ) async {
   await initRustLib();
-  markDbWorkerIsolate();
   final detailJson = await Database.fromHandle(task.handle).downloads
       .getDetailJson(task.downloadKey);
   if (detailJson == null || detailJson.isEmpty) return null;

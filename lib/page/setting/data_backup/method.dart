@@ -1,25 +1,17 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:path/path.dart' as p;
+import 'package:zephyr/page/setting/data_backup/backup_restore.dart';
 import 'package:zephyr/service/update/check_update.dart';
 import 'package:zephyr/config/global/global_setting.dart';
 import 'package:zephyr/i18n/strings.g.dart';
 import 'package:zephyr/main.dart';
-import 'package:zephyr/network/sync/sync_device_id.dart';
-import 'package:zephyr/object_box/model.dart';
 import 'package:zephyr/src/rust/api/data_backup.dart';
 import 'package:zephyr/util/storage/get_path.dart';
 import 'package:zephyr/widgets/toast.dart';
-
-/// 在 compute isolate 内读取并解析 objectbox.json，避免大备份阻塞 UI。
-Map<String, dynamic> _readBackupJsonFile(String path) {
-  final raw = File(path).readAsStringSync();
-  return Map<String, dynamic>.from(jsonDecode(raw) as Map);
-}
 
 /// 备份包配置信息。
 class BackupConfig {
@@ -210,22 +202,17 @@ Future<void> applyBreezeBackupImport(BackupConfig config) async {
 
     // 2. 清空并恢复数据库数据（单事务：失败时保留导入前的数据）
     // 若备份不包含下载文件，则保留本机下载相关记录，避免下载记录被清空后
-    // 已下载文件变成“孤儿文件”。
+    // 已下载文件变成“孤儿文件”。整段读写放在 worker 池：备份 JSON 的
+    // 解码与逐表 fromJson/写入都不占 UI isolate。
     final objectBoxFile = File(p.join(config.extractDir, 'objectbox.json'));
-    Map<String, dynamic>? objectBoxJson;
-    GlobalSettingState? restoredGlobal;
-    if (await objectBoxFile.exists()) {
-      objectBoxJson = await compute(_readBackupJsonFile, objectBoxFile.path);
-    }
-
-    await database.transaction((_) async {
-      await _clearAllData(preserveDownloads: !includeDownloads);
-      if (objectBoxJson != null) {
-        restoredGlobal = await _restoreAllData(objectBoxJson);
-      }
-    });
+    final task = RestoreBackupTask(
+      handle: database.db.handle,
+      dataJsonPath: await objectBoxFile.exists() ? objectBoxFile.path : null,
+      includeDownloads: includeDownloads,
+    );
+    final restoredGlobal = await importBackupData(task);
     if (restoredGlobal != null) {
-      _applyRestoredGlobalSetting(restoredGlobal!);
+      _applyRestoredGlobalSetting(restoredGlobal);
     }
 
     // 4. 恢复下载文件
@@ -248,189 +235,6 @@ Future<void> applyBreezeBackupImport(BackupConfig config) async {
   }
 }
 
-/// 清空所有业务表。
-///
-/// 当 [preserveDownloads] 为 true 时，保留下载记录，用于导入
-/// 不含下载文件的备份，避免本机已下载文件变成无记录的孤儿文件。
-///
-/// 下载任务在任何情况下都不会被导入，因此下载任务表总是被清空。
-Future<void> _clearAllData({bool preserveDownloads = false}) async {
-  await database.legacy.clearBikaHistories();
-  if (!preserveDownloads) await database.legacy.clearBikaDownloads();
-  await database.legacy.clearJmFavorites();
-  await database.legacy.clearJmHistories();
-  if (!preserveDownloads) await database.legacy.clearJmDownloads();
-  await database.favorites.removeAll();
-  await database.histories.removeAll();
-  await database.follows.removeAll();
-  if (!preserveDownloads) await database.downloads.removeAll();
-  // 注意：UserSetting 不在这里清除，而是在 _restoreUserSetting 中直接覆盖 id=1，
-  // 因为应用其他位置假设 UserSetting 的 id 始终为 1。
-  // 下载任务在任何情况下都不导入，所以这里总是先清空本地下载任务。
-  await database.downloadTasks.removeAll();
-  await database.plugins.removeAllConfigs();
-  await database.plugins.removeAllInfos();
-  await database.folders.removeAll();
-  await database.links.removeAll();
-  await database.readPreferences.removeAll();
-  await database.readChapters.removeAll();
-  await database.bookmarks.removeAll();
-}
-
-/// 为缺少 `id` 的 JSON 补一个默认 0，避免 json_serializable 生成代码里对 `id` 做非空强制转换时崩溃。
-Map<String, dynamic> _withDefaultId(Map<String, dynamic> json) {
-  if (!json.containsKey('id') || json['id'] == null) {
-    json['id'] = 0;
-  }
-  return json;
-}
-
-/// 从 JSON 恢复所有实体；导入时重置 id 让数据库重新分配主键。
-///
-/// 旧 Bika/Jm 表通过 [LegacyComicRepository] 的显式插入方法恢复（备份 JSON
-/// 是模型形态：日期为 ISO 字符串、列表为数组、布尔为 bool）。
-///
-/// 对于 ComicFolder / ComicLink，还会用当前设备的 syncDeviceId 对
-/// versionVectorJson 做一次 bump，避免导入后同步时出现设备 ID 不一致的冲突。
-Future<GlobalSettingState?> _restoreAllData(Map<String, dynamic> json) async {
-  final currentDeviceId = syncDeviceId;
-  GlobalSettingState? restoredGlobal;
-
-  String bumpVersionVector(String raw) {
-    final map = _parseVersionVector(raw);
-    map[currentDeviceId] = (map[currentDeviceId] ?? 0) + 1;
-    return jsonEncode(map);
-  }
-
-  List<Map<String, dynamic>> rowsOf(String key) {
-    return (json[key] as List? ?? const <dynamic>[])
-        .whereType<Map>()
-        .map((e) => _withDefaultId(Map<String, dynamic>.from(e)))
-        .toList();
-  }
-
-  Future<void> putAll<T>(
-    String key,
-    T Function(Map<String, dynamic>) fromJson,
-    Future<void> Function(List<T>) write,
-  ) async {
-    final items = rowsOf(key).map(fromJson).toList();
-    if (items.isEmpty) return;
-    await write(items);
-  }
-
-  final legacy = database.legacy;
-  await legacy.restoreBikaHistories(rowsOf('bikaComicHistory'));
-  await legacy.restoreBikaDownloads(rowsOf('bikaComicDownload'));
-  await legacy.restoreJmFavorites(rowsOf('jmFavorite'));
-  await legacy.restoreJmHistories(rowsOf('jmHistory'));
-  await legacy.restoreJmDownloads(rowsOf('jmDownload'));
-
-  await putAll(
-    'unifiedComicFavorite',
-    UnifiedComicFavorite.fromJson,
-    database.favorites.putMany,
-  );
-  await putAll(
-    'unifiedComicHistory',
-    UnifiedComicHistory.fromJson,
-    database.histories.putMany,
-  );
-  await putAll('comicFollow', ComicFollow.fromJson, database.follows.putMany);
-  await putAll(
-    'unifiedComicDownload',
-    UnifiedComicDownload.fromJson,
-    database.downloads.putMany,
-  );
-  restoredGlobal = await _restoreUserSetting(json['userSetting'] as List?);
-  // 下载任务不导入，避免恢复后继续执行已过期的下载任务。
-  await putAll(
-    'pluginConfig',
-    PluginConfig.fromJson,
-    database.plugins.putConfigs,
-  );
-  await putAll(
-    'pluginInfo',
-    PluginInfo.fromJson,
-    database.plugins.putInfosWithScripts,
-  );
-  await putAll('comicFolder', (j) {
-    final folder = ComicFolder.fromJson(j);
-    folder.versionVectorJson = bumpVersionVector(folder.versionVectorJson);
-    return folder;
-  }, database.folders.putMany);
-  await putAll('comicLink', (j) {
-    final link = ComicLink.fromJson(j);
-    link.versionVectorJson = bumpVersionVector(link.versionVectorJson);
-    return link;
-  }, database.links.putMany);
-  await putAll(
-    'comicReadPreference',
-    ComicReadPreference.fromJson,
-    database.readPreferences.putMany,
-  );
-  await putAll('comicReadChapter', ComicReadChapter.fromJson, (items) async {
-    for (final item in items) {
-      await database.readChapters.put(item);
-    }
-  });
-  await putAll('searchBookmark', SearchBookmark.fromJson, (items) async {
-    for (final item in items) {
-      await database.bookmarks.put(item);
-    }
-  });
-  return restoredGlobal;
-}
-
-/// 恢复 UserSetting。
-///
-/// 应用大量代码假设 UserSetting 的主键固定为 1，[UserSettingRepository.put]
-/// 也只会写入 id=1 的槽位，因此这里不先清空再插入，而是直接覆盖该槽位。
-/// 恢复后还会把合并结果推回 [GlobalSettingCubit]，让进程内缓存（`globalSetting`
-/// getter、eInk 运行时开关、界面状态）立即生效，无需重启。
-///
-/// 导入时会保留当前设备上的平台相关/本地-only 设置，避免被备份覆盖：
-/// 自定义导出目录、代理、应用锁（手势密码/PIN）、语言、窗口几何、日志地址、
-/// Impeller 强制启用标志等。
-Future<GlobalSettingState?> _restoreUserSetting(List<dynamic>? list) async {
-  if (list == null || list.isEmpty) return null;
-
-  final backup = UserSetting.fromJson(
-    _withDefaultId(Map<String, dynamic>.from(list.first as Map)),
-  );
-
-  final current = await database.userSettings.get();
-  final currentGlobal = current?.globalSetting ?? const GlobalSettingState();
-
-  final hasBackupGlobal =
-      backup.globalSettingData != null && backup.globalSettingData!.isNotEmpty;
-  final mergedGlobal = hasBackupGlobal
-      ? _mergeGlobalSettingForImport(backup.globalSetting, currentGlobal)
-      : currentGlobal;
-
-  // 复用现有 id=1 的 slot：未备份的字段沿用本机值。
-  final next = UserSetting(
-    id: 1,
-    globalSettingData: current?.globalSettingData,
-    bikaSettingData: current?.bikaSettingData,
-    jmSettingData: current?.jmSettingData,
-    jmJwt: current?.jmJwt ?? '',
-  );
-  if (hasBackupGlobal) {
-    next.globalSetting = mergedGlobal;
-  }
-  if (backup.bikaSettingData != null && backup.bikaSettingData!.isNotEmpty) {
-    next.bikaSettingData = backup.bikaSettingData;
-  }
-  if (backup.jmSettingData != null && backup.jmSettingData!.isNotEmpty) {
-    next.jmSettingData = backup.jmSettingData;
-  }
-  next.jmJwt = backup.jmJwt;
-
-  await database.userSettings.put(next);
-  return mergedGlobal;
-}
-
 /// 把恢复后的全局设置推回内存缓存与界面。
 ///
 /// 优先使用导航器上下文里的 [GlobalSettingCubit]；应用尚未挂载 UI 时，
@@ -445,51 +249,7 @@ void _applyRestoredGlobalSetting(GlobalSettingState value) {
   GlobalSettingCubit().applySyncedState(value);
 }
 
-/// 合并备份的 [GlobalSettingState] 与当前设备的本地设置。
-///
-/// 备份中的通用偏好设置会被采用，但跟平台强相关或不应跨设备同步的字段
-/// 会被 [current] 的值覆盖：
-/// - 自定义导出目录（[customExportPath]）
-/// - SOCKS5 代理（[socks5Proxy] / [socks5ProxyEnabled]）
-/// - 应用锁（[appLockSetting]，含手势密码哈希与 PIN 重置哈希）
-/// - 语言（[locale]）
-/// - 桌面端窗口位置与大小（[windowWidth]/[windowHeight]/[windowX]/[windowY]）
-/// - 日志保存地址（[logAddress]）
-/// - Rust HTTP 请求拦截开关（[blockRustHttpRequests]）
-/// - iOS Impeller 强制启用标志（[forceEnableImpeller]）
-/// - Android 后台保活（[androidKeepAliveEnabled]）
-GlobalSettingState _mergeGlobalSettingForImport(
-  GlobalSettingState backup,
-  GlobalSettingState current,
-) {
-  return backup.copyWith(
-    customExportPath: current.customExportPath,
-    socks5Proxy: current.socks5Proxy,
-    socks5ProxyEnabled: current.socks5ProxyEnabled,
-    appLockSetting: current.appLockSetting,
-    locale: current.locale,
-    windowWidth: current.windowWidth,
-    windowHeight: current.windowHeight,
-    windowX: current.windowX,
-    windowY: current.windowY,
-    logAddress: current.logAddress,
-    blockRustHttpRequests: current.blockRustHttpRequests,
-    forceEnableImpeller: current.forceEnableImpeller,
-    androidKeepAliveEnabled: current.androidKeepAliveEnabled,
-  );
-}
-
 /// 尽可能使用重命名移动目录；失败时回退到递归复制。
-Map<String, int> _parseVersionVector(String raw) {
-  if (raw.trim().isEmpty) return <String, int>{};
-  try {
-    final map = jsonDecode(raw) as Map<String, dynamic>;
-    return map.map((k, v) => MapEntry(k, (v as num).toInt()));
-  } catch (_) {
-    return <String, int>{};
-  }
-}
-
 Future<void> _moveDirectory(Directory source, Directory target) async {
   try {
     await source.rename(target.path);

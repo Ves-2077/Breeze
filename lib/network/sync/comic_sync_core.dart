@@ -5,15 +5,14 @@ import 'dart:typed_data';
 import 'package:collection/collection.dart';
 import 'package:crypto/crypto.dart';
 import 'package:encrypter_plus/encrypter_plus.dart';
-import 'package:flutter/foundation.dart' show compute;
 import 'package:uuid/uuid.dart';
 import 'package:zephyr/config/global/global.dart';
 import 'package:zephyr/database/database.dart';
-import 'package:zephyr/database/query_isolate.dart';
 import 'package:zephyr/main.dart';
 import 'package:zephyr/network/sync/sync_device_id.dart';
 import 'package:zephyr/object_box/model.dart';
 import 'package:zephyr/src/rust/api/simple.dart';
+import 'package:zephyr/util/async/worker_pool.dart';
 import 'package:zephyr/util/rust/rust_loader.dart';
 
 const String syncDataVersion = 'v1';
@@ -126,7 +125,8 @@ class ComicSyncCore {
   }
 
   static Future<List<int>> buildCompressedPayload() {
-    return compute(_buildCompressedPayloadInIsolate, database.db.handle);
+    final handle = database.db.handle;
+    return runInWorker(() => _buildCompressedPayloadInWorker(handle));
   }
 
   static Future<List<int>> _buildCompressedPayload(Database db) async {
@@ -176,7 +176,9 @@ class ComicSyncCore {
   static Future<Map<String, dynamic>> decodeCompressedPayload(
     List<int> encryptedCompressedBytes,
   ) {
-    return compute(_decodeCompressedPayloadInIsolate, encryptedCompressedBytes);
+    return runInWorker(
+      () => _decodeCompressedPayloadInWorker(encryptedCompressedBytes),
+    );
   }
 
   static Future<Map<String, dynamic>> _decodeCompressedPayload(
@@ -209,14 +211,12 @@ class ComicSyncCore {
     Database database,
     Map<String, dynamic> data,
   ) {
-    return compute(
-      _mergeUnifiedDataInIsolate,
-      _SyncMergeTask(
-        handle: database.db.handle,
-        data: data,
-        deviceId: syncDeviceId,
-      ),
+    final task = _SyncMergeTask(
+      handle: database.db.handle,
+      data: data,
+      deviceId: syncDeviceId,
     );
+    return runInWorker(() => _mergeUnifiedDataInWorker(task));
   }
 
   static Future<int> _mergeUnifiedData(
@@ -1358,16 +1358,14 @@ class _SyncMergeTask {
   final String deviceId;
 }
 
-Future<List<int>> _buildCompressedPayloadInIsolate(int handle) async {
+Future<List<int>> _buildCompressedPayloadInWorker(int handle) async {
   await initRustLib();
-  markDbWorkerIsolate();
   return ComicSyncCore._buildCompressedPayload(Database.fromHandle(handle));
 }
 
-Future<int> _mergeUnifiedDataInIsolate(_SyncMergeTask task) async {
+Future<int> _mergeUnifiedDataInWorker(_SyncMergeTask task) async {
   await initRustLib();
-  markDbWorkerIsolate();
-  // 合并冲突会按设备 ID 提升版本向量；compute 隔离区没有主 isolate 的
+  // 合并冲突会按设备 ID 提升版本向量；worker isolate 没有主 isolate 的
   // Dart 侧缓存，这里显式继承任务携带的值，避免退化成 device_default。
   syncDeviceId = task.deviceId;
   return ComicSyncCore._mergeUnifiedData(
@@ -1376,7 +1374,7 @@ Future<int> _mergeUnifiedDataInIsolate(_SyncMergeTask task) async {
   );
 }
 
-Future<Map<String, dynamic>> _decodeCompressedPayloadInIsolate(
+Future<Map<String, dynamic>> _decodeCompressedPayloadInWorker(
   List<int> bytes,
 ) async {
   await initRustLib();

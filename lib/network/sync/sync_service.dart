@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:zephyr/config/global/global_setting.dart';
+import 'package:zephyr/database/database.dart';
 import 'package:zephyr/main.dart';
 import 'package:zephyr/object_box/model.dart';
 import 'package:zephyr/page/comic_follow/cubit/comic_follow_cubit.dart';
@@ -11,6 +12,8 @@ import 'package:zephyr/network/sync/comic_sync_core.dart';
 import 'package:zephyr/network/sync/plugin_sync_merge.dart';
 import 'package:zephyr/network/sync/s3_sync_service.dart';
 import 'package:zephyr/network/sync/webdav_sync_service.dart';
+import 'package:zephyr/util/async/worker_pool.dart';
+import 'package:zephyr/util/rust/rust_loader.dart';
 
 const String _settingsSyncSchemaVersion = 'v2';
 const String _settingsBlockMetaPrefsKey = 'sync.settings.block.meta.v3';
@@ -671,10 +674,18 @@ Map<String, Map<String, dynamic>> _extractSyncableSettingsBlocks(
   };
 }
 
-Future<Map<String, dynamic>> _buildPluginBlockData() async {
+Future<Map<String, dynamic>> _buildPluginBlockData() {
+  final handle = database.db.handle;
+  return runInWorker(() => buildPluginBlockDataInWorker(handle));
+}
+
+/// worker 池内组装插件同步块：`with-scripts` 查询与逐条 `toJson` 都不占 UI。
+Future<Map<String, dynamic>> buildPluginBlockDataInWorker(int handle) async {
+  await initRustLib();
+  final db = Database.fromHandle(handle);
   // 同步负载必须带脚本，只有这条路径使用 with-scripts 查询。
-  final infos = await database.plugins.listInfosWithScripts();
-  final configs = await database.plugins.listConfigs();
+  final infos = await db.plugins.listInfosWithScripts();
+  final configs = await db.plugins.listConfigs();
 
   final deletedUuids = infos
       .where((item) => item.isDeleted)
@@ -770,18 +781,89 @@ Future<void> _applyMergedGlobalState(
   await database.userSettings.put(user);
 }
 
+/// 应用云端插件块：冲突判定、脚本合并与写回都在 worker 池内完成。
+///
+/// 只有注册表快照与 reconcile 留在 UI isolate——[PluginRegistryService] 是
+/// 进程级单例，worker 里拿不到同一份状态。
 Future<void> _applyPluginBlockData(Map<String, dynamic> pluginBlockData) async {
   final previousSnapshot = PluginRegistryService.I.snapshot;
-  final pluginConfigJsonList = _toJsonMapList(pluginBlockData['pluginConfigs']);
-  final pluginInfoJsonList = _toJsonMapList(pluginBlockData['pluginInfos']);
+  final result = await runInWorker(
+    () => applyPluginBlockDataInWorker(
+      PluginBlockApplyTask(
+        handle: database.db.handle,
+        pluginBlockData: pluginBlockData,
+      ),
+    ),
+  );
+  for (final warning in result.warnings) {
+    logger.w('[sync][plugins] $warning');
+  }
   logger.d(
     '[sync][plugins] apply_remote '
-    'incomingInfos=${pluginInfoJsonList.length} incomingConfigs=${pluginConfigJsonList.length} '
+    'incomingInfos=${result.incomingInfos} incomingConfigs=${result.incomingConfigs} '
     'previousRegistry=${previousSnapshot.length}',
   );
+  logger.d(
+    '[sync][plugins] apply_remote_db '
+    'upsertInfos=${result.upsertedInfos} totalLocalInfos=${result.totalLocalInfos} '
+    'savedConfigs=${result.savedConfigs} '
+    'skippedDeletedLocal=${result.skippedDeletedLocal} '
+    'skippedBlockedConfig=${result.skippedBlockedConfig}',
+  );
+
+  await PluginRegistryService.I.reconcileAfterExternalSync(
+    previousSnapshot: previousSnapshot,
+    changedScriptUuids: result.changedScriptUuids.toSet(),
+  );
+}
+
+class PluginBlockApplyTask {
+  const PluginBlockApplyTask({
+    required this.handle,
+    required this.pluginBlockData,
+  });
+
+  final int handle;
+  final Map<String, dynamic> pluginBlockData;
+}
+
+/// worker 池内应用到数据库后的统计；UI 侧只负责日志与注册表 reconcile。
+class PluginBlockApplyResult {
+  const PluginBlockApplyResult({
+    required this.incomingInfos,
+    required this.incomingConfigs,
+    required this.upsertedInfos,
+    required this.totalLocalInfos,
+    required this.savedConfigs,
+    required this.skippedDeletedLocal,
+    required this.skippedBlockedConfig,
+    required this.changedScriptUuids,
+    required this.warnings,
+  });
+
+  final int incomingInfos;
+  final int incomingConfigs;
+  final int upsertedInfos;
+  final int totalLocalInfos;
+  final int savedConfigs;
+  final int skippedDeletedLocal;
+  final int skippedBlockedConfig;
+  final List<String> changedScriptUuids;
+  final List<String> warnings;
+}
+
+Future<PluginBlockApplyResult> applyPluginBlockDataInWorker(
+  PluginBlockApplyTask task,
+) async {
+  await initRustLib();
+  final db = Database.fromHandle(task.handle);
+  final pluginBlockData = task.pluginBlockData;
+  final pluginConfigJsonList = _toJsonMapList(pluginBlockData['pluginConfigs']);
+  final pluginInfoJsonList = _toJsonMapList(pluginBlockData['pluginInfos']);
+  final warnings = <String>[];
 
   // 冲突判定与写回都需要脚本，sync apply 是少数确实需要脚本的路径。
-  final localPluginInfos = await database.plugins.listInfosWithScripts();
+  final localPluginInfos = await db.plugins.listInfosWithScripts();
   final localPluginByUuid = <String, PluginInfo>{
     for (final item in localPluginInfos)
       if (item.uuid.trim().isNotEmpty) item.uuid.trim(): item,
@@ -805,7 +887,7 @@ Future<void> _applyPluginBlockData(Map<String, dynamic> pluginBlockData) async {
         ..['uuid'] = uuid;
       remotePluginEntries.add((uuid: uuid, json: normalized));
     } catch (e) {
-      logger.w('[sync][plugins] 忽略无效插件信息: $e');
+      warnings.add('忽略无效插件信息: $e');
     }
   }
 
@@ -839,14 +921,14 @@ Future<void> _applyPluginBlockData(Map<String, dynamic> pluginBlockData) async {
     localPluginByUuid[uuid] = resolved;
   }
   if (infoUpserts.isNotEmpty) {
-    await database.plugins.putInfosWithScripts(infoUpserts);
+    await db.plugins.putInfosWithScripts(infoUpserts);
   }
 
   final blockedConfigNames = <String>{
     for (final uuid in localDeletedUuids)
       ..._buildPluginConfigNameCandidatesForSync(uuid),
   };
-  final existingConfigs = await database.plugins.listConfigs();
+  final existingConfigs = await db.plugins.listConfigs();
   final blockedConfigIds = <int>[];
   final localConfigByName = <String, PluginConfig>{
     for (final item in existingConfigs)
@@ -865,7 +947,7 @@ Future<void> _applyPluginBlockData(Map<String, dynamic> pluginBlockData) async {
     }
   }
   if (blockedConfigIds.isNotEmpty) {
-    await database.plugins.removeConfigByIds(blockedConfigIds);
+    await db.plugins.removeConfigByIds(blockedConfigIds);
   }
   var skippedBlockedConfig = 0;
   for (final json in pluginConfigJsonList) {
@@ -886,22 +968,23 @@ Future<void> _applyPluginBlockData(Map<String, dynamic> pluginBlockData) async {
         config: parsed.config,
       );
     } catch (e) {
-      logger.w('[sync][plugins] 忽略无效插件配置: $e');
+      warnings.add('忽略无效插件配置: $e');
     }
   }
   if (localConfigByName.isNotEmpty) {
-    await database.plugins.putConfigs(localConfigByName.values.toList());
+    await db.plugins.putConfigs(localConfigByName.values.toList());
   }
-  logger.d(
-    '[sync][plugins] apply_remote_db '
-    'upsertInfos=${infoUpserts.length} totalLocalInfos=${localPluginByUuid.length} '
-    'savedConfigs=${localConfigByName.length} '
-    'skippedDeletedLocal=$skippedDeletedLocal skippedBlockedConfig=$skippedBlockedConfig',
-  );
 
-  await PluginRegistryService.I.reconcileAfterExternalSync(
-    previousSnapshot: previousSnapshot,
-    changedScriptUuids: changedScriptUuids,
+  return PluginBlockApplyResult(
+    incomingInfos: pluginInfoJsonList.length,
+    incomingConfigs: pluginConfigJsonList.length,
+    upsertedInfos: infoUpserts.length,
+    totalLocalInfos: localPluginByUuid.length,
+    savedConfigs: localConfigByName.length,
+    skippedDeletedLocal: skippedDeletedLocal,
+    skippedBlockedConfig: skippedBlockedConfig,
+    changedScriptUuids: changedScriptUuids.toList(),
+    warnings: warnings,
   );
 }
 

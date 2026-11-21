@@ -1,6 +1,6 @@
 import 'package:uuid/uuid.dart';
 import 'package:zephyr/database/db.dart';
-import 'package:zephyr/database/query_isolate.dart';
+import 'package:zephyr/database/db_read.dart';
 import 'package:zephyr/database/row_codec.dart';
 import 'package:zephyr/object_box/model.dart';
 
@@ -73,7 +73,10 @@ class PluginRepository {
   );
 
   /// 同步/备份等确实需要脚本的场景：一次性把脚本和元数据取回。
-  Future<List<PluginInfo>> listInfosWithScripts() => runDbRead(
+  ///
+  /// 脚本是大字段（单个可达数百 KB），整条查询放进 worker 池，行解码不占
+  /// UI isolate；已在 worker 内时直接执行。
+  Future<List<PluginInfo>> listInfosWithScripts() => runDbReadInWorker(
     db,
     sql: '$_pluginInfoWithScriptSelect ORDER BY i."id"',
     decode: _decodeInfos,
@@ -96,7 +99,7 @@ class PluginRepository {
   );
 
   /// 元数据 + 脚本；仅在需要执行/比较脚本时使用。
-  Future<PluginInfo?> getInfoWithScriptByUuid(String uuid) => runDbRead(
+  Future<PluginInfo?> getInfoWithScriptByUuid(String uuid) => runDbReadInWorker(
     db,
     sql: '$_pluginInfoWithScriptSelect WHERE i."uuid" = ? LIMIT 1',
     params: <Object?>[uuid],
@@ -104,7 +107,9 @@ class PluginRepository {
   );
 
   /// 按 uuid 读取脚本；不存在或为空时返回空串。
-  Future<String> getScriptByUuid(String uuid) => runDbRead(
+  ///
+  /// 脚本是大字段，读取与行解码放进 worker 池。
+  Future<String> getScriptByUuid(String uuid) => runDbReadInWorker(
     db,
     sql: 'SELECT "originScript" FROM "PluginScript" WHERE "uuid" = ? LIMIT 1',
     params: <Object?>[uuid],

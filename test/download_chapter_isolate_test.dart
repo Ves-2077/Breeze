@@ -4,7 +4,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:zephyr/main.dart';
 import 'package:zephyr/object_box/model.dart';
 import 'package:zephyr/page/comic_read/method/get_local_info.dart';
+import 'package:zephyr/service/download/download_chapter_isolate.dart';
 import 'package:zephyr/service/download/download_task_repository.dart';
+import 'package:zephyr/util/async/worker_pool.dart';
 
 import 'test_helper.dart';
 
@@ -144,5 +146,92 @@ void main() {
       getPluginInfoFromLocal('test', '404', 1),
       throwsA(isA<StateError>()),
     );
+  });
+
+  test('下载详情在 worker 池解析并按目录快照排序', () async {
+    final detailJson = jsonEncode({
+      'comicInfo': {
+        'id': '123',
+        'title': '漫画',
+        'titleMeta': <dynamic>[],
+        'description': '简介',
+        'cover': {'id': 'cover', 'url': 'https://x/c.jpg', 'name': 'c.jpg'},
+        'metadata': <dynamic>[],
+      },
+      'eps': [
+        {'id': 'c3', 'name': '第三话', 'order': 3},
+        {'id': 'c1', 'name': '第一话', 'order': 1},
+        {'id': 'c2', 'name': '第二话', 'order': 2},
+      ],
+      'recommend': <dynamic>[],
+      // 目录快照：详情页据此把已下载章节排回线上顺序。
+      'extern': {
+        'chapterCatalog': [
+          {'id': 'c1', 'name': '第一话', 'order': 1},
+          {'id': 'c2', 'name': '第二话', 'order': 2},
+          {'id': 'c3', 'name': '第三话', 'order': 3},
+        ],
+      },
+    });
+    await database.downloads.put(
+      UnifiedComicDownload.fromJson(<String, dynamic>{
+        'uniqueKey': 'test:123',
+        'source': 'test',
+        'comicId': '123',
+        'title': '漫画',
+        'chapters': _chaptersJson(),
+        'detailJson': detailJson,
+      }),
+    );
+
+    // 生产路径：详情页把整段读取+解析交给 worker 池。
+    final task = DownloadComicInfoTask(
+      handle: database.db.handle,
+      downloadKey: 'test:123',
+    );
+    final result = await runInWorker(
+      () => readDownloadedComicInfoInWorker(task),
+    );
+
+    expect(result.record?.uniqueKey, 'test:123');
+    expect(result.info?.comicInfo.title, '漫画');
+    expect(result.info?.eps.map((ep) => ep.id).toList(), <String>[
+      'c1',
+      'c2',
+      'c3',
+    ]);
+
+    final missing = await runInWorker(
+      () => readDownloadedComicInfoInWorker(
+        DownloadComicInfoTask(handle: task.handle, downloadKey: 'test:404'),
+      ),
+    );
+    expect(missing.record, isNull);
+    expect(missing.info, isNull);
+  });
+
+  test('已下载章节 id 在 worker 池解析，缺失记录返回空集合', () async {
+    await database.downloads.put(
+      UnifiedComicDownload.fromJson(<String, dynamic>{
+        'uniqueKey': 'test:123',
+        'source': 'test',
+        'comicId': '123',
+        'title': '漫画',
+        'chapters': _chaptersJson(),
+      }),
+    );
+
+    const repository = DownloadTaskRepository();
+    final ids = await repository.downloadedChapterIds(
+      from: 'test',
+      comicId: '123',
+    );
+    expect(ids, <String>{'c1', 'c2', 'c3'});
+
+    final missing = await repository.downloadedChapterIds(
+      from: 'test',
+      comicId: '404',
+    );
+    expect(missing, isEmpty);
   });
 }

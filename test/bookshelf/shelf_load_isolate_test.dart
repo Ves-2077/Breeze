@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:zephyr/main.dart';
 import 'package:zephyr/object_box/model.dart';
 import 'package:zephyr/page/bookshelf/method/shelf_load_isolate.dart';
+import 'package:zephyr/util/async/worker_pool.dart';
 
 import '../test_helper.dart';
 
@@ -51,6 +52,26 @@ void main() {
     await _addLink(favorite.uniqueKey, ComicFolderType.favorite.name);
 
     final result = await _load('favorite');
+    expect(result.comics, hasLength(1));
+    expect(result.comics.single.id, favorite.comicId);
+    expect(result.searchTexts, isNotEmpty);
+  });
+
+  test('书架加载经 worker 池返回时可跨 isolate 传递', () async {
+    final favorite = createTestFavorite('test:pool');
+    await database.favorites.put(favorite);
+    await _addLink(favorite.uniqueKey, ComicFolderType.favorite.name);
+
+    // 生产路径：bloc 通过 runInWorker 提交整个书架任务。
+    final task = ShelfLoadTask(
+      handle: database.db.handle,
+      mode: 'favorite',
+      currentPath: '',
+      keyword: '',
+      sort: 'dd',
+      sources: const <String>[],
+    );
+    final result = await runInWorker(() => loadShelfInIsolate(task));
     expect(result.comics, hasLength(1));
     expect(result.comics.single.id, favorite.comicId);
     expect(result.searchTexts, isNotEmpty);

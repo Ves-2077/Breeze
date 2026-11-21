@@ -1,7 +1,9 @@
 import 'package:zephyr/database/db.dart';
-import 'package:zephyr/database/query_isolate.dart';
+import 'package:zephyr/database/db_read.dart';
 import 'package:zephyr/database/row_codec.dart';
 import 'package:zephyr/object_box/model.dart';
+import 'package:zephyr/util/async/worker_pool.dart';
+import 'package:zephyr/util/rust/rust_loader.dart';
 
 const _favoriteInsert =
     'INSERT INTO "UnifiedComicFavorite" '
@@ -332,7 +334,17 @@ class UnifiedComicHistoryRepository {
       _params(value, includeId: false),
     );
     value.id = result.lastInsertId;
-    return value.id;
+    return result.lastInsertId;
+  }
+
+  /// 阅读器周期保存专用：把单条 upsert 放进 worker 池执行。
+  ///
+  /// 参数里的 metadata/creator 等 JSON 文本在写入侧编码，阅读器每 500ms 触发
+  /// 一次，放到池里后编码与执行都不占 UI isolate。新行插入时 worker 内的
+  /// id 回写不会传回调用方对象，因此把 id 返回给调用方自行赋值。
+  Future<int> putInWorker(UnifiedComicHistory value) {
+    final handle = db.activeHandle;
+    return runInWorker(() => _putHistoryInWorker(handle, value));
   }
 
   Future<List<int>> putMany(List<UnifiedComicHistory> values) async {
@@ -643,13 +655,6 @@ class UnifiedComicDownloadRepository {
     return result.changes;
   }
 
-  Stream<UnifiedComicDownload?> watchByKey(String uniqueKey) async* {
-    yield await getByKey(uniqueKey);
-    yield* db.changes
-        .where((tables) => tables.contains(table))
-        .asyncMap((_) => getByKey(uniqueKey));
-  }
-
   Future<int> _putInTx(DbTransaction tx, UnifiedComicDownload value) async {
     if (value.id > 0) {
       await tx.execute(_downloadUpsert, _params(value, includeId: true));
@@ -721,4 +726,11 @@ class UnifiedComicDownloadRepository {
 
   static UnifiedComicDownload? _decodeFirst(List<Map<String, dynamic>> rows) =>
       rows.isEmpty ? null : _decodeRow(rows.first);
+}
+
+/// worker 池内执行历史 upsert；新建行时返回自增 id。
+Future<int> _putHistoryInWorker(int handle, UnifiedComicHistory value) async {
+  await initRustLib();
+  return UnifiedComicHistoryRepository(BreezeDatabase.fromHandle(handle))
+      .put(value);
 }

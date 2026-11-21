@@ -41,8 +41,8 @@ class BreezeDatabase {
 
   /// 当前调用应使用的连接句柄：事务回调内为事务连接，否则为主连接。
   ///
-  /// worker isolate 无法继承调用方的 Zone，因此把有效句柄显式传给
-  /// [runDbRead]，保证事务内的仓库读取仍走事务连接。
+  /// 把读取放进 worker 池时（[runDbReadInWorker]）worker 无法继承调用方的
+  /// Zone，因此需要把有效句柄显式带过去，保证事务内的读取仍走事务连接。
   int get activeHandle {
     final tx = Zone.current[_txZoneKey];
     return tx is DbTransaction ? tx.handle : handle;

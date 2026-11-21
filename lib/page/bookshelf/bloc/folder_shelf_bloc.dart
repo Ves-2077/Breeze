@@ -1,11 +1,11 @@
 import 'package:bloc/bloc.dart';
 import 'package:bloc_concurrency/bloc_concurrency.dart';
-import 'package:flutter/foundation.dart';
 import 'package:zephyr/i18n/strings.g.dart';
 import 'package:zephyr/main.dart';
 import 'package:zephyr/object_box/model.dart';
 import 'package:zephyr/page/bookshelf/method/shelf_load_isolate.dart';
 import 'package:zephyr/page/bookshelf/models/shelf_page_mode.dart';
+import 'package:zephyr/util/async/worker_pool.dart';
 import 'package:zephyr/widgets/comic_simplify_entry/comic_simplify_entry_info.dart';
 import 'package:zephyr/page/bookshelf/service/comic_folder_service.dart';
 import 'package:zephyr/page/bookshelf/service/comic_link_service.dart';
@@ -57,18 +57,17 @@ class FolderShelfBloc extends Bloc<FolderShelfEvent, FolderShelfState> {
     emit(state.copyWith(isLoading: true, error: null));
     try {
       final search = event.search ?? state.search;
-      final result = await compute(
-        loadShelfInIsolate,
-        ShelfLoadTask(
-          handle: database.db.handle,
-          mode: state.mode.name,
-          currentPath: state.currentPath,
-          keyword: search?.keyword ?? '',
-          sort: search?.sort ?? 'dd',
-          sources: search?.sources ?? const <String>[],
-          limit: shelfPageSize(state.mode),
-        ),
+      // 任务对象必须在 UI isolate 构造：worker 里没有全局 database。
+      final task = ShelfLoadTask(
+        handle: database.db.handle,
+        mode: state.mode.name,
+        currentPath: state.currentPath,
+        keyword: search?.keyword ?? '',
+        sort: search?.sort ?? 'dd',
+        sources: search?.sources ?? const <String>[],
+        limit: shelfPageSize(state.mode),
       );
+      final result = await runInWorker(() => loadShelfInIsolate(task));
       emit(
         state.copyWith(
           folders: result.folders,
@@ -109,19 +108,18 @@ class FolderShelfBloc extends Bloc<FolderShelfEvent, FolderShelfState> {
     final search = state.search;
     emit(state.copyWith(isLoadingMore: true, error: null));
     try {
-      final result = await compute(
-        loadShelfInIsolate,
-        ShelfLoadTask(
-          handle: database.db.handle,
-          mode: mode.name,
-          currentPath: currentPath,
-          keyword: search?.keyword ?? '',
-          sort: search?.sort ?? 'dd',
-          sources: search?.sources ?? const <String>[],
-          offset: offset,
-          limit: shelfPageSize(mode),
-        ),
+      // 任务对象必须在 UI isolate 构造：worker 里没有全局 database。
+      final task = ShelfLoadTask(
+        handle: database.db.handle,
+        mode: mode.name,
+        currentPath: currentPath,
+        keyword: search?.keyword ?? '',
+        sort: search?.sort ?? 'dd',
+        sources: search?.sources ?? const <String>[],
+        offset: offset,
+        limit: shelfPageSize(mode),
       );
+      final result = await runInWorker(() => loadShelfInIsolate(task));
       if (isClosed) return;
       // 加载期间发生了刷新/切目录/换排序：丢弃这一页。
       if (state.nextOffset != offset ||
@@ -441,4 +439,4 @@ class FolderShelfBloc extends Bloc<FolderShelfEvent, FolderShelfState> {
   }
 }
 
-/// 历史无文件夹体系：查询、解码、映射与搜索文本全部在 compute isolate 中完成。
+/// 历史无文件夹体系：查询、解码、映射与搜索文本全部在 worker 池任务中完成。
