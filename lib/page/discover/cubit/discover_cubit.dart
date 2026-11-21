@@ -154,11 +154,13 @@ class DiscoverCubit extends Cubit<DiscoverState> {
     emit(state.copyWith(togglingUuids: Set<String>.from(_togglingUuids)));
   }
 
-  /// 初始加载：全量刷新 getInfo（后台 warmup，成功即热切换）。
-  void load() => _service.warmupPluginInfos();
+  /// 初始加载：info 已由 service.init() 从 DB 水合；这里只补历史缺失项。
+  void load() {
+    unawaited(_service.loadMissingPluginInfos());
+  }
 
-  /// 下拉刷新：同 load。
-  Future<void> reload() => _service.warmupPluginInfos();
+  /// 下拉刷新：同样只补缺失/损坏的 getInfo，不再全量执行插件脚本。
+  Future<void> reload() => _service.loadMissingPluginInfos();
 
   /// 重试指定插件：后台拉取该插件 getInfo，成功即热切换。
   Future<void> retryLoadInfo(String uuid) =>

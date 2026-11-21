@@ -1,9 +1,13 @@
+import 'dart:io';
+
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:path/path.dart' as p;
 import 'package:zephyr/config/global/global_setting.dart';
 import 'package:zephyr/database/database.dart';
 import 'package:zephyr/cubit/string_select.dart';
 import 'package:zephyr/main.dart';
+import 'package:zephyr/util/storage/get_path.dart';
 
 import 'package:zephyr/object_box/migration/migration_v1_to_v2.dart';
 import 'package:zephyr/object_box/migration/migration_v2_to_v3.dart';
@@ -20,8 +24,44 @@ import 'package:zephyr/object_box/migration/migration_v11_to_v12.dart';
 const _defaultCompatibleVersion = 'v1';
 const _latestCompatibleVersion = 'v12';
 
+/// 旧 ObjectBox 数据库是否真实存在。
+///
+/// 迁移完成后 `data.mdb` 会被归档成 `data.mdb.7z`，所以归档文件也算存在；
+/// 只看 `data.mdb` 会把“已经导入但兼容迁移还没跑”的升级用户误判为全新安装。
+/// 根目录的旧归档也一并识别，避免历史版本归档位置差异导致漏判。
+bool hasLegacyObjectBoxDatabase(String dbRoot) {
+  const candidates = <String>[
+    'breeze_db/data.mdb',
+    'breeze_db/data.mdb.7z',
+    'data.mdb',
+    'data.mdb.7z',
+  ];
+  for (final relative in candidates) {
+    if (File(p.join(dbRoot, relative)).existsSync()) {
+      return true;
+    }
+  }
+  return false;
+}
+
 Future<void> ensureCompatibleMigration(BuildContext context) async {
   try {
+    final dbRoot = await getDbPath();
+    if (!hasLegacyObjectBoxDatabase(dbRoot)) {
+      final version = await getCompatibleVersion(database);
+      if (version != _latestCompatibleVersion) {
+        await setCompatibleVersion(database, _latestCompatibleVersion);
+        if (context.mounted) {
+          await _refreshGlobalSetting(context.read<GlobalSettingCubit>());
+        }
+        logger.i(
+          '[compatible-migration] 未找到旧 ObjectBox 数据，直接标记 '
+          '$_latestCompatibleVersion',
+        );
+      }
+      return;
+    }
+
     var version = await getCompatibleVersion(database);
     var migrated = false;
 
@@ -108,16 +148,20 @@ Future<void> ensureCompatibleMigration(BuildContext context) async {
       version = 'v12';
     }
 
-    if (migrated) {
-      final setting = await database.userSettings.get();
-      if (!context.mounted) return;
-      if (setting != null) {
-        context.read<GlobalSettingCubit>().updateALl(setting.globalSetting);
-      }
+    if (migrated && context.mounted) {
+      await _refreshGlobalSetting(context.read<GlobalSettingCubit>());
     }
   } catch (e, stackTrace) {
     logger.e('Compatible migration failed', error: e, stackTrace: stackTrace);
   }
+}
+
+Future<void> _refreshGlobalSetting(GlobalSettingCubit cubit) async {
+  final setting = await database.userSettings.get();
+  if (setting == null) {
+    return;
+  }
+  cubit.updateALl(setting.globalSetting);
 }
 
 Future<String> getCompatibleVersion(Database database) async {

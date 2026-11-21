@@ -7,7 +7,6 @@ import 'package:zephyr/config/global/global_setting.dart';
 import 'package:zephyr/config/router/router.gr.dart' as app_router;
 import 'package:zephyr/cubit/string_select.dart';
 import 'package:zephyr/i18n/strings.g.dart';
-import 'package:zephyr/main.dart';
 import 'package:zephyr/object_box/migration/compatible.dart';
 import 'package:zephyr/plugin/bridge/dart_tools_bridge.dart';
 import 'package:zephyr/plugin/local_comic_plugin.dart';
@@ -84,21 +83,9 @@ class _AppBootstrapViewState extends State<AppBootstrapView> {
     updateStatus(t.appBootstrap.initializing);
     await ensureLocalComicPluginInstalled();
     await PluginRegistryService.I.init();
-    await PluginRegistryService.I.warmupPluginInfos();
     PluginCloudUpdateService.I.scheduleSilentCloudUpdate(
       delay: const Duration(minutes: 1),
     );
-    unawaited(() async {
-      try {
-        await PluginRegistryService.I.initializeActivePluginRuntimes();
-      } catch (e, st) {
-        logger.w(
-          'Background plugin runtime init failed',
-          error: e,
-          stackTrace: st,
-        );
-      }
-    }());
 
     stopwatch.stop();
     final int delayTime = (200 - stopwatch.elapsedMilliseconds).clamp(0, 200);

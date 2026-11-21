@@ -131,13 +131,14 @@ class PluginHomeCubit extends Cubit<PluginHomeState> {
         pluginId = candidates.contains(remembered)
             ? remembered
             : candidates.first;
+        // 选中即固定 source，搜索不依赖 init 是否成功；init 只负责测速/登录，
+        // 没跑完也应该允许先搜索，失败时正常报错重试。
+        emit(state.copyWith(pluginId: pluginId));
         // 选中后写回固化：记忆为空或失效时选了 candidates.first，
         // 不写下次还是空。写失败不阻断加载。
         try {
           await writeMemory(pluginId);
         } catch (_) {}
-        // 未就绪（init 登录还没跑完）就一直 loading 等，不超时。
-        await _waitForInitOk(pluginId);
         final bundle = await _loadBundle(pluginId);
         if (isClosed) {
           return;
@@ -167,6 +168,9 @@ class PluginHomeCubit extends Cubit<PluginHomeState> {
   /// 阻塞等 infos 就绪：每 200ms 看一次 registry 快照，最多 10 秒。
   /// 中途关了抛错，外层走 error 态。
   Future<List<String>> _waitForCandidates() async {
+    // 首页候选依赖 getInfo 标准位；只有历史缓存缺失时才会走到这里。
+    // 启动阶段不再全量补拉，改为首页确实需要时再触发，避免和书架抢资源。
+    unawaited(_service.loadMissingPluginInfos());
     for (var i = 0; i < 50; i++) {
       if (isClosed) {
         throw StateError('已关闭');
@@ -226,8 +230,7 @@ class PluginHomeCubit extends Cubit<PluginHomeState> {
       ),
     );
     try {
-      // 未就绪就一直 loading 等，不超时。
-      await _waitForInitOk(id);
+      // 搜索只需要选中的 source，不再等 init 登录/测速跑完。
       final bundle = await _loadBundle(id);
       if (isClosed) {
         return;
@@ -297,26 +300,6 @@ class PluginHomeCubit extends Cubit<PluginHomeState> {
 
   List<String> _resolveCandidates() {
     return _registry.state.capablePlugins(capabilityFlag);
-  }
-
-  /// 等该插件 init 成功（登录走完），最多等 30 秒。
-  /// 超时后不再等，直接调 bundle：失败走正常登录错误页（带登录/刷新按钮），
-  /// 而不是无限转圈。已就绪直接返回；cubit 关了抛错让外层走 error 态。
-  Future<void> _waitForInitOk(String pluginId) async {
-    if (_service.isPluginInitOk(pluginId)) {
-      return;
-    }
-    try {
-      await _service.initOkStream
-          .firstWhere((ok) => ok.contains(pluginId))
-          .timeout(const Duration(seconds: 30));
-    } on TimeoutException {
-      // 超时：init 还没跑完（选线慢/登录卡），不等了，直接调 bundle。
-      return;
-    }
-    if (isClosed) {
-      throw StateError('已关闭');
-    }
   }
 
   Future<PluginHomeBundle> _loadBundle(String pluginId) async {
