@@ -74,7 +74,7 @@ CMake 必须用 Ninja 生成器（`aws-lc-sys` 在 Windows 默认选 Visual Stud
   `<files>/log/uncaught.log`（后台 isolate 队列写入，超过 2 MB 轮转为 `.1`）。
   普通业务 logger 不落盘，避免账号密码等参数进入文件。进程被立即杀死时队列尾部
   可能丢失，属于 best-effort。拉取示例：
-  `hdc file recv /data/app/el2/100/base/com.zephyr.breeze/files/log/uncaught.log .`
+  `hdc file recv /data/app/el2/100/base/com.zephyr.breeze.ohos/files/log/uncaught.log .`
 - Rust 级别：`RUST_LOG` 优先；否则默认 `debug`，并静音 hickory / reqwest / h2 噪音。
 - OHOS sink：`rust/src/api/logger.rs` 的 `HilogMakeWriter` 调用 `OH_LOG_Print`（`libhilog_ndk.z.so`），
   真机用 `hdc shell hilog | grep windcore` 查看。

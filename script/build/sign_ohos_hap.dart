@@ -17,7 +17,7 @@ const String _cyan = '\x1B[36m';
 class _Options {
   String hap = '';
   String? out;
-  String bundle = 'com.zephyr.breeze';
+  String bundle = 'com.zephyr.breeze.ohos';
   String? udid;
   String? device;
   bool install = false;
@@ -395,7 +395,7 @@ void _usage() {
 
 选项:
   --out <path>            输出 HAP，默认 <输入>-signed.hap
-  --bundle <name>         bundleName，默认 com.zephyr.breeze
+  --bundle <name>         bundleName，默认 com.zephyr.breeze.ohos
   --udid <udid>           设备 UDID，默认自动 hdc shell bm get --udid
   --device <id>           hdc 目标，如 127.0.0.1:5555
   --release               使用 release profile 模板

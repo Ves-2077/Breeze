@@ -95,18 +95,18 @@ HarmonyOS NEXT only accepts `.hap`, and sideloaded apps must be signed. Releases
 **Requirements:** HarmonyOS `5.0.5(17)` or later, `arm64-v8a` device.
 
 1. Download `Breeze-<version>-ohos-arm64-release-unsigned.hap` from the [Releases page](https://github.com/breeze-project-org/Breeze/releases).
-2. Sign it with DevEco Studio (automatic signing) or `hap-sign-tool.jar`, using a certificate and profile issued for bundle `com.zephyr.breeze`. The step-by-step walkthrough with commands is in the [Chinese README](README.md) and [docs/ohos_build.md](docs/ohos_build.md).
-3. Install with `hdc install -r <signed>.hap`, then launch with `hdc shell aa start -a EntryAbility -b com.zephyr.breeze`.
+2. Sign it with DevEco Studio (automatic signing) or `hap-sign-tool.jar`, using a certificate and profile issued for bundle `com.zephyr.breeze.ohos`. The step-by-step walkthrough with commands is in the [Chinese README](README.md) and [docs/ohos_build.md](docs/ohos_build.md).
+3. Install with `hdc install -r <signed>.hap`, then launch with `hdc shell aa start -a EntryAbility -b com.zephyr.breeze.ohos`.
 
-> **Migrating from the Android build**
+> **Relationship to the Android build**
 >
-> If the Android build was installed through an Android compatibility layer such as Zhuoyitong (卓易通), Chujingyi, or GBox, complete the following **before** installing the native HarmonyOS build:
+> The HarmonyOS build uses the bundle name `com.zephyr.breeze.ohos`, while the Android build uses `com.zephyr.breeze`; the two can be installed side by side. If you have been using the Android build through an Android compatibility layer such as Zhuoyitong (卓易通), Chujingyi, or GBox, migrate in this order:
 >
 > 1. Open the Android build, go to **Settings → Storage → Data Import/Export**, enable **Include downloaded comics** if needed, tap **Export data**, and confirm the archive is saved to a location you can reach.
-> 2. Uninstall the Android build, including its app data inside the compatibility layer, so that only one installation remains.
-> 3. Sign and install the HarmonyOS HAP as described above, then open **Settings → Storage → Data Import/Export** and tap **Import data**.
+> 2. Sign and install the HarmonyOS HAP as described above, then open **Settings → Storage → Data Import/Export** and tap **Import data**.
+> 3. Once the bookshelf, reading history, and downloads look complete in the HarmonyOS build, uninstall the Android build from the compatibility layer so two identical icons do not get mixed up.
 >
-> Both builds use the bundle name `com.zephyr.breeze` but keep separate databases and storage directories, and no data is carried over automatically. Installing the HAP while the Android build is still present fails with `[Fail]App install failed: error: failed to install bundle. code:9568276 error: install already exist`; uninstall the Android build (or run `hdc uninstall com.zephyr.breeze` on the device) and install again. Because the two installations do not share data, export first: uninstalling without a backup loses the bookshelf, reading history, and downloaded content.
+> The two installations keep separate databases and storage directories and share no data, so always export before switching. Test HAPs built before the bundle rename used `com.zephyr.breeze`; uninstall such a build with `hdc uninstall com.zephyr.breeze` before installing the current HAP, otherwise the install fails with `error: install already exist`.
 
 ### 🪟 Windows
 

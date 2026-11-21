@@ -314,7 +314,7 @@ export default class BreezeOhosPlugin implements FlutterPlugin {
       const body = (call.argument('body') as string) ?? '';
       const agent = await wantAgent.getWantAgent({
         wants: [{
-          bundleName: 'com.zephyr.breeze',
+          bundleName: 'com.zephyr.breeze.ohos',
           abilityName: 'EntryAbility'
         }],
         actionType: wantAgent.OperationType.START_ABILITY,

@@ -1,6 +1,6 @@
 {
   "app": {
-    "bundleName": "com.zephyr.breeze",
+    "bundleName": "com.zephyr.breeze.ohos",
     "vendor": "zephyr",
     "versionCode": 300038,
     "versionName": "3.0.38",

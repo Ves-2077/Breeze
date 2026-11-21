@@ -90,17 +90,15 @@
 
 HarmonyOS NEXT 只支持 `.hap`，且未上架应用必须签名后才能安装。Breeze 的 Release 提供的是**未签名 arm64 HAP**，需要你自己完成签名。
 
-> **从安卓版迁移的注意事项**
+> **与安卓版的关系**
 >
-> 若此前已通过卓易通、出境易、GBox 等安卓兼容环境在本机安装过 Breeze 安卓版，请在安装鸿蒙原生版本之前按以下顺序操作：
+> 鸿蒙版的 Bundle 名为 `com.zephyr.breeze.ohos`，与安卓版的包名 `com.zephyr.breeze` 不同，两者可以同时安装、互不冲突。如果此前通过卓易通、出境易、GBox 等兼容环境使用安卓版，建议按以下顺序完成迁移：
 >
 > 1. 打开安卓版，进入「设置 → 存储 → 数据导入/导出」，按需勾选「包含下载的漫画」后点击「导出数据」，并确认备份文件已保存至可访问的位置。
-> 2. 卸载安卓版（包括兼容环境中的 Breeze 及其应用数据），避免两套安装并存。
-> 3. 按本节流程签名并安装鸿蒙版，首次启动后在「设置 → 存储 → 数据导入/导出」中点击「导入数据」完成还原。
+> 2. 按本节流程签名并安装鸿蒙版，首次启动后在「设置 → 存储 → 数据导入/导出」中点击「导入数据」完成还原。
+> 3. 确认鸿蒙版中的书架、阅读记录与下载内容完整后，再卸载兼容环境里的安卓版，避免两个同名图标并存造成误用。
 >
-> 两个版本的包名 / Bundle 名同为 `com.zephyr.breeze`，但各自使用独立的数据库与存储目录，应用数据不会自动互通。请勿先安装鸿蒙版再导出安卓版数据，也不要在未备份的情况下清理兼容环境，否则书架、阅读记录与已下载内容将无法找回。
->
-> 若未卸载安卓版就直接安装 HAP，`hdc install` 会报 `App install failed: error: failed to install bundle. code:9568276 error: install already exist`；此时先卸载占用该 Bundle 的安卓版（或在设备上执行 `hdc uninstall com.zephyr.breeze`），再重新安装 HAP。
+> 两个版本各自使用独立的数据库与存储目录，应用数据不会自动互通，切换前务必先导出。若安装过更早的测试版 HAP（当时 Bundle 名与安卓版相同），需先执行 `hdc uninstall com.zephyr.breeze` 卸载该旧版，否则会报 `error: install already exist`。
 
 **系统要求：** HarmonyOS `5.0.5(17)` 及以上，`arm64-v8a` 设备。
 
@@ -132,7 +130,7 @@ Breeze-<版本>-ohos-arm64-release-unsigned.hap
 
 **方式 B：只有下载的 HAP**
 
-1. 在 DevEco Studio 中为 bundleName `com.zephyr.breeze` 生成签名材料（`.p12` / `.cer` / `.p7b`）。
+1. 在 DevEco Studio 中为 bundleName `com.zephyr.breeze.ohos` 生成签名材料（`.p12` / `.cer` / `.p7b`）。
 2. 使用 SDK 里的 `hap-sign-tool.jar` 对 HAP 签名：
 
 ```bash
@@ -159,7 +157,7 @@ hdc install -r Breeze-<版本>-ohos-arm64-release-signed.hap
 启动：
 
 ```bash
-hdc shell aa start -a EntryAbility -b com.zephyr.breeze
+hdc shell aa start -a EntryAbility -b com.zephyr.breeze.ohos
 ```
 
 > 如果报 `signature verify failed`，通常是 profile 的 bundleName 或证书不匹配；如果报 `install parse native so failed`，通常是设备架构不是 `arm64-v8a`。

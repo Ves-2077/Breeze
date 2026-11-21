@@ -41,7 +41,7 @@
 - **Flutter 版本**：官方构建 `3.50.0`（通过 `.fvmrc` / `.puro.json` 锁定，建议使用 FVM / Puro）
 - **OHOS Flutter**：独立 fork `flutter_flutter 3.47.7+ohos-0.0.1-pre`（Dart 3.13.5），通过 `OHOS_FLUTTER` 或 `--flutter` 指定；不要用它跑官方平台构建
 - **Dart SDK**：官方 Flutter 下为 `^3.14.0`（见 `pubspec.yaml`）；OHOS fork 低于 3.14，`build_ohos.dart --hap` 会自动注入临时依赖覆盖
-- **应用包名**：`zephyr`（OHOS `bundleName` 为 `com.zephyr.breeze`）
+- **应用包名**：`zephyr`（OHOS `bundleName` 为 `com.zephyr.breeze.ohos`，与安卓版 `com.zephyr.breeze` 不同，两者可在鸿蒙设备上共存）
 
 ### 2.2 Rust
 
