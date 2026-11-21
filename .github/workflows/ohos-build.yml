@@ -1,5 +1,8 @@
 name: Breeze HarmonyOS HAP
 
+# 两种用法，构建逻辑只保留这一份：
+#   1. 手动触发（workflow_dispatch）单独出 HAP；
+#   2. push-build.yml / release.yml 用 `uses: ./.github/workflows/ohos-build.yml` 复用。
 on:
   workflow_dispatch:
     inputs:
@@ -24,13 +27,28 @@ on:
         required: true
         default: lib/main.dart
         type: string
+  # workflow_call 的输入类型只支持 boolean / number / string，因此这里不用 choice，
+  # 由 job 内的「校验输入参数」步骤兜住非法值。
+  workflow_call:
+    inputs:
+      arch:
+        description: "目标 ABI（arm64 | x64）"
+        required: false
+        default: arm64
+        type: string
+      build_mode:
+        description: "构建模式（release | debug）"
+        required: false
+        default: release
+        type: string
+      entry:
+        description: "Dart 入口"
+        required: false
+        default: lib/main.dart
+        type: string
 
 permissions:
   contents: read
-
-concurrency:
-  group: ohos-build-${{ github.ref }}-${{ inputs.arch }}-${{ inputs.build_mode }}
-  cancel-in-progress: true
 
 env:
   OHOS_FLUTTER_REF: 3.47.7+ohos-0.0.1-pre
@@ -42,9 +60,25 @@ jobs:
   build-hap:
     runs-on: ubuntu-latest
     timeout-minutes: 180
+    # 这里刻意不加 concurrency：被 push-build / release 复用时，同一分支的两次推送
+    # 会共用 group，cancel-in-progress 会掐掉较早那次运行的 HAP 产物；并发控制交给
+    # 调用方的 workflow 级 concurrency，手动触发的多次构建互相独立、各自上传 artifact。
     steps:
       - name: 检出代码
         uses: actions/checkout@v5
+
+      - name: 校验输入参数
+        run: |
+          set -euxo pipefail
+          case "${{ inputs.arch }}" in
+            arm64|x64) ;;
+            *) echo "::error::arch 只支持 arm64 或 x64"; exit 1 ;;
+          esac
+          case "${{ inputs.build_mode }}" in
+            release|debug) ;;
+            *) echo "::error::build_mode 只支持 release 或 debug"; exit 1 ;;
+          esac
+          test -f "${{ inputs.entry }}"
 
       - name: 释放磁盘空间
         uses: jlumbroso/free-disk-space@main
@@ -120,7 +154,7 @@ jobs:
 
       - name: 缓存 OHOS Flutter
         id: flutter-ohos-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ${{ runner.temp }}/flutter-ohos
           key: flutter-ohos-${{ runner.os }}-${{ env.OHOS_FLUTTER_REF }}
@@ -226,7 +260,7 @@ jobs:
 
       - name: 上传 HAP
         if: success()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: Breeze-ohos-${{ inputs.arch }}-${{ inputs.build_mode }}
           path: ohos/entry/build/default/outputs/default/*.hap
@@ -234,7 +268,7 @@ jobs:
 
       - name: 上传构建日志
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ohos-build-logs-${{ inputs.arch }}-${{ inputs.build_mode }}
           path: |

@@ -398,9 +398,9 @@ dart ./script/build/sign_ohos_hap.dart \
 
 ### 8.1 CI/CD 工作流
 
-- **`.github/workflows/push-build.yml`**：`push` / `pull_request` 到 `main` 且改动 `lib/**` 或 `rust/**` 时触发，并行构建 Android / Linux / Windows / macOS / iOS 产物为 artifact，**不发布 Release、不构建 OHOS**。Android 构建前会安装 CMake 3.22.1，运行 `script/android/prepare_android_waifu2x_deps.py` 准备 OpenCV / libwebp 依赖，再依次运行 `script/android/build_ncnn_static_android.py` 与 `script/android/build_waifu2x_cli_android.py` 生成 `libwaifu2x_cli.so`；NCNN 模型不再随包打包，改为首次运行时下载。Windows 构建前会安装 Inno Setup 7，由 `script/build/build_windows.dart` 调用 `ISCC.exe` 生成安装包。
-- **`.github/workflows/ohos-build.yml`**：手动触发（`workflow_dispatch`），可选 `arch=arm64|x64`、`build_mode=release|debug`、入口文件。使用官方 Flutter 3.50.0 跑脚本、OHOS Flutter `3.47.7+ohos-0.0.1-pre` 构建、`ErBWs/setup-ohos` 提供 CLI 26，并在 Rust 工具链步骤同时安装 `aarch64-unknown-linux-ohos` 与 `x86_64-unknown-linux-ohos`（只装一个会导致另一 arch 失败）。未签名 HAP 存在时脚本退出码非 0 也按成功处理，产物为 `Breeze-ohos-<arch>-<mode>` artifact。
-- **`.github/workflows/release.yml`**：手动触发（`workflow_dispatch`），输入版本号后构建 Android / Linux / Windows / macOS / iOS 产物，上传符号表到 Sentry，创建 GitHub Release，更新 Homebrew Cask / Flathub，并发送 Telegram 通知；**目前不含 OHOS job**，HAP 需单独用 `ohos-build.yml` 构建后手动附加。Android 构建前同样会准备 waifu2x CLI 依赖并编译 CLI。
+- **`.github/workflows/push-build.yml`**：`push` / `pull_request` 到 `main` 且改动 `lib/**` 或 `rust/**` 时触发，并行构建 Android / Linux / Windows / macOS / iOS / HarmonyOS 产物为 artifact，**不发布 Release**。HarmonyOS job 直接 `uses: ./.github/workflows/ohos-build.yml`（复用同一份 HAP 构建逻辑），产物为未签名 `Breeze-ohos-arm64-release`。workflow 级 concurrency 只在 `pull_request` 上取消被新推送覆盖的旧构建，`main` 的推送互不取消（保证每个提交都有完整产物）。Android 构建前会安装 CMake 3.22.1，运行 `script/android/prepare_android_waifu2x_deps.py` 准备 OpenCV / libwebp 依赖，再依次运行 `script/android/build_ncnn_static_android.py` 与 `script/android/build_waifu2x_cli_android.py` 生成 `libwaifu2x_cli.so`；NCNN 模型不再随包打包，改为首次运行时下载。Windows 构建前会安装 Inno Setup 7，由 `script/build/build_windows.dart` 调用 `ISCC.exe` 生成安装包。
+- **`.github/workflows/ohos-build.yml`**：HAP 构建的唯一实现，既支持手动触发（`workflow_dispatch`，可选 `arch=arm64|x64`、`build_mode=release|debug`、入口文件），也被 `push-build.yml` / `release.yml` 通过 `workflow_call` 复用（`workflow_call` 输入只能是 string，非法值由 job 内「校验输入参数」步骤拦截）。使用官方 Flutter 3.50.0 跑脚本、OHOS Flutter `3.47.7+ohos-0.0.1-pre` 构建、`ErBWs/setup-ohos` 提供 CLI 26，并在 Rust 工具链步骤同时安装 `aarch64-unknown-linux-ohos` 与 `x86_64-unknown-linux-ohos`（只装一个会导致另一 arch 失败）。未签名 HAP 存在时脚本退出码非 0 也按成功处理，产物为 `Breeze-ohos-<arch>-<mode>` artifact。
+- **`.github/workflows/release.yml`**：手动触发（`workflow_dispatch`），输入版本号后构建 Android / Linux / Windows / macOS / iOS / HarmonyOS 产物，上传符号表到 Sentry，创建 GitHub Release，更新 Homebrew Cask / Flathub，并发送 Telegram 通知。HarmonyOS job 复用 `ohos-build.yml`（arm64 release），`publish` 把 HAP 改名为 `Breeze-ohos-arm64-<version>.hap` 后随 Release 发布，并在下载表格中标注「未签名」。同一版本号有 workflow 级 concurrency 兜底，避免重复触发。Android 构建前同样会准备 waifu2x CLI 依赖并编译 CLI。
 - **`.github/workflows/update-plugin-list.yml`**：每天定时从 `Breeze-plugin-list` 拉取插件名，更新 `README.md` / `README.en.md` 的插件列表标记区。
 - **`.github/workflows/update-tag-on-release.yml`**：Release 构建成功后触发，更新 `update-tag-version/latest-release.json` 并刷新 jsDelivr CDN tag（客户端插件/资源走该 tag 拉取）。
 - **`.github/workflows/release_to_telegram.yml`**：Release `published` 时触发，向 Telegram 发送版本消息与附件。
@@ -411,7 +411,7 @@ dart ./script/build/sign_ohos_hap.dart \
 1. 更新 `pubspec.yaml` 中的 `version`。
 2. 在 `CHANGELOG.md` 顶部按格式追加新版本日志（格式：`## [vX.Y.Z]`）。
 3. 提交并推送后手动触发 `release.yml`。
-4. OHOS：单独手动触发 `ohos-build.yml`（`arch=arm64`、`build_mode=release`），把生成的未签名 HAP 附加到 GitHub Release；不要试图在本地用 OpenHarmony 测试证书替代零售机可用的 release 签名。
+4. HarmonyOS 由 `release.yml` 里的 `build-ohos` job 复用 `ohos-build.yml` 自动构建并随 Release 发布（`Breeze-ohos-arm64-<version>.hap`），不需要再手动触发或附加；不要试图用 OpenHarmony 测试证书替代零售机可用的 release 签名。需要 x64 / debug / 其他入口时再单独手动跑 `ohos-build.yml`。
 
 ### 8.3 敏感文件
 
