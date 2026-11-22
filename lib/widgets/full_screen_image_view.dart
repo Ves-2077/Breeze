@@ -2,19 +2,18 @@ import 'dart:io';
 
 import 'package:auto_route/auto_route.dart';
 import 'package:file_selector/file_selector.dart';
-import 'package:material_ui/material_ui.dart';
 import 'package:gal/gal.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:path/path.dart' as p;
 import 'package:photo_view/photo_view.dart';
 import 'package:zephyr/config/global/global.dart';
 import 'package:zephyr/i18n/strings.g.dart';
+import 'package:zephyr/main.dart';
 import 'package:zephyr/page/comic_info/method/export_comic.dart';
 import 'package:zephyr/util/error/error_filter.dart';
-import 'package:zephyr/util/ohos/platform.dart';
 import 'package:zephyr/util/ohos/file_bridge.dart';
+import 'package:zephyr/util/ohos/platform.dart';
 import 'package:zephyr/widgets/toast.dart';
-
-import 'package:zephyr/main.dart';
 
 @RoutePage()
 class FullScreenImagePage extends StatelessWidget {
@@ -137,8 +136,8 @@ class FullScreenImagePage extends StatelessWidget {
       }
 
       // 检查是否已有相册写入权限，如果没有则申请
-      if (!await Gal.hasAccess()) {
-        await Gal.requestAccess();
+      if (!await Gal.hasPermission()) {
+        await Gal.requestPermission();
       }
 
       final inputFile = File(inputImagePath);
@@ -167,7 +166,7 @@ class FullScreenImagePage extends StatelessWidget {
     } on GalException catch (e) {
       logger.e("Gal 保存异常", error: e);
       // 根据 GalException 的类型给出更精确的提示
-      if (e.type == GalExceptionType.accessDenied) {
+      if (e.type == GalExceptionType.permissionDenied) {
         showErrorToast(t.reader.saveImagePermissionDenied);
       } else {
         showErrorToast(
