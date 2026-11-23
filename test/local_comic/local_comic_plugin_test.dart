@@ -3,7 +3,7 @@ import 'package:zephyr/main.dart';
 import 'package:zephyr/plugin/local_comic_plugin.dart';
 import 'package:zephyr/plugin/plugin_registry_service.dart';
 
-import 'test_helper.dart';
+import '../test_helper.dart';
 
 void main() {
   setUpAll(() async {

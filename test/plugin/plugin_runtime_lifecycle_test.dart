@@ -7,7 +7,7 @@ import 'package:zephyr/plugin/plugin_bytecode_cache.dart';
 import 'package:zephyr/plugin/plugin_registry_service.dart';
 import 'package:zephyr/src/rust/api/qjs.dart';
 
-import 'test_helper.dart';
+import '../test_helper.dart';
 
 const _successUuid = 'test-runtime-lifecycle-success';
 const _noInitUuid = 'test-runtime-lifecycle-no-init';

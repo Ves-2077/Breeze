@@ -9,7 +9,7 @@ import 'package:zephyr/page/comic_edit/view/comic_edit_page.dart';
 import 'package:zephyr/util/storage/get_path.dart';
 import 'package:zephyr/util/rust/rust_loader.dart';
 
-import 'test_helper.dart';
+import '../test_helper.dart';
 
 Map<String, dynamic> _detail() => <String, dynamic>{
   'comicInfo': <String, dynamic>{

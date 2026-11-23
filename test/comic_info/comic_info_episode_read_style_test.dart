@@ -7,7 +7,7 @@ import 'package:zephyr/page/comic_info/widgets/eps.dart';
 import 'package:zephyr/page/download/models/download_chapter.dart';
 import 'package:zephyr/type/enum.dart';
 
-import 'test_helper.dart';
+import '../test_helper.dart';
 
 void main() {
   setUpAll(TestDatabaseHelper.setUpTestDatabase);

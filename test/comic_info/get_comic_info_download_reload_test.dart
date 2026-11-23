@@ -7,7 +7,7 @@ import 'package:zephyr/object_box/model.dart';
 import 'package:zephyr/page/comic_info/bloc/get_comic_info_bloc.dart';
 import 'package:zephyr/type/enum.dart';
 
-import 'test_helper.dart';
+import '../test_helper.dart';
 
 Map<String, dynamic> _detail({
   required String title,

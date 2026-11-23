@@ -7,7 +7,7 @@ import 'package:zephyr/object_box/model.dart';
 import 'package:zephyr/page/discover/cubit/discover_cubit.dart';
 import 'package:zephyr/plugin/plugin_registry_service.dart';
 
-import 'test_helper.dart';
+import '../test_helper.dart';
 
 const _uuid = 'test-discover-no-init';
 

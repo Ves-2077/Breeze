@@ -5,7 +5,7 @@ import 'package:path/path.dart' as p;
 import 'package:zephyr/main.dart';
 import 'package:zephyr/page/setting/data_backup/backup_restore.dart';
 
-import 'test_helper.dart';
+import '../test_helper.dart';
 
 void main() {
   setUpAll(TestDatabaseHelper.setUpTestDatabase);

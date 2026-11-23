@@ -5,7 +5,7 @@ import 'package:zephyr/database/plugin_config.dart';
 import 'package:zephyr/main.dart';
 import 'package:zephyr/object_box/model.dart';
 
-import 'test_helper.dart';
+import '../test_helper.dart';
 
 /// 插件配置行为基线测试。
 ///

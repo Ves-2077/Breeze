@@ -4,7 +4,7 @@ import 'package:zephyr/object_box/model.dart';
 import 'package:zephyr/service/download/download_task_repository.dart';
 import 'package:zephyr/service/download/models/download_task_json.dart';
 
-import 'test_helper.dart';
+import '../test_helper.dart';
 
 DownloadTaskJson _payload({required int completed}) {
   return DownloadTaskJson(

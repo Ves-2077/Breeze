@@ -7,7 +7,7 @@ import 'package:zephyr/plugin/plugin_bytecode_cache.dart';
 import 'package:zephyr/plugin/plugin_registry_service.dart';
 import 'package:zephyr/src/rust/api/qjs.dart';
 
-import 'test_helper.dart';
+import '../test_helper.dart';
 
 const _hydratedUuid = 'test-info-db-hydrated';
 const _deletedUuid = 'test-info-db-deleted';

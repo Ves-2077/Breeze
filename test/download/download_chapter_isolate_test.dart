@@ -8,7 +8,7 @@ import 'package:zephyr/service/download/download_chapter_isolate.dart';
 import 'package:zephyr/service/download/download_task_repository.dart';
 import 'package:zephyr/util/async/worker_pool.dart';
 
-import 'test_helper.dart';
+import '../test_helper.dart';
 
 String _chaptersJson() => jsonEncode([
   {

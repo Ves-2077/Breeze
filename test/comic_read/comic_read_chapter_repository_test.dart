@@ -6,7 +6,7 @@ import 'package:zephyr/page/comic_read/model/normal_comic_ep_info.dart';
 import 'package:zephyr/service/reader/comic_read_chapter_repository.dart';
 import 'package:zephyr/service/reader/reader_history_service.dart';
 
-import 'test_helper.dart';
+import '../test_helper.dart';
 
 Future<void> _seedReadChapters() async {
   final repo = ComicReadChapterRepository.instance;

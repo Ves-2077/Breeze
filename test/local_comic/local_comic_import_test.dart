@@ -16,7 +16,7 @@ import 'package:zephyr/type/enum.dart';
 import 'package:zephyr/util/storage/get_path.dart';
 import 'package:zephyr/util/rust/rust_loader.dart';
 
-import 'test_helper.dart';
+import '../test_helper.dart';
 
 const _pngBase64 =
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8'

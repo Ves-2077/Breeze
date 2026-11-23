@@ -2,7 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:zephyr/main.dart';
 import 'package:zephyr/object_box/model.dart';
 
-import 'test_helper.dart';
+import '../test_helper.dart';
 
 void main() {
   setUpAll(TestDatabaseHelper.setUpTestDatabase);
