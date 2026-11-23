@@ -51,7 +51,7 @@ void main() {
     expect(restored.alwaysShowScrollbar, isFalse);
   });
 
-  testWidgets('AppScrollBehavior 按开关决定是否包 Scrollbar', (tester) async {
+  testWidgets('关闭滚动条时不包 Scrollbar', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
         scrollBehavior: const AppScrollBehavior(showScrollbar: false),
@@ -61,6 +61,69 @@ void main() {
       ),
     );
     expect(find.byType(Scrollbar), findsNothing);
+  });
+
+  testWidgets('Android 滚动条闲置后隐藏，淡出前可拖动', (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+
+    final controller = ScrollController();
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        scrollBehavior: const AppScrollBehavior(showScrollbar: true),
+        home: Scaffold(
+          body: ListView(
+            controller: controller,
+            children: const [SizedBox(height: 2000)],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final scrollbar = tester.widget<RawScrollbar>(find.byType(RawScrollbar));
+    expect(scrollbar.interactive, isTrue);
+    expect(scrollbar.thumbVisibility, isFalse, reason: '未开启“常驻”时，停止滚动后仍应自动隐藏');
+    expect(scrollbar.timeToFade, const Duration(seconds: 2));
+    expect(scrollbar.thickness, 6);
+
+    // 滚动后 thumb 淡入并保持 2s：此窗口内可直接按住拖动。
+    controller.jumpTo(200);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    final gesture = await tester.startGesture(const Offset(797, 150));
+    await tester.pump();
+    await gesture.moveBy(const Offset(0, 100));
+    await tester.pump();
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(controller.offset, greaterThan(200));
+
+    // 闲置超过 timeToFade 后隐藏；同样位置向下拖走的是列表而非 thumb。
+    controller.jumpTo(200);
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pumpAndSettle();
+    await tester.dragFrom(const Offset(797, 150), const Offset(0, 100));
+    await tester.pumpAndSettle();
+    expect(controller.offset, lessThan(200));
+  });
+
+  testWidgets('桌面端滚动条按常驻开关决定 thumb 是否常驻', (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        scrollBehavior: const AppScrollBehavior(showScrollbar: true),
+        home: Scaffold(
+          body: ListView(children: const [SizedBox(height: 2000)]),
+        ),
+      ),
+    );
+    var scrollbar = tester.widget<Scrollbar>(find.byType(Scrollbar));
+    expect(scrollbar.interactive, isNull);
+    expect(scrollbar.thumbVisibility, isFalse);
 
     await tester.pumpWidget(
       MaterialApp(
@@ -73,7 +136,7 @@ void main() {
         ),
       ),
     );
-    final scrollbar = tester.widget<Scrollbar>(find.byType(Scrollbar));
+    scrollbar = tester.widget<Scrollbar>(find.byType(Scrollbar));
     expect(scrollbar.thumbVisibility, isTrue);
     expect(scrollbar.thickness, 6);
   });

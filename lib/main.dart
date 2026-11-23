@@ -122,6 +122,28 @@ class AppScrollBehavior extends MaterialScrollBehavior {
         axisDirectionToAxis(details.direction) == Axis.horizontal) {
       return child;
     }
+    // 触摸平台没有 hover 唤出滚动条，且 Android 默认 interactive=false；
+    // 直接沿用 Material Scrollbar 还会在固定 600ms 后淡出，手指来不及按住。
+    // 因此移动端改用 RawScrollbar：闲置后照常隐藏，但把可见窗口延长到 2s，
+    // 期间可以直接拖动 thumb；“常驻”开关仍然控制是否永久显示。
+    if (isTouchScrollbarPlatform) {
+      final theme = Theme.of(context);
+      final thumbColor = theme.platform == TargetPlatform.android
+          ? theme.highlightColor
+          : theme.colorScheme.onSurface.withValues(
+              alpha: theme.brightness == Brightness.light ? 0.1 : 0.3,
+            );
+      return RawScrollbar(
+        controller: details.controller,
+        thumbVisibility: alwaysVisible,
+        interactive: true,
+        timeToFade: const Duration(seconds: 2),
+        thickness: 6,
+        radius: const Radius.circular(3),
+        thumbColor: thumbColor,
+        child: child,
+      );
+    }
     return Scrollbar(
       controller: details.controller,
       thumbVisibility: alwaysVisible,

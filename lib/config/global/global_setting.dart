@@ -160,13 +160,20 @@ GlobalSettingState _globalSettingState = const GlobalSettingState();
 
 GlobalSettingState get globalSetting => _globalSettingState;
 
-/// 滚动条显示开关的平台默认值：桌面端显示，移动端隐藏。
-bool get defaultShowScrollbar {
+/// 桌面平台（含 Web）：滚动条可以靠鼠标悬停重新唤出并拖动。
+bool get isDesktopScrollbarPlatform {
   if (kIsWeb) return true;
   return defaultTargetPlatform == TargetPlatform.windows ||
       defaultTargetPlatform == TargetPlatform.linux ||
       defaultTargetPlatform == TargetPlatform.macOS;
 }
+
+/// 触摸平台（Android / iOS / OHOS）：没有悬停唤出，且 Android 默认
+/// `interactive: false`，滚动停止后 thumb 既不可见也无法命中。
+bool get isTouchScrollbarPlatform => !isDesktopScrollbarPlatform;
+
+/// 滚动条显示开关的平台默认值：桌面端显示，移动端隐藏。
+bool get defaultShowScrollbar => isDesktopScrollbarPlatform;
 
 @freezed
 abstract class GlobalSettingState with _$GlobalSettingState {
