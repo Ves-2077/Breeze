@@ -113,3 +113,5 @@ native/generated/ir.json
 
 # 本地手动导入测试夹具（ffmpeg/zip/tar/7z/rar 生成，不提交）
 /test/fixtures/manual_import/
+
+.tmp/
