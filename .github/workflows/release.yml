@@ -39,7 +39,7 @@ jobs:
         run: |
           sudo rm -rf /opt/hostedtoolcache /usr/local/lib/android /usr/share/dotnet /opt/codeql
           sudo mkdir -p /usr/local/lib/android/sdk
-          sudo chown -R $USER:$USER /usr/local/lib/android 
+          sudo chown -R $USER:$USER /usr/local/lib/android
           docker system prune -a -f
           sudo apt-get clean
 
@@ -204,7 +204,7 @@ jobs:
       - name: 安装 Flatpak 构建环境
         run: |
           sudo apt-get update
-          sudo apt-get install -y flatpak flatpak-builder ninja-build libgtk-3-dev liblzma-dev libgcrypt20-dev libayatana-appindicator3-dev libwebkit2gtk-4.1-dev libcurl4-openssl-dev 
+          sudo apt-get install -y flatpak flatpak-builder ninja-build libgtk-3-dev liblzma-dev libgcrypt20-dev libayatana-appindicator3-dev libwebkit2gtk-4.1-dev libcurl4-openssl-dev
           flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
           flatpak install --user -y flathub org.freedesktop.Platform//24.08 org.freedesktop.Sdk//24.08
 
@@ -680,9 +680,8 @@ jobs:
             exit 1
           fi
           echo "| **Linux (DEB)** | [$DEB_FILE_NAME](https://github.com/$REPO/releases/download/$VERSION/$DEB_FILE_NAME) |" >> release_body.md
-          echo "| **HarmonyOS (未签名)** | [Breeze-ohos-arm64-${VERSION}.hap](https://github.com/$REPO/releases/download/$VERSION/Breeze-ohos-arm64-${VERSION}.hap) |" >> release_body.md
+          echo "| **HarmonyOS** | [Breeze-ohos-arm64-${VERSION}.hap](https://github.com/$REPO/releases/download/$VERSION/Breeze-ohos-arm64-${VERSION}.hap) |" >> release_body.md
           echo -e "\n> 💡 **不知道该下载哪个文件？**\n> 请查看 [详细安装指南](https://github.com/$REPO#-%E5%A6%82%E4%BD%95%E5%AE%89%E8%A3%85)。" >> release_body.md
-          echo "> ⚠️ **HarmonyOS HAP 未签名**（仅 arm64，最低 HarmonyOS 5.0.5(17)）：需要用自己设备信任的证书/profile 自签后安装，不能用 OpenHarmony 测试证书装零售机。" >> release_body.md
 
       - name: 创建 GitHub Release
         uses: softprops/action-gh-release@v3.0.0
