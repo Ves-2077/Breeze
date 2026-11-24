@@ -1458,7 +1458,7 @@ String searchBookmarkUniqueKey(
 ///
 /// 只记录“打开过阅读器”的章节，不做进度百分比；[uniqueKey] 复合唯一：
 /// `$source:$comicId:$chapterId`，同一章重复打开只更新 [readAt]。
-/// 本地记录，不参与云同步；随数据备份导出/导入。
+/// 参与云同步（同一章按 [updatedAt] 新覆盖旧），并随数据备份导出/导入。
 @JsonSerializable()
 class ComicReadChapter {
   int id;

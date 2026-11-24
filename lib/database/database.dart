@@ -12,6 +12,7 @@ import 'package:zephyr/database/repositories/reader_repository.dart';
 import 'package:zephyr/database/repositories/search_bookmark_repository.dart';
 import 'package:zephyr/database/repositories/unified_comic_repository.dart';
 import 'package:zephyr/database/repositories/user_setting_repository.dart';
+import 'package:zephyr/object_box/model.dart';
 import 'package:zephyr/util/async/worker_pool.dart';
 import 'package:zephyr/util/rust/rust_loader.dart';
 
@@ -88,8 +89,22 @@ class Database {
   Stream<Set<String>> get changes => db.changes;
 
   /// 数据备份/启动快照使用的全库 JSON（键名与旧 ObjectBox 备份保持兼容）。
-  Future<String> collectAllDataJson({bool removeIds = false}) {
+  ///
+  /// [includeDownloadFolders] 为 false 时不导出下载书架的文件夹和链接，
+  /// 用于“不包含已下载漫画”的备份；本机下载目录结构仍由导入方保留。
+  Future<String> collectAllDataJson({
+    bool removeIds = false,
+    bool includeDownloadFolders = true,
+  }) {
     return transaction((_) async {
+      final exportedFolders = await folders.getAll();
+      final exportedLinks = await links.getAll();
+      if (!includeDownloadFolders) {
+        final downloadType = ComicFolderType.download.name;
+        exportedFolders.removeWhere((item) => item.typeData == downloadType);
+        exportedLinks.removeWhere((item) => item.typeData == downloadType);
+      }
+
       Future<List<Map<String, dynamic>>> read<T>(
         Future<List<T>> future,
         Map<String, dynamic> Function(T value) toJson,
@@ -140,8 +155,14 @@ class Database {
           plugins.listInfosWithScripts(),
           (e) => e.toJson(),
         ),
-        'comicFolder': await read(folders.getAll(), (e) => e.toJson()),
-        'comicLink': await read(links.getAll(), (e) => e.toJson()),
+        'comicFolder': await read(
+          Future<List<ComicFolder>>.value(exportedFolders),
+          (e) => e.toJson(),
+        ),
+        'comicLink': await read(
+          Future<List<ComicLink>>.value(exportedLinks),
+          (e) => e.toJson(),
+        ),
         'comicReadPreference': await read(
           readPreferences.getAll(),
           (e) => e.toJson(),
@@ -159,10 +180,16 @@ class Database {
   Future<void> writeAllDataJsonFileAsync(
     String path, {
     bool removeIds = false,
+    bool includeDownloadFolders = true,
   }) {
     final handle = db.handle;
     return runInWorker(
-      () => _writeAllDataJsonFile(handle, path, removeIds: removeIds),
+      () => _writeAllDataJsonFile(
+        handle,
+        path,
+        removeIds: removeIds,
+        includeDownloadFolders: includeDownloadFolders,
+      ),
     );
   }
 
@@ -174,9 +201,12 @@ Future<void> _writeAllDataJsonFile(
   int handle,
   String path, {
   required bool removeIds,
+  required bool includeDownloadFolders,
 }) async {
   await initRustLib();
-  final json = await Database.fromHandle(handle)
-      .collectAllDataJson(removeIds: removeIds);
+  final json = await Database.fromHandle(handle).collectAllDataJson(
+    removeIds: removeIds,
+    includeDownloadFolders: includeDownloadFolders,
+  );
   await File(path).writeAsString(json);
 }

@@ -67,6 +67,7 @@ Future<String> exportBreezeBackup({
     await database.writeAllDataJsonFileAsync(
       p.join(tempDir.path, 'objectbox.json'),
       removeIds: true,
+      includeDownloadFolders: includeDownloads,
     );
 
     // 3. 调用 Rust 流式打包
@@ -242,11 +243,11 @@ Future<void> applyBreezeBackupImport(BackupConfig config) async {
 void _applyRestoredGlobalSetting(GlobalSettingState value) {
   final context = navigatorKey.currentContext;
   if (context != null && context.mounted) {
-    BlocProvider.of<GlobalSettingCubit>(context).applySyncedState(value);
+    BlocProvider.of<GlobalSettingCubit>(context).adoptRestoredState(value);
     return;
   }
   logger.w('备份恢复时未找到 GlobalSettingCubit，仅刷新进程内缓存');
-  GlobalSettingCubit().applySyncedState(value);
+  GlobalSettingCubit().adoptRestoredState(value);
 }
 
 /// 尽可能使用重命名移动目录；失败时回退到递归复制。

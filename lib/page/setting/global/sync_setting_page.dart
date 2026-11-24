@@ -5,6 +5,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:zephyr/config/global/global_setting.dart';
 import 'package:zephyr/i18n/strings.g.dart';
 import 'package:zephyr/main.dart';
+import 'package:zephyr/network/sync/comic_sync_core.dart';
 import 'package:zephyr/network/sync/sync_service.dart';
 import 'package:zephyr/page/comic_follow/cubit/comic_follow_cubit.dart';
 import 'package:zephyr/page/setting/common/setting_ui.dart';
@@ -12,6 +13,9 @@ import 'package:zephyr/page/setting/global/widgets.dart';
 import 'package:zephyr/util/event/event.dart';
 import 'package:zephyr/widgets/fluent_dropdown.dart';
 import 'package:zephyr/widgets/toast.dart';
+
+/// 自定义同步密钥的最小长度；空串仍表示使用默认密钥。
+const int _syncKeyMinLength = 8;
 
 @RoutePage()
 class SyncSettingPage extends StatefulWidget {
@@ -41,6 +45,7 @@ class _SyncSettingPageState extends State<SyncSettingPage> {
             icon: Icons.sync_outlined,
           ),
           _syncServiceType(state, cubit),
+          _encryptionKey(state, cubit),
           webdavSync(context, state.syncSetting.syncServiceType),
           if (configuredSync) _autoSync(state, cubit),
           if (configuredSync && state.syncSetting.autoSync)
@@ -80,20 +85,60 @@ class _SyncSettingPageState extends State<SyncSettingPage> {
     final cubit = context.read<GlobalSettingCubit>();
     setState(() => _uploading = true);
     try {
-      await manualUploadToCloud(
-        state: cubit.state,
-        globalSettingCubit: cubit,
-        comicFollowCubit: context.read<ComicFollowCubit>(),
-      );
+      try {
+        await manualUploadToCloud(
+          state: cubit.state,
+          globalSettingCubit: cubit,
+          comicFollowCubit: context.read<ComicFollowCubit>(),
+        );
+      } on SyncDecryptionException {
+        final confirmed = await _confirmOverwriteCloud();
+        if (!mounted || confirmed != true) {
+          return;
+        }
+        await manualUploadToCloud(
+          state: cubit.state,
+          globalSettingCubit: cubit,
+          comicFollowCubit: context.read<ComicFollowCubit>(),
+          forceOverwrite: true,
+        );
+      }
       if (mounted) showSuccessToast(t.settings.manualUploadSuccess);
     } catch (e, s) {
       logger.e('手动上传失败', error: e, stackTrace: s);
       if (mounted) {
-        showErrorToast('${t.settings.manualSyncFailed}: $e');
+        if (e is SyncDecryptionException) {
+          showErrorToast(
+            t.settings.syncKeyErrorCannotDecrypt,
+            title: t.settings.syncKeyErrorTitle,
+          );
+        } else {
+          showErrorToast('${t.settings.manualSyncFailed}: $e');
+        }
       }
     } finally {
       if (mounted) setState(() => _uploading = false);
     }
+  }
+
+  Future<bool?> _confirmOverwriteCloud() {
+    return showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(t.settings.syncKeyErrorTitle),
+        content: Text(t.settings.syncKeyOverwriteConfirm),
+        actions: [
+          TextButton(
+            child: Text(t.common.cancel),
+            onPressed: () => Navigator.pop(context, false),
+          ),
+          TextButton(
+            child: Text(t.settings.syncKeyContinueUpload),
+            onPressed: () => Navigator.pop(context, true),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _manualDownload() async {
@@ -109,7 +154,14 @@ class _SyncSettingPageState extends State<SyncSettingPage> {
     } catch (e, s) {
       logger.e('手动下载失败', error: e, stackTrace: s);
       if (mounted) {
-        showErrorToast('${t.settings.manualSyncFailed}: $e');
+        if (e is SyncDecryptionException) {
+          showErrorToast(
+            t.settings.syncKeyErrorCannotDecrypt,
+            title: t.settings.syncKeyErrorTitle,
+          );
+        } else {
+          showErrorToast('${t.settings.manualSyncFailed}: $e');
+        }
       }
     } finally {
       if (mounted) setState(() => _downloading = false);
@@ -136,6 +188,95 @@ class _SyncSettingPageState extends State<SyncSettingPage> {
             )
           : FilledButton.tonal(onPressed: onPressed, child: Text(actionLabel)),
     );
+  }
+
+  Widget _encryptionKey(GlobalSettingState state, GlobalSettingCubit cubit) {
+    final key = state.syncSetting.encryptionKey;
+    return ListTile(
+      leading: const Icon(Icons.key_outlined),
+      title: Text(t.settings.customEncryptionKey),
+      subtitle: Text(
+        key.isEmpty
+            ? t.settings.customEncryptionKeyDefault
+            : t.settings.customEncryptionKeySet,
+      ),
+      trailing: const Icon(Icons.chevron_right),
+      onTap: () => _editEncryptionKey(state.syncSetting, cubit),
+    );
+  }
+
+  Future<void> _editEncryptionKey(
+    SyncSettingState syncSetting,
+    GlobalSettingCubit cubit,
+  ) async {
+    var input = syncSetting.encryptionKey;
+    final formKey = GlobalKey<FormState>();
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(t.settings.customEncryptionKey),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Form(
+              key: formKey,
+              child: TextFormField(
+                initialValue: input,
+                autofocus: true,
+                enableSuggestions: false,
+                autocorrect: false,
+                decoration: InputDecoration(
+                  labelText: t.settings.customEncryptionKeyHint,
+                  border: const OutlineInputBorder(),
+                ),
+                onChanged: (value) => input = value,
+                validator: (value) {
+                  final raw = value ?? '';
+                  // 旧密钥可能不满足新规则；原样不改时直接放行。
+                  if (raw == syncSetting.encryptionKey) return null;
+                  if (raw.isEmpty) return null;
+                  if (raw.contains(RegExp(r'\s'))) {
+                    return t.settings.customEncryptionKeyNoSpaces;
+                  }
+                  if (raw.length < _syncKeyMinLength) {
+                    return t.settings.customEncryptionKeyTooShort(
+                      min: _syncKeyMinLength,
+                    );
+                  }
+                  return null;
+                },
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              t.settings.customEncryptionKeySubtitle,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            child: Text(t.common.cancel),
+            onPressed: () => Navigator.pop(context),
+          ),
+          TextButton(
+            child: Text(t.common.ok),
+            onPressed: () {
+              if (formKey.currentState?.validate() != true) return;
+              Navigator.pop(context, input);
+            },
+          ),
+        ],
+      ),
+    );
+    if (result == null || result == syncSetting.encryptionKey) {
+      return;
+    }
+    cubit.updateSyncSetting(
+      (current) => current.copyWith(encryptionKey: result),
+    );
+    showSuccessToast(t.settings.customEncryptionKeyChanged);
   }
 
   Widget _syncServiceType(GlobalSettingState state, GlobalSettingCubit cubit) {

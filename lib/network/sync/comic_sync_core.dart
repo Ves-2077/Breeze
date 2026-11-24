@@ -17,6 +17,18 @@ import 'package:zephyr/util/rust/rust_loader.dart';
 
 const String syncDataVersion = 'v1';
 
+/// 云端同步数据无法用当前密钥解密。
+///
+/// UI 捕获后应提示密钥错误；手动上传需要用户确认后才能覆盖云端。
+class SyncDecryptionException implements Exception {
+  const SyncDecryptionException([this.message = '同步数据解密失败，请检查自定义同步密钥']);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
 enum _VectorRelation { equal, leftDominates, rightDominates, conflict }
 
 abstract class ComicSyncRemoteAdapter {
@@ -124,12 +136,18 @@ class ComicSyncCore {
     return md5.convert(data).toString();
   }
 
-  static Future<List<int>> buildCompressedPayload() {
+  static Future<List<int>> buildCompressedPayload({String passphrase = ''}) {
     final handle = database.db.handle;
-    return runInIsolate(_buildCompressedPayloadInWorker, handle);
+    return runInIsolate(_buildCompressedPayloadInWorker, (
+      handle: handle,
+      passphrase: passphrase,
+    ));
   }
 
-  static Future<List<int>> _buildCompressedPayload(Database db) async {
+  static Future<List<int>> _buildCompressedPayload(
+    Database db, {
+    required String passphrase,
+  }) async {
     final favorites = await db.favorites.getAll();
     favorites.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
 
@@ -141,6 +159,9 @@ class ComicSyncCore {
 
     final readPreferences = await db.readPreferences.getAll();
     readPreferences.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+
+    final readChapters = await db.readChapters.getAll();
+    readChapters.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
 
     final folders = (await db.folders.getAll())
         .where(
@@ -167,41 +188,107 @@ class ComicSyncCore {
       'readPreferences': readPreferences
           .map((e) => _stripLocalId(e.toJson()))
           .toList(),
+      'readChapters': readChapters
+          .map((e) => _stripLocalId(e.toJson()))
+          .toList(),
     };
 
     final raw = utf8.encode(jsonEncode(data));
-    return encodeEncryptedPayload(raw);
+    return encodeEncryptedPayload(raw, passphrase: passphrase);
   }
 
   static Future<Map<String, dynamic>> decodeCompressedPayload(
-    List<int> encryptedCompressedBytes,
-  ) {
-    return runInIsolate(
-      _decodeCompressedPayloadInWorker,
-      encryptedCompressedBytes,
+    List<int> encryptedCompressedBytes, {
+    String passphrase = '',
+  }) {
+    return runInIsolate(_decodeCompressedPayloadInWorker, (
+      bytes: encryptedCompressedBytes,
+      passphrase: passphrase,
+    ));
+  }
+
+  /// 只验证云端漫画数据能否用当前密钥解密，不合并、不上传。
+  static Future<void> verifyRemoteComicDecryptable(
+    ComicSyncRemoteAdapter adapter, {
+    String passphrase = '',
+  }) async {
+    final allRemoteFiles = await adapter.listRemoteDataFiles();
+    final syncRootFiles = allRemoteFiles.where(isSyncRootPath).toList();
+    final remoteMd5 = await adapter.downloadRemoteMd5();
+    final remoteData = await _selectLatestRemoteComicData(
+      adapter,
+      syncRootFiles,
+      remoteMd5,
     );
+    if (remoteData == null) {
+      return;
+    }
+    try {
+      await decodeCompressedPayload(remoteData.bytes, passphrase: passphrase);
+    } catch (_) {
+      throw const SyncDecryptionException();
+    }
   }
 
   static Future<Map<String, dynamic>> _decodeCompressedPayload(
-    List<int> encryptedCompressedBytes,
-  ) async {
-    final raw = await decodeEncryptedPayload(encryptedCompressedBytes);
+    List<int> encryptedCompressedBytes, {
+    required String passphrase,
+  }) async {
+    final raw = await decodeEncryptedPayload(
+      encryptedCompressedBytes,
+      passphrase: passphrase,
+    );
     final jsonString = utf8.decode(raw);
     return jsonDecode(jsonString) as Map<String, dynamic>;
   }
 
-  static Future<List<int>> encodeEncryptedPayload(List<int> raw) async {
+  static Future<List<int>> encodeEncryptedPayload(
+    List<int> raw, {
+    String passphrase = '',
+  }) async {
     final compressed = await compressExtreme(data: raw);
-    final encrypted = _encryptBytes(compressed);
+    final encrypted = _encryptBytes(compressed, passphrase);
     return encrypted;
   }
 
   static Future<List<int>> decodeEncryptedPayload(
+    List<int> encryptedCompressedBytes, {
+    String passphrase = '',
+  }) async {
+    if (passphrase.isEmpty) {
+      try {
+        return await _decodeEncryptedPayloadWithPassphrase(
+          encryptedCompressedBytes,
+          '',
+        );
+      } catch (_) {
+        throw const SyncDecryptionException();
+      }
+    }
+    try {
+      return await _decodeEncryptedPayloadWithPassphrase(
+        encryptedCompressedBytes,
+        passphrase,
+      );
+    } catch (_) {
+      // 兼容旧数据：旧版本固定使用默认密钥，读取失败时回退一次。
+      try {
+        return await _decodeEncryptedPayloadWithPassphrase(
+          encryptedCompressedBytes,
+          '',
+        );
+      } catch (_) {
+        throw const SyncDecryptionException();
+      }
+    }
+  }
+
+  static Future<List<int>> _decodeEncryptedPayloadWithPassphrase(
     List<int> encryptedCompressedBytes,
+    String passphrase,
   ) async {
-    final compressed = _decryptBytes(encryptedCompressedBytes);
-    final raw = await decompressExtreme(data: compressed);
-    return raw;
+    final compressed = _decryptBytes(encryptedCompressedBytes, passphrase);
+    return decompressExtreme(data: compressed);
   }
 
   /// 合并云端漫画数据到本地库。
@@ -230,6 +317,7 @@ class ComicSyncCore {
     var localFolders = await database.folders.getAll();
     var localLinks = await database.links.getAll();
     final localReadPreferences = await database.readPreferences.getAll();
+    final localReadChapters = await database.readChapters.getAll();
 
     final cloudFavorites = _parseJsonList(data['favorites'])
         .map(UnifiedComicFavorite.fromJson)
@@ -240,14 +328,21 @@ class ComicSyncCore {
     final cloudFollows = _parseJsonList(data['follows'])
         .map(ComicFollow.fromJson)
         .toList();
+    // 下载书架只属于本机：上传时已过滤，读取旧云端数据时也忽略。
+    final downloadType = ComicFolderType.download.name;
     var cloudFolders = _parseJsonList(data['folders'])
         .map(ComicFolder.fromJson)
+        .where((item) => item.typeData != downloadType)
         .toList();
     var cloudLinks = _parseJsonList(data['links'])
         .map(ComicLink.fromJson)
+        .where((item) => item.typeData != downloadType)
         .toList();
     final cloudReadPreferences = _parseJsonList(data['readPreferences'])
         .map(ComicReadPreference.fromJson)
+        .toList();
+    final cloudReadChapters = _parseJsonList(data['readChapters'])
+        .map(ComicReadChapter.fromJson)
         .toList();
 
     // 旧数据可能没有 syncId，先兜底补一遍，确保后续按 syncId 合并能正常进行。
@@ -279,6 +374,13 @@ class ComicSyncCore {
     final mergedReadPreferences = _mergeByUniqueKey(
       localReadPreferences,
       cloudReadPreferences,
+      keyOf: (item) => item.uniqueKey,
+      updatedAtOf: (item) => item.updatedAt,
+    );
+    // 已读章节：同一章按 updatedAt 新覆盖旧，未在云端出现过的本地章节保留。
+    final mergedReadChapters = _mergeByUniqueKey(
+      localReadChapters,
+      cloudReadChapters,
       keyOf: (item) => item.uniqueKey,
       updatedAtOf: (item) => item.updatedAt,
     );
@@ -363,6 +465,9 @@ class ComicSyncCore {
     for (final item in mergedReadPreferences) {
       item.id = 0;
     }
+    for (final item in mergedReadChapters) {
+      item.id = 0;
+    }
     for (final item in mergedFolders) {
       item.id = 0;
     }
@@ -377,6 +482,7 @@ class ComicSyncCore {
       await database.folders.removeAll();
       await database.links.removeAll();
       await database.readPreferences.removeAll();
+      await database.readChapters.removeAll();
 
       if (mergedFavorites.isNotEmpty) {
         await database.favorites.putMany(mergedFavorites);
@@ -389,6 +495,9 @@ class ComicSyncCore {
       }
       if (mergedReadPreferences.isNotEmpty) {
         await database.readPreferences.putMany(mergedReadPreferences);
+      }
+      if (mergedReadChapters.isNotEmpty) {
+        await database.readChapters.putMany(mergedReadChapters);
       }
       if (mergedFolders.isNotEmpty) {
         await database.folders.putMany(mergedFolders);
@@ -403,7 +512,8 @@ class ComicSyncCore {
         mergedFollows.length +
         mergedFolders.length +
         mergedLinks.length +
-        mergedReadPreferences.length;
+        mergedReadPreferences.length +
+        mergedReadChapters.length;
   }
 
   static String extractFileName(String remotePath) {
@@ -1133,16 +1243,34 @@ class ComicSyncCore {
     }
   }
 
-  static List<int> _encryptBytes(List<int> bytes) {
-    final key = Key.fromUtf8('XY!Ex3j3hP^BGPFanYEjBA!L!oD2kkCN');
-    final iv = IV.fromUtf8('7qFwTxwH&iyuw35f');
+  static const String _defaultEncryptionKey =
+      'XY!Ex3j3hP^BGPFanYEjBA!L!oD2kkCN';
+  static const String _defaultEncryptionIv = '7qFwTxwH&iyuw35f';
+
+  static (Key, IV) _keyMaterial(String passphrase) {
+    if (passphrase.isEmpty) {
+      return (
+        Key.fromUtf8(_defaultEncryptionKey),
+        IV.fromUtf8(_defaultEncryptionIv),
+      );
+    }
+    final keyBytes = Uint8List.fromList(
+      sha256.convert(utf8.encode(passphrase)).bytes,
+    );
+    final ivBytes = Uint8List.fromList(
+      sha256.convert(utf8.encode('$passphrase\u0000iv')).bytes.sublist(0, 16),
+    );
+    return (Key(keyBytes), IV(ivBytes));
+  }
+
+  static List<int> _encryptBytes(List<int> bytes, String passphrase) {
+    final (key, iv) = _keyMaterial(passphrase);
     final encrypter = Encrypter(AES(key, mode: AESMode.ctr));
     return encrypter.encryptBytes(bytes, iv: iv).bytes;
   }
 
-  static List<int> _decryptBytes(List<int> bytes) {
-    final key = Key.fromUtf8('XY!Ex3j3hP^BGPFanYEjBA!L!oD2kkCN');
-    final iv = IV.fromUtf8('7qFwTxwH&iyuw35f');
+  static List<int> _decryptBytes(List<int> bytes, String passphrase) {
+    final (key, iv) = _keyMaterial(passphrase);
     final encrypter = Encrypter(AES(key, mode: AESMode.ctr));
     return encrypter.decryptBytes(Encrypted(Uint8List.fromList(bytes)), iv: iv);
   }
@@ -1156,11 +1284,16 @@ class ComicSyncCore {
   static final RegExp _settingsDataRegex = RegExp(r'^settings_(\d+)\.bin$');
 }
 
-Future<void> runComicSync(ComicSyncRemoteAdapter adapter) async {
+Future<void> runComicSync(
+  ComicSyncRemoteAdapter adapter, {
+  String passphrase = '',
+}) async {
   await adapter.testConnection();
   await adapter.ensureRemoteReady();
 
-  final localPayload = await ComicSyncCore.buildCompressedPayload();
+  final localPayload = await ComicSyncCore.buildCompressedPayload(
+    passphrase: passphrase,
+  );
   final localMd5 = ComicSyncCore.calculateMd5(localPayload);
 
   final allRemoteFiles = await adapter.listRemoteDataFiles();
@@ -1198,16 +1331,24 @@ Future<void> runComicSync(ComicSyncRemoteAdapter adapter) async {
   );
 
   if (remoteData != null) {
-    final cloudData = await ComicSyncCore.decodeCompressedPayload(
-      remoteData.bytes,
-    );
+    final Map<String, dynamic> cloudData;
+    try {
+      cloudData = await ComicSyncCore.decodeCompressedPayload(
+        remoteData.bytes,
+        passphrase: passphrase,
+      );
+    } catch (_) {
+      throw const SyncDecryptionException();
+    }
     final count = await ComicSyncCore.mergeUnifiedData(database, cloudData);
     logger.d(
       '[sync][comic] decision=apply_remote remoteFile=${remoteData.path} mergedCount=$count',
     );
   }
 
-  final currentPayload = await ComicSyncCore.buildCompressedPayload();
+  final currentPayload = await ComicSyncCore.buildCompressedPayload(
+    passphrase: passphrase,
+  );
   final currentMd5 = ComicSyncCore.calculateMd5(currentPayload);
   if (currentMd5 == remoteMd5 && remoteData != null) {
     logger.d('[sync][comic] decision=skip_upload reason=post_merge_md5_equal');
@@ -1228,11 +1369,16 @@ Future<void> runComicSync(ComicSyncRemoteAdapter adapter) async {
 }
 
 /// 手动上传：以本机漫画数据为准，直接覆盖云端（不做合并）。
-Future<void> uploadComicData(ComicSyncRemoteAdapter adapter) async {
+Future<void> uploadComicData(
+  ComicSyncRemoteAdapter adapter, {
+  String passphrase = '',
+}) async {
   await adapter.testConnection();
   await adapter.ensureRemoteReady();
 
-  final localPayload = await ComicSyncCore.buildCompressedPayload();
+  final localPayload = await ComicSyncCore.buildCompressedPayload(
+    passphrase: passphrase,
+  );
   final localMd5 = ComicSyncCore.calculateMd5(localPayload);
   final uploadFile = ComicSyncCore.buildComicDataFileName();
   await adapter.uploadRemoteFile(uploadFile, localPayload);
@@ -1249,7 +1395,10 @@ Future<void> uploadComicData(ComicSyncRemoteAdapter adapter) async {
 /// 手动下载：把云端漫画数据合并到本机（不主动回传）。
 ///
 /// 返回 false 表示云端还没有可用的漫画数据。
-Future<bool> downloadComicData(ComicSyncRemoteAdapter adapter) async {
+Future<bool> downloadComicData(
+  ComicSyncRemoteAdapter adapter, {
+  String passphrase = '',
+}) async {
   await adapter.testConnection();
   await adapter.ensureRemoteReady();
 
@@ -1268,9 +1417,15 @@ Future<bool> downloadComicData(ComicSyncRemoteAdapter adapter) async {
     return false;
   }
 
-  final cloudData = await ComicSyncCore.decodeCompressedPayload(
-    remoteData.bytes,
-  );
+  final Map<String, dynamic> cloudData;
+  try {
+    cloudData = await ComicSyncCore.decodeCompressedPayload(
+      remoteData.bytes,
+      passphrase: passphrase,
+    );
+  } catch (_) {
+    throw const SyncDecryptionException();
+  }
   await ComicSyncCore.mergeUnifiedData(database, cloudData);
   logger.d('[sync][comic] manual_download file=${remoteData.path}');
   return true;
@@ -1359,9 +1514,14 @@ class _SyncMergeTask {
   final String deviceId;
 }
 
-Future<List<int>> _buildCompressedPayloadInWorker(int handle) async {
+Future<List<int>> _buildCompressedPayloadInWorker(
+  ({int handle, String passphrase}) task,
+) async {
   await initRustLib();
-  return ComicSyncCore._buildCompressedPayload(Database.fromHandle(handle));
+  return ComicSyncCore._buildCompressedPayload(
+    Database.fromHandle(task.handle),
+    passphrase: task.passphrase,
+  );
 }
 
 Future<int> _mergeUnifiedDataInWorker(_SyncMergeTask task) async {
@@ -1376,8 +1536,11 @@ Future<int> _mergeUnifiedDataInWorker(_SyncMergeTask task) async {
 }
 
 Future<Map<String, dynamic>> _decodeCompressedPayloadInWorker(
-  List<int> bytes,
+  ({List<int> bytes, String passphrase}) task,
 ) async {
   await initRustLib();
-  return ComicSyncCore._decodeCompressedPayload(bytes);
+  return ComicSyncCore._decodeCompressedPayload(
+    task.bytes,
+    passphrase: task.passphrase,
+  );
 }

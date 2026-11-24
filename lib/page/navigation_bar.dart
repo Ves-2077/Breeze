@@ -23,6 +23,7 @@ import 'package:zephyr/widgets/memory/memory_overlay_widget.dart';
 import 'package:zephyr/widgets/toast.dart';
 
 import 'package:zephyr/main.dart';
+import 'package:zephyr/network/sync/comic_sync_core.dart';
 import 'package:zephyr/network/sync/sync_service.dart';
 import 'package:zephyr/util/async/debouncer.dart';
 import 'package:zephyr/util/device/responsive.dart';
@@ -443,9 +444,16 @@ class _NavigationBarState extends State<NavigationBar> {
         }
       } catch (e, stackTrace) {
         logger.e(e.toString(), stackTrace: stackTrace);
+        final isKeyError = e is SyncDecryptionException;
         showErrorToast(
-          t.navigation.syncFailedMessage(error: normalizeSearchErrorMessage(e)),
-          title: force ? t.navigation.syncFailed : t.navigation.autoSyncFailed,
+          isKeyError
+              ? t.settings.syncKeyErrorCannotDecrypt
+              : t.navigation.syncFailedMessage(
+                  error: normalizeSearchErrorMessage(e),
+                ),
+          title: isKeyError
+              ? t.settings.syncKeyErrorTitle
+              : (force ? t.navigation.syncFailed : t.navigation.autoSyncFailed),
         );
       }
     } finally {

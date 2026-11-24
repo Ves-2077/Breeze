@@ -683,8 +683,44 @@ class Translations$settings$zh_CN {
 	/// zh-CN: '同步设置'
 	String get syncSettings => '同步设置';
 
-	/// zh-CN: '开启后使用云端设置覆盖本地设置'
-	String get syncSettingsSubtitle => '开启后使用云端设置覆盖本地设置';
+	/// zh-CN: '开启后按每个设置项自己的修改时间同步'
+	String get syncSettingsSubtitle => '开启后按每个设置项自己的修改时间同步';
+
+	/// zh-CN: '自定义同步密钥'
+	String get customEncryptionKey => '自定义同步密钥';
+
+	/// zh-CN: '未设置，使用默认密钥'
+	String get customEncryptionKeyDefault => '未设置，使用默认密钥';
+
+	/// zh-CN: '已设置'
+	String get customEncryptionKeySet => '已设置';
+
+	/// zh-CN: '所有设备必须使用相同密钥，至少 8 位且不能包含空格；留空使用默认密钥以兼容旧数据，修改后需手动上传覆盖云端'
+	String get customEncryptionKeySubtitle => '所有设备必须使用相同密钥，至少 8 位且不能包含空格；留空使用默认密钥以兼容旧数据，修改后需手动上传覆盖云端';
+
+	/// zh-CN: '输入同步密钥，留空使用默认密钥'
+	String get customEncryptionKeyHint => '输入同步密钥，留空使用默认密钥';
+
+	/// zh-CN: '同步密钥已更新'
+	String get customEncryptionKeyChanged => '同步密钥已更新';
+
+	/// zh-CN: '同步密钥至少需要 $min 位'
+	String customEncryptionKeyTooShort({required Object min}) => '同步密钥至少需要 ${min} 位';
+
+	/// zh-CN: '同步密钥不能包含空格'
+	String get customEncryptionKeyNoSpaces => '同步密钥不能包含空格';
+
+	/// zh-CN: '密钥错误'
+	String get syncKeyErrorTitle => '密钥错误';
+
+	/// zh-CN: '当前密钥无法解密云端数据，请在同步设置中检查自定义同步密钥'
+	String get syncKeyErrorCannotDecrypt => '当前密钥无法解密云端数据，请在同步设置中检查自定义同步密钥';
+
+	/// zh-CN: '当前密钥无法解密云端数据。继续上传会用本机数据覆盖云端，远端旧数据将无法恢复。是否继续？'
+	String get syncKeyOverwriteConfirm => '当前密钥无法解密云端数据。继续上传会用本机数据覆盖云端，远端旧数据将无法恢复。是否继续？';
+
+	/// zh-CN: '继续上传'
+	String get syncKeyContinueUpload => '继续上传';
 
 	/// zh-CN: '同步插件'
 	String get syncPlugins => '同步插件';
@@ -698,14 +734,14 @@ class Translations$settings$zh_CN {
 	/// zh-CN: '上传到云端'
 	String get uploadToCloud => '上传到云端';
 
-	/// zh-CN: '以本机数据为准，覆盖云端'
-	String get uploadToCloudSubtitle => '以本机数据为准，覆盖云端';
+	/// zh-CN: '漫画以本机覆盖云端；设置与插件按各项修改时间同步'
+	String get uploadToCloudSubtitle => '漫画以本机覆盖云端；设置与插件按各项修改时间同步';
 
 	/// zh-CN: '从云端同步到本机'
 	String get downloadFromCloud => '从云端同步到本机';
 
-	/// zh-CN: '以云端数据为准，应用到本机'
-	String get downloadFromCloudSubtitle => '以云端数据为准，应用到本机';
+	/// zh-CN: '漫画合并到本机；设置与插件按各项修改时间同步'
+	String get downloadFromCloudSubtitle => '漫画合并到本机；设置与插件按各项修改时间同步';
 
 	/// zh-CN: '立即上传'
 	String get manualUpload => '立即上传';
@@ -4628,14 +4664,26 @@ extension on Translations {
 			'settings.syncNotify' => '自动同步通知',
 			'settings.syncNotifySubtitle' => '开启后在同步开始与完成时提醒',
 			'settings.syncSettings' => '同步设置',
-			'settings.syncSettingsSubtitle' => '开启后使用云端设置覆盖本地设置',
+			'settings.syncSettingsSubtitle' => '开启后按每个设置项自己的修改时间同步',
+			'settings.customEncryptionKey' => '自定义同步密钥',
+			'settings.customEncryptionKeyDefault' => '未设置，使用默认密钥',
+			'settings.customEncryptionKeySet' => '已设置',
+			'settings.customEncryptionKeySubtitle' => '所有设备必须使用相同密钥，至少 8 位且不能包含空格；留空使用默认密钥以兼容旧数据，修改后需手动上传覆盖云端',
+			'settings.customEncryptionKeyHint' => '输入同步密钥，留空使用默认密钥',
+			'settings.customEncryptionKeyChanged' => '同步密钥已更新',
+			'settings.customEncryptionKeyTooShort' => ({required Object min}) => '同步密钥至少需要 ${min} 位',
+			'settings.customEncryptionKeyNoSpaces' => '同步密钥不能包含空格',
+			'settings.syncKeyErrorTitle' => '密钥错误',
+			'settings.syncKeyErrorCannotDecrypt' => '当前密钥无法解密云端数据，请在同步设置中检查自定义同步密钥',
+			'settings.syncKeyOverwriteConfirm' => '当前密钥无法解密云端数据。继续上传会用本机数据覆盖云端，远端旧数据将无法恢复。是否继续？',
+			'settings.syncKeyContinueUpload' => '继续上传',
 			'settings.syncPlugins' => '同步插件',
 			'settings.syncPluginsSubtitle' => '开启后同步插件配置与安装状态',
 			'settings.manualSyncSection' => '手动同步',
 			'settings.uploadToCloud' => '上传到云端',
-			'settings.uploadToCloudSubtitle' => '以本机数据为准，覆盖云端',
+			'settings.uploadToCloudSubtitle' => '漫画以本机覆盖云端；设置与插件按各项修改时间同步',
 			'settings.downloadFromCloud' => '从云端同步到本机',
-			'settings.downloadFromCloudSubtitle' => '以云端数据为准，应用到本机',
+			'settings.downloadFromCloudSubtitle' => '漫画合并到本机；设置与插件按各项修改时间同步',
 			'settings.manualUpload' => '立即上传',
 			'settings.manualDownload' => '立即同步',
 			'settings.manualUploadSuccess' => '已上传到云端',
@@ -4942,6 +4990,8 @@ extension on Translations {
 			'comicEdit.volumeUpdated' => '分卷已更新',
 			'comicEdit.imageMissing' => '图片文件缺失',
 			'comicEdit.busy' => '处理中...',
+			_ => null,
+		} ?? switch (path) {
 			'comicEdit.notFound' => '下载记录不存在',
 			'comicEdit.loadFailed' => '加载失败',
 			'comicInfo.follow' => '加入追更',
@@ -4954,8 +5004,6 @@ extension on Translations {
 			'comicInfo.removingCloudCollection' => '取消云收藏中...',
 			'comicInfo.cloudCollectSuccess' => '云收藏成功',
 			'comicInfo.cloudUncollectSuccess' => '已取消云收藏',
-			_ => null,
-		} ?? switch (path) {
 			'comicInfo.cloudCollectIncomplete' => '云收藏操作未完成',
 			'comicInfo.discontinued' => '此漫画已下架',
 			'comicInfo.likes' => ({required Object count}) => '点赞 ${count}',
@@ -5456,6 +5504,8 @@ extension on Translations {
 			'realSr.coremlStatusFillInput' => '请填写输入图片路径',
 			'realSr.coremlStatusNoModelFile' => '当前模型族没有可用的模型文件',
 			'realSr.coremlStatusPreparing' => '正在准备资源...',
+			_ => null,
+		} ?? switch (path) {
 			'realSr.coremlStatusUpscaling' => '正在超分...',
 			'realSr.coremlStatusDone' => ({required Object outputPath, required Object size}) => '完成\n${outputPath}\nsize: ${size} bytes',
 			'realSr.coremlStatusFailed' => ({required Object error}) => '失败: ${error}',
@@ -5468,8 +5518,6 @@ extension on Translations {
 			'about.fetchFailed' => '获取失败',
 			'about.networkError' => '网络错误',
 			'about.projectAddress' => '项目地址',
-			_ => null,
-		} ?? switch (path) {
 			'about.projectAddressDesc' => '喜欢这个项目吗？点个star支持一下吧！',
 			'about.projectLink' => '前往 GitHub 仓库 (breeze-project-org/Breeze) ⭐',
 			'about.contact' => '联系方式',

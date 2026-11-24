@@ -192,9 +192,33 @@ class ComicReadChapterRepository {
     return value.id;
   }
 
+  Future<List<int>> putMany(List<ComicReadChapter> values) async {
+    if (values.isEmpty) return const <int>[];
+    return db.transaction((tx) async {
+      final ids = <int>[];
+      for (final value in values) {
+        ids.add(await _putInTx(tx, value));
+      }
+      return ids;
+    });
+  }
+
   Future<int> removeAll() async {
     final result = await db.execute('DELETE FROM "ComicReadChapter"');
     return result.changes;
+  }
+
+  Future<int> _putInTx(DbTransaction tx, ComicReadChapter value) async {
+    if (value.id > 0) {
+      await tx.execute(_chapterUpsert, _params(value, includeId: true));
+      return value.id;
+    }
+    final result = await tx.execute(
+      _chapterInsert,
+      _params(value, includeId: false),
+    );
+    value.id = result.lastInsertId;
+    return value.id;
   }
 
   List<Object?> _params(ComicReadChapter v, {required bool includeId}) {

@@ -307,14 +307,26 @@ class _Translations$settings$en_US extends Translations$settings$zh_CN {
 	@override String get syncNotify => 'Sync notifications';
 	@override String get syncNotifySubtitle => 'Notify when sync starts and completes';
 	@override String get syncSettings => 'Sync settings';
-	@override String get syncSettingsSubtitle => 'Use cloud settings to override local settings';
+	@override String get syncSettingsSubtitle => 'Sync each setting by its own modification time';
+	@override String get customEncryptionKey => 'Custom sync key';
+	@override String get customEncryptionKeyDefault => 'Not set, using default key';
+	@override String get customEncryptionKeySet => 'Configured';
+	@override String get customEncryptionKeySubtitle => 'All devices must use the same key, at least 8 characters and no spaces. Leave empty for the legacy default key; after changing it, manually upload to replace cloud data.';
+	@override String get customEncryptionKeyHint => 'Enter sync key; leave empty for default';
+	@override String get customEncryptionKeyChanged => 'Sync key updated';
+	@override String customEncryptionKeyTooShort({required Object min}) => 'Sync key must be at least ${min} characters';
+	@override String get customEncryptionKeyNoSpaces => 'Sync key cannot contain spaces';
+	@override String get syncKeyErrorTitle => 'Wrong sync key';
+	@override String get syncKeyErrorCannotDecrypt => 'The current key cannot decrypt cloud data. Check the custom sync key in sync settings.';
+	@override String get syncKeyOverwriteConfirm => 'The current key cannot decrypt cloud data. Continuing will overwrite the cloud with local data and the remote data cannot be recovered. Continue?';
+	@override String get syncKeyContinueUpload => 'Continue upload';
 	@override String get syncPlugins => 'Sync plugins';
 	@override String get syncPluginsSubtitle => 'Sync plugin configuration and installation status';
 	@override String get manualSyncSection => 'Manual sync';
 	@override String get uploadToCloud => 'Upload to cloud';
-	@override String get uploadToCloudSubtitle => 'Use local data as the source of truth and overwrite the cloud';
+	@override String get uploadToCloudSubtitle => 'Comics use local data to overwrite the cloud; settings and plugins sync by each item\'s modification time';
 	@override String get downloadFromCloud => 'Download from cloud';
-	@override String get downloadFromCloudSubtitle => 'Use cloud data as the source of truth and apply it locally';
+	@override String get downloadFromCloudSubtitle => 'Comics merge locally; settings and plugins sync by each item\'s modification time';
 	@override String get manualUpload => 'Upload now';
 	@override String get manualDownload => 'Sync now';
 	@override String get manualUploadSuccess => 'Uploaded to cloud';
@@ -1944,14 +1956,26 @@ extension on TranslationsEnUs {
 			'settings.syncNotify' => 'Sync notifications',
 			'settings.syncNotifySubtitle' => 'Notify when sync starts and completes',
 			'settings.syncSettings' => 'Sync settings',
-			'settings.syncSettingsSubtitle' => 'Use cloud settings to override local settings',
+			'settings.syncSettingsSubtitle' => 'Sync each setting by its own modification time',
+			'settings.customEncryptionKey' => 'Custom sync key',
+			'settings.customEncryptionKeyDefault' => 'Not set, using default key',
+			'settings.customEncryptionKeySet' => 'Configured',
+			'settings.customEncryptionKeySubtitle' => 'All devices must use the same key, at least 8 characters and no spaces. Leave empty for the legacy default key; after changing it, manually upload to replace cloud data.',
+			'settings.customEncryptionKeyHint' => 'Enter sync key; leave empty for default',
+			'settings.customEncryptionKeyChanged' => 'Sync key updated',
+			'settings.customEncryptionKeyTooShort' => ({required Object min}) => 'Sync key must be at least ${min} characters',
+			'settings.customEncryptionKeyNoSpaces' => 'Sync key cannot contain spaces',
+			'settings.syncKeyErrorTitle' => 'Wrong sync key',
+			'settings.syncKeyErrorCannotDecrypt' => 'The current key cannot decrypt cloud data. Check the custom sync key in sync settings.',
+			'settings.syncKeyOverwriteConfirm' => 'The current key cannot decrypt cloud data. Continuing will overwrite the cloud with local data and the remote data cannot be recovered. Continue?',
+			'settings.syncKeyContinueUpload' => 'Continue upload',
 			'settings.syncPlugins' => 'Sync plugins',
 			'settings.syncPluginsSubtitle' => 'Sync plugin configuration and installation status',
 			'settings.manualSyncSection' => 'Manual sync',
 			'settings.uploadToCloud' => 'Upload to cloud',
-			'settings.uploadToCloudSubtitle' => 'Use local data as the source of truth and overwrite the cloud',
+			'settings.uploadToCloudSubtitle' => 'Comics use local data to overwrite the cloud; settings and plugins sync by each item\'s modification time',
 			'settings.downloadFromCloud' => 'Download from cloud',
-			'settings.downloadFromCloudSubtitle' => 'Use cloud data as the source of truth and apply it locally',
+			'settings.downloadFromCloudSubtitle' => 'Comics merge locally; settings and plugins sync by each item\'s modification time',
 			'settings.manualUpload' => 'Upload now',
 			'settings.manualDownload' => 'Sync now',
 			'settings.manualUploadSuccess' => 'Uploaded to cloud',
@@ -2258,6 +2282,8 @@ extension on TranslationsEnUs {
 			'comicEdit.volumeUpdated' => 'Volume updated',
 			'comicEdit.imageMissing' => 'Image file missing',
 			'comicEdit.busy' => 'Working...',
+			_ => null,
+		} ?? switch (path) {
 			'comicEdit.notFound' => 'Download record not found',
 			'comicEdit.loadFailed' => 'Failed to load',
 			'comicInfo.follow' => 'Follow updates',
@@ -2270,8 +2296,6 @@ extension on TranslationsEnUs {
 			'comicInfo.removingCloudCollection' => 'Removing cloud collection...',
 			'comicInfo.cloudCollectSuccess' => 'Added to cloud collection',
 			'comicInfo.cloudUncollectSuccess' => 'Removed from cloud collection',
-			_ => null,
-		} ?? switch (path) {
 			'comicInfo.cloudCollectIncomplete' => 'Cloud collection operation incomplete',
 			'comicInfo.discontinued' => 'This comic is discontinued',
 			'comicInfo.likes' => ({required Object count}) => 'Likes ${count}',
@@ -2772,6 +2796,8 @@ extension on TranslationsEnUs {
 			'realSr.coremlStatusNoModelFile' => 'No model files available for current family',
 			'realSr.coremlStatusPreparing' => 'Preparing resources...',
 			'realSr.coremlStatusUpscaling' => 'Upscaling...',
+			_ => null,
+		} ?? switch (path) {
 			'realSr.coremlStatusDone' => ({required Object outputPath, required Object size}) => 'Done\n${outputPath}\nsize: ${size} bytes',
 			'realSr.coremlStatusFailed' => ({required Object error}) => 'Failed: ${error}',
 			'realSr.coremlModelOption' => 'Model option (denoise level)',
@@ -2784,8 +2810,6 @@ extension on TranslationsEnUs {
 			'about.networkError' => 'Network error',
 			'about.projectAddress' => 'Project',
 			'about.projectAddressDesc' => 'Like this project? Give it a star on GitHub!',
-			_ => null,
-		} ?? switch (path) {
 			'about.projectLink' => 'Go to GitHub repo (breeze-project-org/Breeze) ⭐',
 			'about.contact' => 'Contact',
 			'about.contactDesc' => 'Have ideas or questions? Feel free to reach out~',

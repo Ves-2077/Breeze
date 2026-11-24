@@ -1,7 +1,9 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:zephyr/config/global/global_setting.dart';
+import 'package:zephyr/config/global/setting_updated_at.dart';
 import 'package:zephyr/database/database.dart';
 import 'package:zephyr/main.dart';
 import 'package:zephyr/object_box/model.dart';
@@ -11,11 +13,12 @@ import 'package:zephyr/plugin/plugin_registry_service.dart';
 import 'package:zephyr/network/sync/comic_sync_core.dart';
 import 'package:zephyr/network/sync/plugin_sync_merge.dart';
 import 'package:zephyr/network/sync/s3_sync_service.dart';
+import 'package:zephyr/network/sync/settings_sync_payload.dart';
 import 'package:zephyr/network/sync/webdav_sync_service.dart';
 import 'package:zephyr/util/async/worker_pool.dart';
 import 'package:zephyr/util/rust/rust_loader.dart';
 
-const String _settingsSyncSchemaVersion = 'v2';
+const String _settingsSyncSchemaVersion = 'v3';
 const String _settingsBlockMetaPrefsKey = 'sync.settings.block.meta.v3';
 
 const String _appearanceBlockName = 'appearance';
@@ -23,7 +26,8 @@ const String _libraryBlockName = 'library';
 const String _readerBlockName = 'reader';
 const String _pluginsBlockName = 'plugins';
 
-const List<String> _syncableSettingsBlockNames = <String>[
+/// 旧版客户端认识的三个设置块；新版仍会生成，用于向后兼容。
+const List<String> _legacySettingsBlockNames = <String>[
   _appearanceBlockName,
   _libraryBlockName,
   _readerBlockName,
@@ -65,7 +69,7 @@ Future<void> autoSync(
     return;
   }
 
-  await runComicSync(adapter);
+  await runComicSync(adapter, passphrase: state.syncSetting.encryptionKey);
 
   // 同步后重新加载追更列表，确保内存状态与数据库一致。
   await comicFollowCubit?.loadFromDatabase();
@@ -82,31 +86,47 @@ Future<void> autoSync(
   );
 }
 
-/// 手动上传：以本机数据为准，覆盖云端。
+/// 手动上传：漫画数据按本机覆盖云端；设置/插件按逐项同步逻辑合并后上传。
 ///
 /// 包含漫画数据，以及开关已启用的设置 / 插件配置。
 Future<void> manualUploadToCloud({
   required GlobalSettingState state,
   GlobalSettingCubit? globalSettingCubit,
   ComicFollowCubit? comicFollowCubit,
+  bool forceOverwrite = false,
 }) async {
   final adapter = createSyncAdapter(state);
   if (adapter == null) {
     throw StateError('未配置同步服务，请先选择并配置 WebDAV 或 S3');
   }
 
-  await uploadComicData(adapter);
-  await _manualUploadSettings(
-    adapter,
-    state: state,
-    globalSettingCubit: globalSettingCubit,
-  );
+  final passphrase = state.syncSetting.encryptionKey;
+  if (!forceOverwrite) {
+    // 先确认现有云端数据能解密；失败时交给 UI 提示，不能静默覆盖。
+    await ComicSyncCore.verifyRemoteComicDecryptable(
+      adapter,
+      passphrase: passphrase,
+    );
+    if (state.syncSetting.syncSettings || state.syncSetting.syncPlugins) {
+      await _verifyRemoteSettingsDecryptable(adapter, passphrase: passphrase);
+    }
+  }
+
+  await uploadComicData(adapter, passphrase: passphrase);
+  if (state.syncSetting.syncSettings || state.syncSetting.syncPlugins) {
+    await _syncSettings(
+      adapter,
+      globalSettingCubit: globalSettingCubit,
+      currentGlobalSetting: state,
+      overwriteRemote: forceOverwrite,
+    );
+  }
 
   // 同步后重新加载追更列表，确保内存状态与数据库一致。
   await comicFollowCubit?.loadFromDatabase();
 }
 
-/// 手动下载：以云端数据为准，应用到本机。
+/// 手动下载：漫画数据合并到本机；设置/插件按逐项同步逻辑应用较新值。
 ///
 /// 包含漫画数据，以及开关已启用的设置 / 插件配置。
 Future<void> manualDownloadFromCloud({
@@ -119,58 +139,26 @@ Future<void> manualDownloadFromCloud({
     throw StateError('未配置同步服务，请先选择并配置 WebDAV 或 S3');
   }
 
-  await downloadComicData(adapter);
-  await _manualDownloadSettings(
-    adapter,
-    state: state,
-    globalSettingCubit: globalSettingCubit,
-  );
+  await downloadComicData(adapter, passphrase: state.syncSetting.encryptionKey);
+  if (state.syncSetting.syncSettings || state.syncSetting.syncPlugins) {
+    await _syncSettings(
+      adapter,
+      globalSettingCubit: globalSettingCubit,
+      currentGlobalSetting: state,
+      uploadMerged: false,
+      cleanupRemote: false,
+    );
+  }
 
   // 同步后重新加载追更列表，确保内存状态与数据库一致。
   await comicFollowCubit?.loadFromDatabase();
 }
 
-/// 手动上传设置与插件数据（以本地为准，直接覆盖云端）。
-Future<void> _manualUploadSettings(
+/// 只验证云端设置文件能否用当前密钥解密，不合并、不上传。
+Future<void> _verifyRemoteSettingsDecryptable(
   ComicSyncRemoteAdapter adapter, {
-  required GlobalSettingState state,
-  GlobalSettingCubit? globalSettingCubit,
+  required String passphrase,
 }) async {
-  if (!state.syncSetting.syncSettings && !state.syncSetting.syncPlugins) {
-    return;
-  }
-
-  final localSnapshot = await _buildLocalSettingsSnapshot(state);
-  final localPayload = _buildSettingsPayload(state, localSnapshot);
-  final localBytes = await ComicSyncCore.encodeEncryptedPayload(
-    utf8.encode(jsonEncode(localPayload)),
-  );
-  final localMd5 = ComicSyncCore.calculateMd5(localBytes);
-
-  await _uploadSettingsPayload(
-    adapter,
-    payloadBytes: localBytes,
-    payloadMd5: localMd5,
-    syncTime: localSnapshot.syncTime,
-  );
-  await _updateLocalSettingsSyncTime(
-    state,
-    syncTime: localSnapshot.syncTime,
-    globalSettingCubit: globalSettingCubit,
-  );
-  await _cleanupRemoteSettingsFiles(adapter);
-}
-
-/// 手动下载设置与插件数据（以云端为准，应用到本机）。
-Future<void> _manualDownloadSettings(
-  ComicSyncRemoteAdapter adapter, {
-  required GlobalSettingState state,
-  GlobalSettingCubit? globalSettingCubit,
-}) async {
-  if (!state.syncSetting.syncSettings && !state.syncSetting.syncPlugins) {
-    return;
-  }
-
   final allRemote = await adapter.listRemoteDataFiles();
   final syncRootFiles = allRemote.where(ComicSyncCore.isSyncRootPath).toList();
   final remoteMd5 = await _downloadRemoteText(
@@ -184,75 +172,64 @@ Future<void> _manualDownloadSettings(
     remoteMd5,
   );
   if (remoteData == null) {
-    logger.d('[sync][settings] manual_download skipped reason=remote_missing');
     return;
   }
-
-  final remoteSnapshot = await _decodeSettingsPayload(
-    remoteData.bytes,
-    fallbackSyncTime: remoteData.timestamp,
-  );
-
-  final blocksToApply = <String, _SettingsBlockPayload>{};
-  if (state.syncSetting.syncSettings) {
-    for (final blockName in _syncableSettingsBlockNames) {
-      final block = remoteSnapshot.blocks[blockName];
-      if (block != null) {
-        blocksToApply[blockName] = block;
-      }
-    }
+  try {
+    await _decodeSettingsPayload(
+      remoteData.bytes,
+      fallbackSyncTime: remoteData.timestamp,
+      passphrase: passphrase,
+    );
+  } catch (_) {
+    throw const SyncDecryptionException();
   }
-  if (state.syncSetting.syncPlugins) {
-    final pluginBlock = remoteSnapshot.blocks[_pluginsBlockName];
-    if (pluginBlock != null) {
-      blocksToApply[_pluginsBlockName] = pluginBlock;
-    }
-  }
-  if (blocksToApply.isEmpty) {
-    return;
-  }
-
-  final mergedState = _applySyncableBlocksToState(state, blocksToApply)
-      .copyWith(
-        syncSetting: state.syncSetting.copyWith(
-          settingsSyncTime: remoteSnapshot.syncTime,
-        ),
-      );
-  await _applyMergedGlobalState(
-    mergedState,
-    globalSettingCubit: globalSettingCubit,
-  );
-
-  final pluginBlock = blocksToApply[_pluginsBlockName];
-  if (pluginBlock != null) {
-    await _applyPluginBlockData(pluginBlock.data);
-  }
-
-  await _persistLocalSettingsBlockMeta({
-    for (final entry in blocksToApply.entries)
-      entry.key: _LocalSettingsBlockMeta.fromBlock(entry.value),
-  });
 }
 
 Future<void> _syncSettings(
   ComicSyncRemoteAdapter adapter, {
   required GlobalSettingState currentGlobalSetting,
   GlobalSettingCubit? globalSettingCubit,
+  bool uploadMerged = true,
+  bool cleanupRemote = true,
+  bool overwriteRemote = false,
 }) async {
   final localGlobal = globalSettingCubit?.state ?? currentGlobalSetting;
+  final passphrase = localGlobal.syncSetting.encryptionKey;
   final localSnapshot = await _buildLocalSettingsSnapshot(localGlobal);
   final localPayload = _buildSettingsPayload(localGlobal, localSnapshot);
   final localBytes = await ComicSyncCore.encodeEncryptedPayload(
     utf8.encode(jsonEncode(localPayload)),
+    passphrase: passphrase,
   );
   final localMd5 = ComicSyncCore.calculateMd5(localBytes);
 
+  if (overwriteRemote) {
+    logger.d('[sync][settings] decision=overwrite reason=manual_force');
+    await _uploadSettingsPayload(
+      adapter,
+      payloadBytes: localBytes,
+      payloadMd5: localMd5,
+      syncTime: localSnapshot.syncTime,
+    );
+    await _updateLocalSettingsSyncTime(
+      localGlobal,
+      syncTime: localSnapshot.syncTime,
+      globalSettingCubit: globalSettingCubit,
+    );
+    if (cleanupRemote) {
+      await _cleanupRemoteSettingsFiles(adapter);
+    }
+    return;
+  }
+
   final allRemote = await adapter.listRemoteDataFiles();
-  final legacyFiles = allRemote
-      .where(ComicSyncCore.isLegacyRemotePath)
-      .toList();
-  if (legacyFiles.isNotEmpty) {
-    await adapter.deleteRemoteFiles(legacyFiles);
+  if (cleanupRemote) {
+    final legacyFiles = allRemote
+        .where(ComicSyncCore.isLegacyRemotePath)
+        .toList();
+    if (legacyFiles.isNotEmpty) {
+      await adapter.deleteRemoteFiles(legacyFiles);
+    }
   }
   final syncRootFiles = allRemote.where(ComicSyncCore.isSyncRootPath).toList();
 
@@ -269,7 +246,9 @@ Future<void> _syncSettings(
 
   if (remoteMd5.isNotEmpty && remoteMd5 == localMd5) {
     logger.d('[sync][settings] decision=skip reason=md5_equal');
-    await _cleanupRemoteSettingsFiles(adapter);
+    if (cleanupRemote) {
+      await _cleanupRemoteSettingsFiles(adapter);
+    }
     await _updateLocalSettingsSyncTime(
       localGlobal,
       syncTime: localSnapshot.syncTime,
@@ -285,6 +264,10 @@ Future<void> _syncSettings(
   );
 
   if (remoteMd5.isEmpty || remoteData == null) {
+    if (!uploadMerged) {
+      logger.d('[sync][settings] decision=skip reason=remote_missing');
+      return;
+    }
     logger.d('[sync][settings] decision=upload reason=remote_missing');
     await _uploadSettingsPayload(
       adapter,
@@ -297,13 +280,16 @@ Future<void> _syncSettings(
       syncTime: localSnapshot.syncTime,
       globalSettingCubit: globalSettingCubit,
     );
-    await _cleanupRemoteSettingsFiles(adapter);
+    if (cleanupRemote) {
+      await _cleanupRemoteSettingsFiles(adapter);
+    }
     return;
   }
 
   final remoteSnapshot = await _decodeSettingsPayload(
     remoteData.bytes,
     fallbackSyncTime: remoteData.timestamp,
+    passphrase: passphrase,
   );
   final mergeResult = await _mergeSettingsSnapshots(
     localGlobal,
@@ -337,12 +323,18 @@ Future<void> _syncSettings(
 
   await _persistLocalSettingsBlockMeta(mergeResult.localBlockMeta);
 
+  if (!uploadMerged) {
+    logger.d('[sync][settings] decision=skip_upload reason=download_only');
+    return;
+  }
+
   final mergedPayload = _buildSettingsPayload(
     mergeResult.mergedState,
     mergeResult.mergedSnapshot,
   );
   final mergedBytes = await ComicSyncCore.encodeEncryptedPayload(
     utf8.encode(jsonEncode(mergedPayload)),
+    passphrase: passphrase,
   );
   final mergedMd5 = ComicSyncCore.calculateMd5(mergedBytes);
 
@@ -360,21 +352,18 @@ Future<void> _syncSettings(
     );
   }
 
-  await _cleanupRemoteSettingsFiles(adapter);
+  if (cleanupRemote) {
+    await _cleanupRemoteSettingsFiles(adapter);
+  }
 }
 
 Map<String, dynamic> _buildSettingsPayload(
   GlobalSettingState globalSetting,
   _SettingsSnapshot snapshot,
 ) {
-  final sanitizedGlobal = globalSetting.copyWith(
-    syncSetting: globalSetting.syncSetting.copyWith(settingsSyncTime: 0),
-  );
-
-  final globalSettingJson = sanitizedGlobal.toJson();
-  globalSettingJson.remove('customExportPath');
-  globalSettingJson.remove('appLockSetting');
-  globalSettingJson.remove('cacheSetting');
+  final globalSettingJson = globalSetting.toJson();
+  globalSettingJson.remove(settingUpdatedAtJsonKey);
+  removeSettingPaths(globalSettingJson, localOnlySettingPaths);
 
   final pluginBlock = snapshot.blocks[_pluginsBlockName];
   final pluginConfigs = pluginBlock == null
@@ -389,6 +378,10 @@ Map<String, dynamic> _buildSettingsPayload(
     'schemaVersion': _settingsSyncSchemaVersion,
     'syncTime': snapshot.syncTime,
     'globalSetting': globalSettingJson,
+    'settingItems': {
+      for (final entry in snapshot.items.entries)
+        entry.key: entry.value.toJson(),
+    },
     'pluginConfigs': pluginConfigs,
     'pluginInfos': pluginInfos,
     'blocks': {
@@ -404,31 +397,33 @@ Future<_SettingsSnapshot> _buildLocalSettingsSnapshot(
   final existingMeta = await _loadLocalSettingsBlockMeta();
   final nextMeta = Map<String, _LocalSettingsBlockMeta>.from(existingMeta);
   final blockPayloads = <String, _SettingsBlockPayload>{};
+  final items = <String, SyncedSettingItem>{};
   final nowMs = DateTime.now().toUtc().millisecondsSinceEpoch;
-  final baseTimestamp = _normalizeTimestamp(
-    globalSetting.syncSetting.settingsSyncTime,
-    fallback: nowMs,
-  );
+  final baseTimestamp = globalSetting.syncSetting.settingsSyncTime > 0
+      ? globalSetting.syncSetting.settingsSyncTime
+      : 0;
 
   if (globalSetting.syncSetting.syncSettings) {
-    final blockData = _extractSyncableSettingsBlocks(globalSetting);
-    for (final entry in blockData.entries) {
-      final blockName = entry.key;
-      final data = entry.value;
-      final hash = _calculateStructuredMd5(data);
-      final previous = existingMeta[blockName];
-      final updatedAt = previous == null
-          ? baseTimestamp
-          : previous.hash == hash
-          ? _normalizeTimestamp(previous.updatedAt, fallback: baseTimestamp)
-          : nowMs;
-      final payload = _SettingsBlockPayload(
-        name: blockName,
-        updatedAt: updatedAt,
-        data: data,
-      );
-      blockPayloads[blockName] = payload;
-      nextMeta[blockName] = _LocalSettingsBlockMeta.fromBlock(payload);
+    final syncableData = extractSyncableSettingsData(globalSetting.toJson());
+    final itemUpdatedAt = _buildLocalSettingItemUpdatedAt(
+      state: globalSetting,
+      data: syncableData,
+      existingMeta: existingMeta,
+    );
+    items.addAll(
+      buildSyncedSettingItems(
+        data: syncableData,
+        updatedAtByPath: itemUpdatedAt,
+      ),
+    );
+
+    final legacyBlocks = _buildLegacySettingsBlocks(
+      globalSetting,
+      items: items,
+    );
+    for (final entry in legacyBlocks.entries) {
+      blockPayloads[entry.key] = entry.value;
+      nextMeta[entry.key] = _LocalSettingsBlockMeta.fromBlock(entry.value);
     }
   }
 
@@ -448,6 +443,7 @@ Future<_SettingsSnapshot> _buildLocalSettingsSnapshot(
     final pluginBlock = _SettingsBlockPayload(
       name: _pluginsBlockName,
       updatedAt: updatedAt,
+      fieldUpdatedAt: const <String, int>{},
       data: pluginData,
     );
     blockPayloads[_pluginsBlockName] = pluginBlock;
@@ -463,14 +459,88 @@ Future<_SettingsSnapshot> _buildLocalSettingsSnapshot(
   }
 
   await _persistLocalSettingsBlockMeta(nextMeta);
-  return _SettingsSnapshot(blocks: blockPayloads);
+  return _SettingsSnapshot(items: items, blocks: blockPayloads);
+}
+
+/// 优先使用 `GlobalSettingState.settingUpdatedAt`；旧版本没有逐项时间时，
+/// 旧三块里的字段回退到上次同步的块时间，其余字段回退到上次同步时间；
+/// 从未同步过则为 0 基准，仍然参与比较。
+Map<String, int> _buildLocalSettingItemUpdatedAt({
+  required GlobalSettingState state,
+  required Map<String, dynamic> data,
+  required Map<String, _LocalSettingsBlockMeta> existingMeta,
+}) {
+  final legacyBlockByPath = _legacyBlockByPath(state);
+  final result = <String, int>{};
+  for (final path in flattenSettingJson(data).keys) {
+    final explicit = state.settingUpdatedAt[path] ?? 0;
+    if (explicit > 0) {
+      result[path] = explicit;
+      continue;
+    }
+    final blockName = legacyBlockByPath[path];
+    final meta = blockName == null ? null : existingMeta[blockName];
+    final blockTime = meta == null
+        ? 0
+        : _normalizeTimestamp(meta.updatedAt, fallback: 0);
+    final baseline = state.syncSetting.settingsSyncTime;
+    result[path] = blockTime > 0 ? blockTime : (baseline > 0 ? baseline : 0);
+  }
+  return result;
+}
+
+Map<String, String> _legacyBlockByPath(GlobalSettingState state) {
+  final blocks = _extractSyncableSettingsBlocks(state);
+  final result = <String, String>{};
+  for (final entry in blocks.entries) {
+    final prefix = _settingsBlockPathPrefix(entry.key);
+    for (final path in flattenSettingJson(entry.value).keys) {
+      final statePath = prefix.isEmpty ? path : '$prefix.$path';
+      result[statePath] = entry.key;
+    }
+  }
+  return result;
+}
+
+/// 用逐项设置生成旧版三个块。
+///
+/// 旧客户端只认识 appearance / library / reader；这些块必须反映逐项合并
+/// 后的状态，但块时间只由块内字段的时间决定，不会被无关字段抬高。
+Map<String, _SettingsBlockPayload> _buildLegacySettingsBlocks(
+  GlobalSettingState state, {
+  required Map<String, SyncedSettingItem> items,
+}) {
+  final blocks = _extractSyncableSettingsBlocks(state);
+  final result = <String, _SettingsBlockPayload>{};
+  for (final entry in blocks.entries) {
+    final blockName = entry.key;
+    final data = entry.value;
+    final prefix = _settingsBlockPathPrefix(blockName);
+    final fieldUpdatedAt = <String, int>{};
+    for (final path in flattenSettingJson(data).keys) {
+      final statePath = prefix.isEmpty ? path : '$prefix.$path';
+      fieldUpdatedAt[path] = items[statePath]?.updatedAt ?? 0;
+    }
+    final updatedAt = _resolveBlockUpdatedAt(fieldUpdatedAt, fallback: 0);
+    result[blockName] = _SettingsBlockPayload(
+      name: blockName,
+      updatedAt: updatedAt,
+      fieldUpdatedAt: fieldUpdatedAt,
+      data: data,
+    );
+  }
+  return result;
 }
 
 Future<_SettingsSnapshot> _decodeSettingsPayload(
   List<int> payloadBytes, {
   required int fallbackSyncTime,
+  String passphrase = '',
 }) async {
-  final raw = await ComicSyncCore.decodeEncryptedPayload(payloadBytes);
+  final raw = await ComicSyncCore.decodeEncryptedPayload(
+    payloadBytes,
+    passphrase: passphrase,
+  );
   final payloadRaw = jsonDecode(utf8.decode(raw));
   return _snapshotFromPayload(
     _toJsonMap(payloadRaw),
@@ -488,6 +558,10 @@ _SettingsSnapshot _snapshotFromPayload(
     fallbackFromFileName: fallbackSyncTime,
   );
   final blocks = <String, _SettingsBlockPayload>{};
+  var items = parseSyncedSettingItems(
+    payload[settingItemsPayloadKey],
+    fallbackUpdatedAt: remoteSyncTime,
+  );
 
   for (final entry in blocksJson.entries) {
     final blockJson = _toJsonMap(entry.value);
@@ -495,12 +569,20 @@ _SettingsSnapshot _snapshotFromPayload(
     if (data.isEmpty) {
       continue;
     }
+    final blockUpdatedAt = _normalizeTimestamp(
+      int.tryParse(blockJson['updatedAt']?.toString() ?? ''),
+      fallback: remoteSyncTime,
+    );
     blocks[entry.key] = _SettingsBlockPayload(
       name: entry.key,
-      updatedAt: _normalizeTimestamp(
-        int.tryParse(blockJson['updatedAt']?.toString() ?? ''),
-        fallback: remoteSyncTime,
-      ),
+      updatedAt: blockUpdatedAt,
+      fieldUpdatedAt: entry.key == _pluginsBlockName
+          ? const <String, int>{}
+          : settingTimestampsFromPayload(
+              blockData: data,
+              rawFieldUpdatedAt: blockJson['fieldUpdatedAt'],
+              blockUpdatedAt: blockUpdatedAt,
+            ),
       data: data,
     );
   }
@@ -514,10 +596,24 @@ _SettingsSnapshot _snapshotFromPayload(
         blocks[entry.key] = _SettingsBlockPayload(
           name: entry.key,
           updatedAt: remoteSyncTime,
+          fieldUpdatedAt: settingTimestampsForBlock(
+            settingUpdatedAt: const <String, int>{},
+            blockData: entry.value,
+            pathPrefix: _settingsBlockPathPrefix(entry.key),
+            fallback: remoteSyncTime,
+          ),
           data: entry.value,
         );
       }
     }
+  }
+
+  if (items.isEmpty) {
+    items = _synthesizeSyncedSettingItems(
+      payload: payload,
+      blocks: blocks,
+      remoteSyncTime: remoteSyncTime,
+    );
   }
 
   if (!blocks.containsKey(_pluginsBlockName)) {
@@ -527,12 +623,90 @@ _SettingsSnapshot _snapshotFromPayload(
       blocks[_pluginsBlockName] = _SettingsBlockPayload(
         name: _pluginsBlockName,
         updatedAt: remoteSyncTime,
+        fieldUpdatedAt: const <String, int>{},
         data: {'pluginConfigs': pluginConfigs, 'pluginInfos': pluginInfos},
       );
     }
   }
 
-  return _SettingsSnapshot(blocks: blocks);
+  return _SettingsSnapshot(items: items, blocks: blocks);
+}
+
+/// 旧负载没有 `settingItems` 时，从 globalSetting + 旧版三个块合成逐项记录。
+///
+/// 只有旧版设置块（或完全没有块的远古负载）才合成；只有插件块时不能
+/// 把对方的 globalSetting 当成“开启了设置同步”。
+Map<String, SyncedSettingItem> _synthesizeSyncedSettingItems({
+  required Map<String, dynamic> payload,
+  required Map<String, _SettingsBlockPayload> blocks,
+  required int remoteSyncTime,
+}) {
+  final hasLegacySettingsBlock = _legacySettingsBlockNames.any(
+    blocks.containsKey,
+  );
+  if (!hasLegacySettingsBlock && blocks.isNotEmpty) {
+    return <String, SyncedSettingItem>{};
+  }
+
+  final globalSettingJson = _toJsonMap(payload['globalSetting']);
+  if (!hasLegacySettingsBlock && globalSettingJson.isEmpty) {
+    return <String, SyncedSettingItem>{};
+  }
+
+  final fullData = globalSettingJson.isEmpty
+      ? <String, dynamic>{}
+      : extractSyncableSettingsData(globalSettingJson);
+  for (final blockName in _legacySettingsBlockNames) {
+    final block = blocks[blockName];
+    if (block == null) {
+      continue;
+    }
+    if (blockName == _readerBlockName) {
+      fullData['readSetting'] = block.data;
+    } else {
+      fullData.addAll(block.data);
+    }
+  }
+  if (fullData.isEmpty) {
+    return <String, SyncedSettingItem>{};
+  }
+
+  final legacyTimestamps = <String, int>{};
+  for (final blockName in _legacySettingsBlockNames) {
+    final block = blocks[blockName];
+    if (block == null) {
+      continue;
+    }
+    final prefix = _settingsBlockPathPrefix(blockName);
+    for (final entry in block.fieldUpdatedAt.entries) {
+      final statePath = prefix.isEmpty ? entry.key : '$prefix.${entry.key}';
+      final existing = legacyTimestamps[statePath] ?? 0;
+      if (entry.value > existing) {
+        legacyTimestamps[statePath] = entry.value;
+      }
+    }
+  }
+
+  final explicitTimestamps = <String, int>{};
+  final rawTimestamps = _toJsonMap(globalSettingJson[settingUpdatedAtJsonKey]);
+  for (final entry in rawTimestamps.entries) {
+    final timestamp = int.tryParse(entry.value?.toString() ?? '') ?? 0;
+    if (timestamp > 0) {
+      explicitTimestamps[entry.key] = timestamp;
+    }
+  }
+
+  final itemUpdatedAt = <String, int>{};
+  for (final path in flattenSettingJson(fullData).keys) {
+    itemUpdatedAt[path] = _normalizeTimestamp(
+      legacyTimestamps[path] ?? explicitTimestamps[path],
+      fallback: remoteSyncTime,
+    );
+  }
+  return buildSyncedSettingItems(
+    data: fullData,
+    updatedAtByPath: itemUpdatedAt,
+  );
 }
 
 Future<_SettingsMergeResult> _mergeSettingsSnapshots(
@@ -541,26 +715,36 @@ Future<_SettingsMergeResult> _mergeSettingsSnapshots(
   _SettingsSnapshot remoteSnapshot,
 ) async {
   final mergedBlocks = <String, _SettingsBlockPayload>{};
+  final mergedItems = <String, SyncedSettingItem>{};
   final localBlockMeta = await _loadLocalSettingsBlockMeta();
   final nextMeta = Map<String, _LocalSettingsBlockMeta>.from(localBlockMeta);
   var shouldApplyLocalState = false;
 
   if (localGlobal.syncSetting.syncSettings) {
-    for (final blockName in _syncableSettingsBlockNames) {
-      final localBlock = localSnapshot.blocks[blockName];
-      if (localBlock == null) {
-        continue;
-      }
-      final remoteBlock = remoteSnapshot.blocks[blockName];
-      final mergedBlock = _pickPreferredBlock(localBlock, remoteBlock)!;
-      mergedBlocks[blockName] = mergedBlock;
-      nextMeta[blockName] = _LocalSettingsBlockMeta.fromBlock(mergedBlock);
-      if (!_sameBlock(localBlock, mergedBlock)) {
-        shouldApplyLocalState = true;
-      }
+    mergedItems.addAll(
+      mergeSyncedSettingItems(localSnapshot.items, remoteSnapshot.items),
+    );
+    shouldApplyLocalState = settingItemsDiffer(
+      localSnapshot.items,
+      mergedItems,
+    );
+
+    final mergedStateForLegacy = _applySettingItemsToState(
+      localGlobal,
+      mergedItems,
+    );
+    final legacyBlocks = _buildLegacySettingsBlocks(
+      mergedStateForLegacy,
+      items: mergedItems,
+    );
+    for (final entry in legacyBlocks.entries) {
+      mergedBlocks[entry.key] = entry.value;
+      nextMeta[entry.key] = _LocalSettingsBlockMeta.fromBlock(entry.value);
     }
   } else {
-    for (final blockName in _syncableSettingsBlockNames) {
+    // 本地关闭设置同步时，云端逐项设置只保留在负载中，不应用到本机。
+    mergedItems.addAll(remoteSnapshot.items);
+    for (final blockName in _legacySettingsBlockNames) {
       final remoteBlock = remoteSnapshot.blocks[blockName];
       if (remoteBlock != null) {
         mergedBlocks[blockName] = remoteBlock;
@@ -617,28 +801,28 @@ Future<_SettingsMergeResult> _mergeSettingsSnapshots(
     );
   }
 
-  final syncTimeBlocks = <String, _SettingsBlockPayload>{
-    if (localGlobal.syncSetting.syncSettings)
-      for (final blockName in _syncableSettingsBlockNames)
-        if (mergedBlocks.containsKey(blockName))
-          blockName: mergedBlocks[blockName]!,
-  };
+  var mergedSyncTime = localGlobal.syncSetting.syncSettings
+      ? maxSyncedItemUpdatedAt(mergedItems)
+      : 0;
+  final pluginBlock = mergedBlocks[_pluginsBlockName];
   if (localGlobal.syncSetting.syncPlugins &&
-      mergedBlocks.containsKey(_pluginsBlockName)) {
-    syncTimeBlocks[_pluginsBlockName] = mergedBlocks[_pluginsBlockName]!;
+      pluginBlock != null &&
+      pluginBlock.updatedAt > mergedSyncTime) {
+    mergedSyncTime = pluginBlock.updatedAt;
   }
 
-  final mergedSyncTime = _computeSnapshotSyncTime(syncTimeBlocks);
-  final mergedState = _applySyncableBlocksToState(localGlobal, mergedBlocks)
-      .copyWith(
-        syncSetting: localGlobal.syncSetting.copyWith(
-          settingsSyncTime: mergedSyncTime,
-        ),
-      );
+  final mergedStateBase = localGlobal.syncSetting.syncSettings
+      ? _applySettingItemsToState(localGlobal, mergedItems)
+      : localGlobal;
+  final mergedState = mergedStateBase.copyWith(
+    syncSetting: localGlobal.syncSetting.copyWith(
+      settingsSyncTime: mergedSyncTime,
+    ),
+  );
 
   return _SettingsMergeResult(
     mergedState: mergedState,
-    mergedSnapshot: _SettingsSnapshot(blocks: mergedBlocks),
+    mergedSnapshot: _SettingsSnapshot(items: mergedItems, blocks: mergedBlocks),
     syncTime: mergedSyncTime,
     shouldApplyLocalState: shouldApplyLocalState,
     shouldApplyPluginData: shouldApplyPluginData,
@@ -730,31 +914,19 @@ Future<Map<String, dynamic>> buildPluginBlockDataInWorker(int handle) async {
   return {'pluginConfigs': pluginConfigs, 'pluginInfos': pluginInfos};
 }
 
-GlobalSettingState _applySyncableBlocksToState(
+GlobalSettingState _applySettingItemsToState(
   GlobalSettingState localState,
-  Map<String, _SettingsBlockPayload> blocks,
-) {
+  Map<String, SyncedSettingItem> items, {
+  bool keepNewerLocalTimestamps = true,
+}) {
   final json = _materializeJsonMap(localState.toJson());
+  applySyncedSettingItems(
+    json,
+    items,
+    keepNewerLocalTimestamps: keepNewerLocalTimestamps,
+  );
 
-  final appearance = blocks[_appearanceBlockName]?.data;
-  if (appearance != null) {
-    json.addAll(appearance);
-  }
-
-  final library = blocks[_libraryBlockName]?.data;
-  if (library != null) {
-    json.addAll(library);
-  }
-
-  final reader = blocks[_readerBlockName]?.data;
-  if (reader != null) {
-    json['readSetting'] = reader;
-  }
-
-  // 同步设置时，以下本地/安全相关配置保持本地值不变：
-  // - 自定义导出路径、开屏密码/PIN、缓存管理配置：已从上传负载中移除；
-  // - 同步配置本身、调试日志开关/地址：仍可能出现在旧版或未来的云端块中，
-  //   这里显式跳过覆盖，确保本地值不被同步下来的内容修改。
+  // 本地专属字段不在 items 中，这里再兜底一次，避免旧负载把它们带回来。
   final merged = GlobalSettingState.fromJson(json);
   return merged.copyWith(
     syncSetting: localState.syncSetting,
@@ -764,6 +936,15 @@ GlobalSettingState _applySyncableBlocksToState(
     enableMemoryDebug: localState.enableMemoryDebug,
     blockRustHttpRequests: localState.blockRustHttpRequests,
     logAddress: localState.logAddress,
+    windowWidth: localState.windowWidth,
+    windowHeight: localState.windowHeight,
+    windowX: localState.windowX,
+    windowY: localState.windowY,
+    forceEnableImpeller: localState.forceEnableImpeller,
+    androidKeepAliveEnabled: localState.androidKeepAliveEnabled,
+    compatibleVersion: localState.compatibleVersion,
+    themeInitState: localState.themeInitState,
+    needCleanCache: localState.needCleanCache,
   );
 }
 
@@ -1265,6 +1446,7 @@ _SettingsBlockPayload? _mergePluginBlocks(
     updatedAt: localBlock.updatedAt >= remoteBlock.updatedAt
         ? localBlock.updatedAt
         : remoteBlock.updatedAt,
+    fieldUpdatedAt: const <String, int>{},
     data: mergedData,
   );
 }
@@ -1302,29 +1484,21 @@ Set<String> _normalizePluginNameCandidatesForSync(String raw) {
   return names;
 }
 
-_SettingsBlockPayload? _pickPreferredBlock(
-  _SettingsBlockPayload? localBlock,
-  _SettingsBlockPayload? remoteBlock,
-) {
-  if (localBlock == null) {
-    return remoteBlock;
-  }
-  if (remoteBlock == null) {
-    return localBlock;
-  }
+String _settingsBlockPathPrefix(String blockName) {
+  return blockName == _readerBlockName ? 'readSetting' : '';
+}
 
-  if (localBlock.updatedAt > remoteBlock.updatedAt) {
-    return localBlock;
+int _resolveBlockUpdatedAt(
+  Map<String, int> fieldUpdatedAt, {
+  required int fallback,
+}) {
+  var result = fallback;
+  for (final timestamp in fieldUpdatedAt.values) {
+    if (timestamp > result) {
+      result = timestamp;
+    }
   }
-  if (localBlock.updatedAt < remoteBlock.updatedAt) {
-    return remoteBlock;
-  }
-
-  if (_sameBlock(localBlock, remoteBlock)) {
-    return localBlock;
-  }
-
-  return localBlock;
+  return result;
 }
 
 bool _sameBlock(_SettingsBlockPayload? a, _SettingsBlockPayload? b) {
@@ -1334,16 +1508,6 @@ bool _sameBlock(_SettingsBlockPayload? a, _SettingsBlockPayload? b) {
   return a.contentMd5 == b.contentMd5;
 }
 
-int _computeSnapshotSyncTime(Map<String, _SettingsBlockPayload> blocks) {
-  var maxSyncTime = 0;
-  for (final block in blocks.values) {
-    if (block.updatedAt > maxSyncTime) {
-      maxSyncTime = block.updatedAt;
-    }
-  }
-  return maxSyncTime;
-}
-
 int _normalizeTimestamp(int? timestamp, {required int fallback}) {
   if (timestamp != null && timestamp > 0) {
     return timestamp;
@@ -1351,31 +1515,70 @@ int _normalizeTimestamp(int? timestamp, {required int fallback}) {
   return fallback;
 }
 
+/// 测试入口：完整执行一次“本地快照 + 远端负载解析 + 逐项合并 + 组装上传负载”。
+@visibleForTesting
+Future<({GlobalSettingState mergedState, Map<String, dynamic> payload})>
+mergeSyncSettingsForTest({
+  required GlobalSettingState local,
+  required Map<String, dynamic> remotePayload,
+  required int remoteFallbackSyncTime,
+}) async {
+  final localSnapshot = await _buildLocalSettingsSnapshot(local);
+  final remoteSnapshot = _snapshotFromPayload(
+    remotePayload,
+    fallbackSyncTime: remoteFallbackSyncTime,
+  );
+  final result = await _mergeSettingsSnapshots(
+    local,
+    localSnapshot,
+    remoteSnapshot,
+  );
+  return (
+    mergedState: result.mergedState,
+    payload: _buildSettingsPayload(result.mergedState, result.mergedSnapshot),
+  );
+}
+
 String get _remoteSettingsMd5Path =>
     '${ComicSyncCore.syncRemoteRootName}/${ComicSyncCore.settingsMd5FileName}';
 
 class _SettingsSnapshot {
-  const _SettingsSnapshot({required this.blocks});
+  const _SettingsSnapshot({required this.items, required this.blocks});
 
+  final Map<String, SyncedSettingItem> items;
   final Map<String, _SettingsBlockPayload> blocks;
 
-  int get syncTime => _computeSnapshotSyncTime(blocks);
+  int get syncTime {
+    var result = maxSyncedItemUpdatedAt(items);
+    for (final block in blocks.values) {
+      if (block.updatedAt > result) {
+        result = block.updatedAt;
+      }
+    }
+    return result;
+  }
 }
 
 class _SettingsBlockPayload {
   _SettingsBlockPayload({
     required this.name,
     required this.updatedAt,
+    required this.fieldUpdatedAt,
     required this.data,
   }) : contentMd5 = _calculateStructuredMd5(data);
 
   final String name;
   final int updatedAt;
+  final Map<String, int> fieldUpdatedAt;
   final Map<String, dynamic> data;
   final String contentMd5;
 
   Map<String, dynamic> toJson() {
-    return {'updatedAt': updatedAt, 'data': data};
+    return {
+      'updatedAt': updatedAt,
+      if (fieldUpdatedAt.isNotEmpty) 'fieldUpdatedAt': fieldUpdatedAt,
+      'data': data,
+    };
   }
 }
 

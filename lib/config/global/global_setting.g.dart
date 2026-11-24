@@ -28,6 +28,11 @@ _GlobalSettingState _$GlobalSettingStateFromJson(
   showSearchBookmark: json['showSearchBookmark'] as bool? ?? true,
   showScrollbar: json['showScrollbar'] as bool?,
   alwaysShowScrollbar: json['alwaysShowScrollbar'] as bool? ?? false,
+  settingUpdatedAt:
+      (json['settingUpdatedAt'] as Map<String, dynamic>?)?.map(
+        (k, e) => MapEntry(k, (e as num).toInt()),
+      ) ??
+      const <String, int>{},
   syncSetting: json['syncSetting'] == null
       ? const SyncSettingState()
       : SyncSettingState.fromJson(json['syncSetting'] as Map<String, dynamic>),
@@ -126,6 +131,7 @@ Map<String, dynamic> _$GlobalSettingStateToJson(
   'showSearchBookmark': instance.showSearchBookmark,
   'showScrollbar': instance.showScrollbar,
   'alwaysShowScrollbar': instance.alwaysShowScrollbar,
+  'settingUpdatedAt': instance.settingUpdatedAt,
   'syncSetting': instance.syncSetting.toJson(),
   'maskedKeywords': instance.maskedKeywords,
   'socks5ProxyEnabled': instance.socks5ProxyEnabled,
@@ -284,6 +290,7 @@ _SyncSettingState _$SyncSettingStateFromJson(Map<String, dynamic> json) =>
             json['syncServiceType'],
           ) ??
           SyncServiceType.none,
+      encryptionKey: json['encryptionKey'] as String? ?? '',
       webdavSetting: json['webdavSetting'] == null
           ? const WebDavSettingState()
           : WebDavSettingState.fromJson(
@@ -309,6 +316,7 @@ _SyncSettingState _$SyncSettingStateFromJson(Map<String, dynamic> json) =>
 Map<String, dynamic> _$SyncSettingStateToJson(_SyncSettingState instance) =>
     <String, dynamic>{
       'syncServiceType': _$SyncServiceTypeEnumMap[instance.syncServiceType]!,
+      'encryptionKey': instance.encryptionKey,
       'webdavSetting': instance.webdavSetting.toJson(),
       's3Setting': instance.s3Setting.toJson(),
       'syncSettings': instance.syncSettings,

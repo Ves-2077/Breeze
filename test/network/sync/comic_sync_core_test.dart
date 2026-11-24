@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:zephyr/main.dart' as app;
 import 'package:zephyr/network/sync/comic_sync_core.dart';
 import 'package:zephyr/network/sync/sync_device_id.dart';
 import 'package:zephyr/object_box/model.dart';
@@ -18,6 +19,7 @@ void main() {
       path: p.join(tempDir.path, 'breeze.sqlite3'),
       legacyObjectBoxDir: p.join(tempDir.path, 'missing_objectbox'),
     );
+    app.database = database;
     syncDeviceId = 'device_local';
   });
 
@@ -77,6 +79,180 @@ void main() {
 
       final merged = (await database.histories.getAll()).single;
       expect(merged.pageIndex, 20);
+    });
+
+    test('merges read chapters by LWW', () async {
+      final localUpdated = DateTime.utc(2024, 1, 1, 12, 0);
+      final cloudUpdated = DateTime.utc(2024, 1, 1, 13, 0);
+      final local = createReadChapter(
+        'test:comic1:chapter1',
+        chapterTitle: 'Local chapter',
+        chapterOrder: 1,
+        readAt: localUpdated,
+        updatedAt: localUpdated,
+      );
+      final cloud = createReadChapter(
+        'test:comic1:chapter1',
+        chapterTitle: 'Cloud chapter',
+        chapterOrder: 2,
+        readAt: cloudUpdated,
+        updatedAt: cloudUpdated,
+      );
+
+      final data = buildPayload(readChapters: [cloud.toJson()]);
+      await putAll(database, readChapters: [local]);
+
+      await runMerge(database, data);
+
+      final merged = (await database.readChapters.getAll()).single;
+      expect(merged.chapterTitle, 'Cloud chapter');
+      expect(merged.chapterOrder, 2);
+      expect(merged.readAt, cloudUpdated);
+    });
+
+    test('keeps newer local read chapter over older cloud record', () async {
+      final local = createReadChapter(
+        'test:comic1:chapter1',
+        chapterTitle: 'Local chapter',
+        updatedAt: DateTime.utc(2024, 1, 1, 13, 0),
+      );
+      final cloud = createReadChapter(
+        'test:comic1:chapter1',
+        chapterTitle: 'Cloud chapter',
+        updatedAt: DateTime.utc(2024, 1, 1, 12, 0),
+      );
+
+      final data = buildPayload(readChapters: [cloud.toJson()]);
+      await putAll(database, readChapters: [local]);
+
+      await runMerge(database, data);
+
+      final merged = (await database.readChapters.getAll()).single;
+      expect(merged.chapterTitle, 'Local chapter');
+    });
+
+    test('preserves read chapters when old cloud payload has none', () async {
+      final local = createReadChapter('test:comic1:chapter1');
+      await putAll(database, readChapters: [local]);
+
+      await runMerge(database, buildPayload());
+
+      final merged = (await database.readChapters.getAll()).single;
+      expect(merged.uniqueKey, local.uniqueKey);
+    });
+
+    test('unions read chapters from local and cloud', () async {
+      final local = createReadChapter('test:comic1:chapter1');
+      final cloud = createReadChapter('test:comic1:chapter2');
+
+      final data = buildPayload(readChapters: [cloud.toJson()]);
+      await putAll(database, readChapters: [local]);
+
+      await runMerge(database, data);
+
+      final merged = await database.readChapters.getAll();
+      expect(merged.map((item) => item.uniqueKey).toSet(), {
+        local.uniqueKey,
+        cloud.uniqueKey,
+      });
+    });
+
+    test('buildCompressedPayload includes read chapters', () async {
+      final chapter = createReadChapter(
+        'test:comic1:chapter1',
+        chapterTitle: 'Read chapter',
+        chapterOrder: 3,
+      );
+      await putAll(database, readChapters: [chapter]);
+
+      final bytes = await ComicSyncCore.buildCompressedPayload();
+      final payload = await ComicSyncCore.decodeCompressedPayload(bytes);
+      final chapters = (payload['readChapters'] as List)
+          .cast<Map<String, dynamic>>();
+
+      expect(chapters, hasLength(1));
+      expect(chapters.single['uniqueKey'], chapter.uniqueKey);
+      expect(chapters.single['chapterTitle'], 'Read chapter');
+      expect(chapters.single['chapterOrder'], 3);
+      expect(chapters.single.containsKey('id'), isFalse);
+    });
+
+    test(
+      'buildCompressedPayload excludes download folders and links',
+      () async {
+        final favoriteFolder = createFolder('Favorite');
+        final downloadFolder = createFolder(
+          'Downloads',
+          type: ComicFolderType.download,
+        );
+        await putAll(
+          database,
+          folders: [favoriteFolder, downloadFolder],
+          links: [
+            createLink('test:fav', folderSyncId: favoriteFolder.syncId),
+            createLink(
+              'test:dl',
+              folderSyncId: downloadFolder.syncId,
+              type: ComicFolderType.download,
+            ),
+          ],
+        );
+
+        final bytes = await ComicSyncCore.buildCompressedPayload();
+        final payload = await ComicSyncCore.decodeCompressedPayload(bytes);
+        final folderTypes = (payload['folders'] as List)
+            .cast<Map<String, dynamic>>()
+            .map((item) => item['typeData'])
+            .toSet();
+        final linkTypes = (payload['links'] as List)
+            .cast<Map<String, dynamic>>()
+            .map((item) => item['typeData'])
+            .toSet();
+
+        expect(folderTypes, {'favorite'});
+        expect(linkTypes, {'favorite'});
+      },
+    );
+
+    test('merge ignores cloud download folders and keeps local ones', () async {
+      final localFolder = createFolder(
+        'LocalDownloads',
+        syncId: 'local_dl',
+        type: ComicFolderType.download,
+      );
+      final cloudFolder = createFolder(
+        'CloudDownloads',
+        syncId: 'cloud_dl',
+        type: ComicFolderType.download,
+      );
+      final localLink = createLink(
+        'test:local',
+        folderSyncId: localFolder.syncId,
+        type: ComicFolderType.download,
+      );
+      final cloudLink = createLink(
+        'test:cloud',
+        folderSyncId: cloudFolder.syncId,
+        type: ComicFolderType.download,
+      );
+
+      final data = buildPayload(
+        folders: [cloudFolder.toJson()],
+        links: [cloudLink.toJson()],
+      );
+      await putAll(database, folders: [localFolder], links: [localLink]);
+
+      await runMerge(database, data);
+
+      final folders = await database.folders.getAll();
+      final links = await database.links.getAll();
+      expect(folders.map((item) => item.syncId), contains('local_dl'));
+      expect(folders.map((item) => item.syncId), isNot(contains('cloud_dl')));
+      expect(links.map((item) => item.comicUniqueKey), contains('test:local'));
+      expect(
+        links.map((item) => item.comicUniqueKey),
+        isNot(contains('test:cloud')),
+      );
     });
 
     test('merges folders by version vector when cloud dominates', () async {
@@ -593,6 +769,7 @@ Map<String, dynamic> buildPayload({
   List<Map<String, dynamic>> histories = const [],
   List<Map<String, dynamic>> folders = const [],
   List<Map<String, dynamic>> links = const [],
+  List<Map<String, dynamic>> readChapters = const [],
 }) {
   return {
     'version': 'v1',
@@ -600,6 +777,7 @@ Map<String, dynamic> buildPayload({
     'histories': histories,
     'folders': folders,
     'links': links,
+    'readChapters': readChapters,
   };
 }
 
@@ -609,11 +787,33 @@ Future<void> putAll(
   List<UnifiedComicHistory> histories = const [],
   List<ComicFolder> folders = const [],
   List<ComicLink> links = const [],
+  List<ComicReadChapter> readChapters = const [],
 }) async {
   await database.favorites.putMany(favorites);
   await database.histories.putMany(histories);
   await database.folders.putMany(folders);
   await database.links.putMany(links);
+  await database.readChapters.putMany(readChapters);
+}
+
+ComicReadChapter createReadChapter(
+  String uniqueKey, {
+  String chapterTitle = 'Chapter',
+  int chapterOrder = 0,
+  DateTime? readAt,
+  DateTime? updatedAt,
+}) {
+  final now = updatedAt ?? DateTime.now().toUtc();
+  return ComicReadChapter(
+    uniqueKey: uniqueKey,
+    source: uniqueKey.split(':').first,
+    comicId: uniqueKey.split(':')[1],
+    chapterId: uniqueKey.split(':').last,
+    chapterTitle: chapterTitle,
+    chapterOrder: chapterOrder,
+    readAt: readAt ?? now,
+    updatedAt: now,
+  );
 }
 
 UnifiedComicFavorite createFavorite(
@@ -675,14 +875,16 @@ ComicFolder createFolder(
   Map<String, int>? versionVector,
   int? deletedAt,
   int? updatedAt,
+  ComicFolderType type = ComicFolderType.favorite,
 }) {
+  final typeData = type.name;
   final now = DateTime.now().toUtc().millisecondsSinceEpoch;
   return ComicFolder(
     syncId: syncId ?? '${name}_sync',
     parentSyncId: parentSyncId,
-    uniqueKey: '${parentSyncId ?? ''}|$name|favorite',
+    uniqueKey: '${parentSyncId ?? ''}|$name|$typeData',
     name: name,
-    typeData: ComicFolderType.favorite.name,
+    typeData: typeData,
     versionVectorJson: versionVector != null
         ? jsonMap(versionVector)
         : '{"device_local": 1}',
@@ -696,13 +898,15 @@ ComicLink createLink(
   String comicUniqueKey, {
   required String folderSyncId,
   Map<String, int>? versionVector,
+  ComicFolderType type = ComicFolderType.favorite,
 }) {
+  final typeData = type.name;
   final now = DateTime.now().toUtc().millisecondsSinceEpoch;
   return ComicLink(
-    uniqueKey: '$comicUniqueKey|$folderSyncId|favorite',
+    uniqueKey: '$comicUniqueKey|$folderSyncId|$typeData',
     comicUniqueKey: comicUniqueKey,
     folderSyncId: folderSyncId,
-    typeData: ComicFolderType.favorite.name,
+    typeData: typeData,
     versionVectorJson: versionVector != null
         ? jsonMap(versionVector)
         : '{"device_local": 1}',

@@ -7,6 +7,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:zephyr/config/global/color_theme_types.dart';
+import 'package:zephyr/config/global/setting_updated_at.dart';
 import 'package:zephyr/i18n/i18n_helper.dart';
 import 'package:zephyr/i18n/strings.g.dart';
 import 'package:zephyr/main.dart';
@@ -192,6 +193,11 @@ abstract class GlobalSettingState with _$GlobalSettingState {
     // null = 跟随平台默认值（桌面端显示、移动端隐藏），用户切换后写入显式值。
     bool? showScrollbar,
     @Default(false) bool alwaysShowScrollbar,
+
+    /// 每个设置项的最近修改时间（UTC 毫秒时间戳），键为设置 JSON 路径，
+    /// 例如 `themeMode`、`readSetting.readMode`。只记录改动过的项，未记录
+    /// 的项在同步时回退到旧版块级时间。
+    @Default(<String, int>{}) Map<String, int> settingUpdatedAt,
     @Default(SyncSettingState()) SyncSettingState syncSetting,
     @Default([]) List<String> maskedKeywords,
     @Default(true) bool socks5ProxyEnabled,
@@ -331,6 +337,9 @@ abstract class S3SettingState with _$S3SettingState {
 abstract class SyncSettingState with _$SyncSettingState {
   const factory SyncSettingState({
     @Default(SyncServiceType.none) SyncServiceType syncServiceType,
+
+    /// 自定义同步加密密钥；空串使用内置默认密钥，兼容旧同步数据。
+    @Default('') String encryptionKey,
     @Default(WebDavSettingState()) WebDavSettingState webdavSetting,
     @Default(S3SettingState()) S3SettingState s3Setting,
     @Default(false) bool syncSettings,
@@ -500,10 +509,16 @@ class GlobalSettingCubit extends Cubit<GlobalSettingState> {
 
   Future<void> initBox() async {
     final userSetting = await database.userSettings.getOrCreate();
-    final persisted = userSetting.globalSetting;
+    final persisted = _hydrateUpdatedAt(userSetting.globalSetting);
     _globalSettingState = persisted;
     _syncRuntimeFlags(persisted);
     emit(persisted);
+    if (!mapEquals(
+      persisted.settingUpdatedAt,
+      userSetting.globalSetting.settingUpdatedAt,
+    )) {
+      unawaited(_persistGlobalSetting(persisted));
+    }
   }
 
   GlobalSettingState get defaults =>
@@ -620,13 +635,23 @@ class GlobalSettingCubit extends Cubit<GlobalSettingState> {
   void _persistAndEmit(GlobalSettingState newState) {
     final normalizedState = _preserveCompatibleVersion(newState, state);
     _syncRuntimeFlags(normalizedState);
-    if (_withoutSettingsSyncTime(normalizedState) ==
-        _withoutSettingsSyncTime(state)) {
+    if (_withoutSyncMetadata(normalizedState) == _withoutSyncMetadata(state)) {
       return;
     }
 
     final nowMs = DateTime.now().toUtc().millisecondsSinceEpoch;
+    final updatedTimestamps = updateSettingUpdatedAt(
+      previous: state.toJson(),
+      next: normalizedState.toJson(),
+      current: state.settingUpdatedAt,
+      now: nowMs,
+    );
     final persistedState = normalizedState.copyWith(
+      settingUpdatedAt: hydrateSettingUpdatedAt(
+        stateJson: normalizedState.toJson(),
+        current: updatedTimestamps,
+        baseline: normalizedState.syncSetting.settingsSyncTime,
+      ),
       syncSetting: normalizedState.syncSetting.copyWith(
         settingsSyncTime: nowMs,
       ),
@@ -636,10 +661,31 @@ class GlobalSettingCubit extends Cubit<GlobalSettingState> {
   }
 
   void applySyncedState(GlobalSettingState value) {
-    final normalized = _preserveCompatibleVersion(value, state);
+    final normalized = _hydrateUpdatedAt(
+      _preserveCompatibleVersion(value, state),
+    );
     _syncRuntimeFlags(normalized);
     _updateDataBase(normalized);
     emit(normalized);
+  }
+
+  /// 备份导入：数据库已由导入 worker 按原始 JSON 写好，这里只替换内存状态。
+  void adoptRestoredState(GlobalSettingState value) {
+    _syncRuntimeFlags(value);
+    _globalSettingState = value;
+    emit(value);
+  }
+
+  GlobalSettingState _hydrateUpdatedAt(GlobalSettingState value) {
+    final hydrated = hydrateSettingUpdatedAt(
+      stateJson: value.toJson(),
+      current: value.settingUpdatedAt,
+      baseline: value.syncSetting.settingsSyncTime,
+    );
+    if (mapEquals(hydrated, value.settingUpdatedAt)) {
+      return value;
+    }
+    return value.copyWith(settingUpdatedAt: hydrated);
   }
 
   void _syncRuntimeFlags(GlobalSettingState value) {
@@ -660,8 +706,9 @@ class GlobalSettingCubit extends Cubit<GlobalSettingState> {
     return incoming.copyWith(compatibleVersion: preserved);
   }
 
-  GlobalSettingState _withoutSettingsSyncTime(GlobalSettingState value) {
+  GlobalSettingState _withoutSyncMetadata(GlobalSettingState value) {
     return value.copyWith(
+      settingUpdatedAt: const <String, int>{},
       syncSetting: value.syncSetting.copyWith(settingsSyncTime: 0),
     );
   }

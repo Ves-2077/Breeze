@@ -185,6 +185,14 @@ class ComicFolderRepository {
     return result.changes;
   }
 
+  Future<int> removeByType(String typeData) async {
+    final result = await db.execute(
+      'DELETE FROM "ComicFolder" WHERE "typeData" = ?',
+      <Object?>[typeData],
+    );
+    return result.changes;
+  }
+
   Future<int> removeAll() async {
     final result = await db.execute('DELETE FROM "ComicFolder"');
     return result.changes;
@@ -550,6 +558,14 @@ class ComicLinkRepository {
     final result = await db.execute(
       'DELETE FROM "ComicLink" WHERE "id" = ?',
       <Object?>[id],
+    );
+    return result.changes;
+  }
+
+  Future<int> removeByType(String typeData) async {
+    final result = await db.execute(
+      'DELETE FROM "ComicLink" WHERE "typeData" = ?',
+      <Object?>[typeData],
     );
     return result.changes;
   }

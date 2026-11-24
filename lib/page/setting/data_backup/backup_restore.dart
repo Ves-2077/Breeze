@@ -86,8 +86,20 @@ Future<void> _clearAllData(
   await db.downloadTasks.removeAll();
   await db.plugins.removeAllConfigs();
   await db.plugins.removeAllInfos();
-  await db.folders.removeAll();
-  await db.links.removeAll();
+  if (preserveDownloads) {
+    // 不含下载文件的备份不包含下载书架；只清空会从备份恢复的收藏/历史目录，
+    // 保留本机下载文件夹和链接，避免下载记录还在但目录结构丢失。
+    for (final type in const [
+      ComicFolderType.favorite,
+      ComicFolderType.history,
+    ]) {
+      await db.folders.removeByType(type.name);
+      await db.links.removeByType(type.name);
+    }
+  } else {
+    await db.folders.removeAll();
+    await db.links.removeAll();
+  }
   await db.readPreferences.removeAll();
   await db.readChapters.removeAll();
   await db.bookmarks.removeAll();
@@ -132,19 +144,27 @@ Future<GlobalSettingState?> _restoreAllData(
   Future<void> putAll<T>(
     String key,
     T Function(Map<String, dynamic>) fromJson,
-    Future<void> Function(List<T>) write,
-  ) async {
-    final items = rowsOf(key).map(fromJson).toList();
+    Future<void> Function(List<T>) write, {
+    bool Function(Map<String, dynamic>)? where,
+  }) async {
+    final items = rowsOf(key)
+        .where(where ?? (_) => true)
+        .map(fromJson)
+        .toList();
     if (items.isEmpty) return;
     await write(items);
   }
 
   final legacy = db.legacy;
   await legacy.restoreBikaHistories(rowsOf('bikaComicHistory'));
-  await legacy.restoreBikaDownloads(rowsOf('bikaComicDownload'));
+  if (!preserveDownloads) {
+    await legacy.restoreBikaDownloads(rowsOf('bikaComicDownload'));
+  }
   await legacy.restoreJmFavorites(rowsOf('jmFavorite'));
   await legacy.restoreJmHistories(rowsOf('jmHistory'));
-  await legacy.restoreJmDownloads(rowsOf('jmDownload'));
+  if (!preserveDownloads) {
+    await legacy.restoreJmDownloads(rowsOf('jmDownload'));
+  }
 
   await putAll(
     'unifiedComicFavorite',
@@ -174,16 +194,30 @@ Future<GlobalSettingState?> _restoreAllData(
     PluginInfo.fromJson,
     db.plugins.putInfosWithScripts,
   );
-  await putAll('comicFolder', (j) {
-    final folder = ComicFolder.fromJson(j);
-    folder.versionVectorJson = bumpVersionVector(folder.versionVectorJson);
-    return folder;
-  }, db.folders.putMany);
-  await putAll('comicLink', (j) {
-    final link = ComicLink.fromJson(j);
-    link.versionVectorJson = bumpVersionVector(link.versionVectorJson);
-    return link;
-  }, db.links.putMany);
+  await putAll(
+    'comicFolder',
+    (j) {
+      final folder = ComicFolder.fromJson(j);
+      folder.versionVectorJson = bumpVersionVector(folder.versionVectorJson);
+      return folder;
+    },
+    db.folders.putMany,
+    where: preserveDownloads
+        ? (j) => j['typeData'] != ComicFolderType.download.name
+        : null,
+  );
+  await putAll(
+    'comicLink',
+    (j) {
+      final link = ComicLink.fromJson(j);
+      link.versionVectorJson = bumpVersionVector(link.versionVectorJson);
+      return link;
+    },
+    db.links.putMany,
+    where: preserveDownloads
+        ? (j) => j['typeData'] != ComicFolderType.download.name
+        : null,
+  );
   await putAll(
     'comicReadPreference',
     ComicReadPreference.fromJson,
@@ -206,11 +240,10 @@ Future<GlobalSettingState?> _restoreAllData(
 ///
 /// 应用大量代码假设 UserSetting 的主键固定为 1，[UserSettingRepository.put]
 /// 也只会写入 id=1 的槽位，因此这里不先清空再插入，而是直接覆盖该槽位。
-/// 恢复后由调用方把合并结果推回 [GlobalSettingCubit]（必须在 UI isolate 做）。
+/// 恢复后由调用方把恢复结果推回 [GlobalSettingCubit]（必须在 UI isolate 做）。
 ///
-/// 导入时会保留当前设备上的平台相关/本地-only 设置，避免被备份覆盖：
-/// 自定义导出目录、代理、应用锁（手势密码/PIN）、语言、窗口几何、日志地址、
-/// Impeller 强制启用标志等。
+/// 导入是整包覆盖：备份里的全局设置原样写回，不与当前设备做任何合并，
+/// 也不修改备份里的设置项修改时间。
 Future<GlobalSettingState?> _restoreUserSetting(
   Database db,
   List<dynamic>? list,
@@ -222,15 +255,10 @@ Future<GlobalSettingState?> _restoreUserSetting(
   );
 
   final current = await db.userSettings.get();
-  final currentGlobal = current?.globalSetting ?? const GlobalSettingState();
-
   final hasBackupGlobal =
       backup.globalSettingData != null && backup.globalSettingData!.isNotEmpty;
-  final mergedGlobal = hasBackupGlobal
-      ? _mergeGlobalSettingForImport(backup.globalSetting, currentGlobal)
-      : currentGlobal;
 
-  // 复用现有 id=1 的 slot：未备份的字段沿用本机值。
+  // 复用现有 id=1 的 slot：备份没有的字段沿用本机值。
   final next = UserSetting(
     id: 1,
     globalSettingData: current?.globalSettingData,
@@ -239,7 +267,8 @@ Future<GlobalSettingState?> _restoreUserSetting(
     jmJwt: current?.jmJwt ?? '',
   );
   if (hasBackupGlobal) {
-    next.globalSetting = mergedGlobal;
+    // 直接写备份原始 JSON，避免重新序列化丢字段或补默认值。
+    next.globalSettingData = backup.globalSettingData;
   }
   if (backup.bikaSettingData != null && backup.bikaSettingData!.isNotEmpty) {
     next.bikaSettingData = backup.bikaSettingData;
@@ -250,41 +279,7 @@ Future<GlobalSettingState?> _restoreUserSetting(
   next.jmJwt = backup.jmJwt;
 
   await db.userSettings.put(next);
-  return mergedGlobal;
-}
-
-/// 合并备份的 [GlobalSettingState] 与当前设备的本地设置。
-///
-/// 备份中的通用偏好设置会被采用，但跟平台强相关或不应跨设备同步的字段
-/// 会被 [current] 的值覆盖：
-/// - 自定义导出目录（[customExportPath]）
-/// - SOCKS5 代理（[socks5Proxy] / [socks5ProxyEnabled]）
-/// - 应用锁（[appLockSetting]，含手势密码哈希与 PIN 重置哈希）
-/// - 语言（[locale]）
-/// - 桌面端窗口位置与大小（[windowWidth]/[windowHeight]/[windowX]/[windowY]）
-/// - 日志保存地址（[logAddress]）
-/// - Rust HTTP 请求拦截开关（[blockRustHttpRequests]）
-/// - iOS Impeller 强制启用标志（[forceEnableImpeller]）
-/// - Android 后台保活（[androidKeepAliveEnabled]）
-GlobalSettingState _mergeGlobalSettingForImport(
-  GlobalSettingState backup,
-  GlobalSettingState current,
-) {
-  return backup.copyWith(
-    customExportPath: current.customExportPath,
-    socks5Proxy: current.socks5Proxy,
-    socks5ProxyEnabled: current.socks5ProxyEnabled,
-    appLockSetting: current.appLockSetting,
-    locale: current.locale,
-    windowWidth: current.windowWidth,
-    windowHeight: current.windowHeight,
-    windowX: current.windowX,
-    windowY: current.windowY,
-    logAddress: current.logAddress,
-    blockRustHttpRequests: current.blockRustHttpRequests,
-    forceEnableImpeller: current.forceEnableImpeller,
-    androidKeepAliveEnabled: current.androidKeepAliveEnabled,
-  );
+  return hasBackupGlobal ? backup.globalSetting : null;
 }
 
 Map<String, int> _parseVersionVector(String raw) {
