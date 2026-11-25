@@ -169,8 +169,8 @@ class _ImageDisplayState extends State<ImageDisplay> {
     final currentCachedSize = cubit.getSize(index);
 
     if (!currentCachedSize.isCached ||
-        (currentCachedSize.size.height - finalHeight).abs() > 0.5 ||
-        (currentCachedSize.size.width - actualWidth).abs() > 0.5) {
+        (currentCachedSize.size.height - finalHeight).abs() > 0.05 ||
+        (currentCachedSize.size.width - actualWidth).abs() > 0.05) {
       cubit.updateSize(index, Size(actualWidth, finalHeight));
     }
   }
@@ -230,7 +230,7 @@ class _ImageDisplayState extends State<ImageDisplay> {
         final width = constraints.maxWidth;
         // cacheWidth 的单位是物理像素；这里手动乘 devicePixelRatio，
         // 等价于 Flutter 3.50 的 useLogicalCacheSize（OHOS fork 3.47 没有该参数）。
-        final decodeWidth = width.isFinite && width >= 1
+        final decodeWidth = !isColumn && width.isFinite && width >= 1
             ? (width * MediaQuery.devicePixelRatioOf(context)).ceil()
             : null;
 
@@ -263,7 +263,8 @@ class _ImageDisplayState extends State<ImageDisplay> {
           alignment: widget.imageAlignment,
           child: Image.file(
             File(widget.imagePath),
-            width: width,
+                        width: width,
+            height: isColumn && _aspectRatio != null && width.isFinite && width >= 1 ? width * _aspectRatio! : null,
             // 按屏幕物理像素解码，避免高 DPI 设备上按逻辑宽度解码后放大发虚；
             // ResizeImage 默认 allowUpscaling=false，小图不会被放大，超大扫描图
             // 也只解码到屏幕像素宽度，不会整张原图进 ImageCache。
