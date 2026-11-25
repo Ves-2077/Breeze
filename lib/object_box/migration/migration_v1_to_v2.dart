@@ -5,6 +5,7 @@ import 'package:path/path.dart' as p;
 import 'package:zephyr/database/database.dart';
 import 'package:zephyr/main.dart';
 import 'package:zephyr/object_box/model.dart';
+import 'package:zephyr/object_box/model_json_codec.dart';
 import 'package:zephyr/page/comic_info/json/normal/normal_comic_all_info.dart'
     as normal;
 import 'package:zephyr/page/download/models/unified_comic_download.dart';
@@ -578,7 +579,7 @@ UnifiedComicFavorite _jmFavoriteToUnified(JmFavorite item) {
     comicId: item.comicId,
     title: item.name,
     description: item.description,
-    cover: jsonEncode(
+    cover: comicImageFromField(
       _migratedImageJson(
         id: item.comicId,
         url: _legacyJmCoverUrl(item.comicId),
@@ -586,7 +587,7 @@ UnifiedComicFavorite _jmFavoriteToUnified(JmFavorite item) {
         path: '${item.comicId}.jpg',
       ),
     ),
-    creator: jsonEncode(
+    creator: creatorFromField(
       _creatorMap(
         normal.Creator(
           id: '',
@@ -595,13 +596,11 @@ UnifiedComicFavorite _jmFavoriteToUnified(JmFavorite item) {
         ),
       ),
     ),
-    titleMeta: jsonEncode(
-      _titleMetaList([
-        normal.ComicInfoActionItem(name: '浏览：${item.totalViews}'),
-        normal.ComicInfoActionItem(name: '更新时间：${_safeTitle(item.addtime)}'),
-      ]),
-    ),
-    metadata: _metadataAsStringFromItems([
+    titleMeta: comicTitleMetaFromField([
+      normal.ComicInfoActionItem(name: '浏览：${item.totalViews}'),
+      normal.ComicInfoActionItem(name: '更新时间：${_safeTitle(item.addtime)}'),
+    ]),
+    metadata: comicMetadataFromField([
       normal.ComicInfoMetadata(
         type: 'author',
         name: '作者',
@@ -649,7 +648,7 @@ UnifiedComicHistory _bikaHistoryToUnified(BikaComicHistory item, int proxy) {
     comicId: item.comicId,
     title: item.title,
     description: item.description,
-    cover: jsonEncode(
+    cover: comicImageFromField(
       _migratedImageJson(
         id: item.comicId,
         url: coverUrl,
@@ -657,28 +656,26 @@ UnifiedComicHistory _bikaHistoryToUnified(BikaComicHistory item, int proxy) {
         path: item.thumbPath,
       ),
     ),
-    creator: jsonEncode({
-      'id': item.creatorId,
-      'name': item.creatorName,
-      'avatar': _migratedImageJson(
-        id: item.creatorId,
-        url: avatarUrl,
-        name: item.creatorAvatarOriginalName,
-        path: item.creatorAvatarPath,
+    creator: normal.Creator(
+      id: item.creatorId,
+      name: item.creatorName,
+      avatar: comicImageFromField(
+        _migratedImageJson(
+          id: item.creatorId,
+          url: avatarUrl,
+          name: item.creatorAvatarOriginalName,
+          path: item.creatorAvatarPath,
+        ),
       ),
-      'onTap': const <String, dynamic>{},
-      'extern': const <String, dynamic>{},
-    }),
-    titleMeta: jsonEncode(
-      _titleMetaList([
-        normal.ComicInfoActionItem(name: '浏览：${item.totalViews}'),
-        normal.ComicInfoActionItem(name: '更新时间：${item.updatedAt.toLocal()}'),
-        if (item.pagesCount > 0)
-          normal.ComicInfoActionItem(name: '页数：${item.pagesCount}'),
-        normal.ComicInfoActionItem(name: '章节数：${item.epsCount}'),
-      ]),
     ),
-    metadata: _metadataAsStringFromItems([
+    titleMeta: comicTitleMetaFromField([
+      normal.ComicInfoActionItem(name: '浏览：${item.totalViews}'),
+      normal.ComicInfoActionItem(name: '更新时间：${item.updatedAt.toLocal()}'),
+      if (item.pagesCount > 0)
+        normal.ComicInfoActionItem(name: '页数：${item.pagesCount}'),
+      normal.ComicInfoActionItem(name: '章节数：${item.epsCount}'),
+    ]),
+    metadata: comicMetadataFromField([
       normal.ComicInfoMetadata(
         type: 'author',
         name: '作者',
@@ -725,7 +722,7 @@ UnifiedComicHistory _jmHistoryToUnified(JmHistory item) {
     comicId: item.comicId,
     title: item.name,
     description: item.description,
-    cover: jsonEncode(
+    cover: comicImageFromField(
       _migratedImageJson(
         id: item.comicId,
         url: _legacyJmCoverUrl(item.comicId),
@@ -733,7 +730,7 @@ UnifiedComicHistory _jmHistoryToUnified(JmHistory item) {
         path: '${item.comicId}.jpg',
       ),
     ),
-    creator: jsonEncode(
+    creator: creatorFromField(
       _creatorMap(
         normal.Creator(
           id: '',
@@ -742,13 +739,11 @@ UnifiedComicHistory _jmHistoryToUnified(JmHistory item) {
         ),
       ),
     ),
-    titleMeta: jsonEncode(
-      _titleMetaList([
-        normal.ComicInfoActionItem(name: '浏览：${item.totalViews}'),
-        normal.ComicInfoActionItem(name: '更新时间：${_safeTitle(item.addtime)}'),
-      ]),
-    ),
-    metadata: _metadataAsStringFromItems([
+    titleMeta: comicTitleMetaFromField([
+      normal.ComicInfoActionItem(name: '浏览：${item.totalViews}'),
+      normal.ComicInfoActionItem(name: '更新时间：${_safeTitle(item.addtime)}'),
+    ]),
+    metadata: comicMetadataFromField([
       normal.ComicInfoMetadata(
         type: 'author',
         name: '作者',
@@ -980,10 +975,10 @@ UnifiedComicDownload _bikaDownloadToUnified(
     comicId: item.comicId,
     title: item.title,
     description: item.description,
-    cover: jsonEncode(_coverMap(comicInfoMap['cover'])),
-    creator: jsonEncode(_creatorMap(comicInfoMap['creator'])),
-    titleMeta: jsonEncode(_mapList(comicInfoMap['titleMeta'])),
-    metadata: _metadataAsString(comicInfoMap['metadata']),
+    cover: comicImageFromField(_coverMap(comicInfoMap['cover'])),
+    creator: creatorFromField(_creatorMap(comicInfoMap['creator'])),
+    titleMeta: comicTitleMetaFromField(_mapList(comicInfoMap['titleMeta'])),
+    metadata: comicMetadataFromField(comicInfoMap['metadata']),
     totalViews: item.totalViews,
     totalLikes: item.totalLikes,
     totalComments: item.totalComments,
@@ -1093,10 +1088,10 @@ UnifiedComicDownload _jmDownloadToUnified(
     comicId: item.comicId,
     title: item.name,
     description: item.description,
-    cover: jsonEncode(cover),
-    creator: jsonEncode(_creatorMap(comicInfoMap['creator'])),
-    titleMeta: jsonEncode(_mapList(comicInfoMap['titleMeta'])),
-    metadata: _metadataAsString(comicInfoMap['metadata']),
+    cover: comicImageFromField(cover),
+    creator: creatorFromField(_creatorMap(comicInfoMap['creator'])),
+    titleMeta: comicTitleMetaFromField(_mapList(comicInfoMap['titleMeta'])),
+    metadata: comicMetadataFromField(comicInfoMap['metadata']),
     totalViews: normalInfo.totalViews,
     totalLikes: normalInfo.totalLikes,
     totalComments: normalInfo.totalComments,
@@ -1541,29 +1536,6 @@ Map<String, dynamic> _toMigratedImageMap(Map<String, dynamic> image) {
   return map;
 }
 
-List<Map<String, dynamic>> _titleMetaList(
-  List<normal.ComicInfoActionItem> items,
-) {
-  return items
-      .map((item) => _normalizeFlexValue(item.toJson()))
-      .whereType<Map>()
-      .map((item) => Map<String, dynamic>.from(item))
-      .toList();
-}
-
-List<Map<String, dynamic>> _metadataList(List<normal.ComicInfoMetadata> items) {
-  return items
-      .where((item) => item.value.isNotEmpty)
-      .map((item) => _normalizeFlexValue(item.toJson()))
-      .whereType<Map>()
-      .map((item) => Map<String, dynamic>.from(item))
-      .toList();
-}
-
-String _metadataAsStringFromItems(List<normal.ComicInfoMetadata> items) {
-  return _metadataAsString(_metadataList(items));
-}
-
 List<Map<String, dynamic>> _mapList(dynamic value) {
   value = _normalizeFlexValue(value);
   if (value is List) {
@@ -1590,45 +1562,6 @@ List<Map<String, dynamic>> _mapList(dynamic value) {
         .toList();
   }
   return <Map<String, dynamic>>[];
-}
-
-String _metadataAsString(dynamic value) {
-  final raw = _mapList(value);
-  if (raw.isEmpty) {
-    return '[]';
-  }
-
-  final normalized = <Map<String, dynamic>>[];
-  for (final item in raw) {
-    final values = _asDynamicList(item['value'])
-        .map((entry) {
-          final name = _asDynamicMap(entry)['name']?.toString().trim() ?? '';
-          if (name.isEmpty) {
-            return null;
-          }
-          return {'name': name};
-        })
-        .whereType<Map<String, dynamic>>()
-        .toList();
-
-    if (values.isEmpty) {
-      continue;
-    }
-    normalized.add({
-      'type': item['type']?.toString() ?? '',
-      'name': item['name']?.toString() ?? '',
-      'value': values,
-    });
-  }
-
-  return jsonEncode(normalized);
-}
-
-List<dynamic> _asDynamicList(dynamic value) {
-  if (value is List) {
-    return value;
-  }
-  return const <dynamic>[];
 }
 
 Map<String, dynamic> _asDynamicMap(dynamic value) {

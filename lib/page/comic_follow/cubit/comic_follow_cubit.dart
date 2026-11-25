@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import 'package:bloc/bloc.dart';
 import 'package:zephyr/main.dart';
 import 'package:zephyr/object_box/model.dart';
@@ -98,14 +96,10 @@ class ComicFollowCubit extends Cubit<ComicFollowState> {
         comicId: comicId.trim(),
         title: comicInfo.title,
         description: comicInfo.description,
-        cover: jsonEncode(comicInfo.cover.toJson()),
-        creator: jsonEncode(comicInfo.creator.toJson()),
-        titleMeta: jsonEncode(
-          comicInfo.titleMeta.map((e) => e.toJson()).toList(),
-        ),
-        metadata: jsonEncode(
-          comicInfo.metadata.map((e) => e.toJson()).toList(),
-        ),
+        cover: comicInfo.cover,
+        creator: comicInfo.creator,
+        titleMeta: comicInfo.titleMeta,
+        metadata: comicInfo.metadata,
         lastChapterCount: detected,
         detectedChapterCount: detected,
         detectedChapterTitle: latestChapterTitle,
@@ -122,14 +116,10 @@ class ComicFollowCubit extends Cubit<ComicFollowState> {
         comicId: comicId.trim(),
         title: comicInfo.title,
         description: comicInfo.description,
-        cover: jsonEncode(comicInfo.cover.toJson()),
-        creator: jsonEncode(comicInfo.creator.toJson()),
-        titleMeta: jsonEncode(
-          comicInfo.titleMeta.map((e) => e.toJson()).toList(),
-        ),
-        metadata: jsonEncode(
-          comicInfo.metadata.map((e) => e.toJson()).toList(),
-        ),
+        cover: comicInfo.cover,
+        creator: comicInfo.creator,
+        titleMeta: comicInfo.titleMeta,
+        metadata: comicInfo.metadata,
         lastChapterCount: detected,
         detectedChapterCount: detected,
         detectedChapterTitle: latestChapterTitle,

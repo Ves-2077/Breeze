@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zephyr/main.dart';
+import 'package:zephyr/model/comic_info_meta.dart';
 import 'package:zephyr/page/bookshelf/method/import_comic.dart';
 import 'package:zephyr/page/comic_edit/method/comic_edit_service.dart';
 import 'package:zephyr/page/comic_info/method/export_comic.dart';
@@ -150,7 +151,7 @@ void main() {
     final record = createTestDownload('test:c1')
       ..comicId = 'c1'
       ..title = 'Original'
-      ..cover = jsonEncode(_cover())
+      ..cover = ComicImage.fromJson(_cover())
       ..chapters = jsonEncode(_chapters())
       ..detailJson = jsonEncode(_detail());
     await database.downloads.put(record);
@@ -209,10 +210,10 @@ void main() {
         'p3',
       );
 
-      final cover = jsonDecode(record.cover) as Map;
+      final cover = record.cover;
       final coverStore = DownloadAssetStore(
         from: 'test',
-        path: cover['path'] as String,
+        path: cover.path,
         cartoonId: 'c1',
         chapterId: '',
         storageChapterId: '',
@@ -247,10 +248,10 @@ void main() {
       await importComicFromDirectory(exportedDir);
 
       final record = (await database.downloads.getAll()).single;
-      final cover = jsonDecode(record.cover) as Map;
+      final cover = record.cover;
       final coverStore = DownloadAssetStore(
         from: 'test',
-        path: cover['path'] as String,
+        path: cover.path,
         cartoonId: 'c1',
         chapterId: '',
         storageChapterId: '',

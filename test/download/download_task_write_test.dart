@@ -48,13 +48,13 @@ void main() {
       taskKey: taskKey,
       taskId: id,
       status: 'progress-1',
-      payloadJson: downloadTaskJsonToJson(_payload(completed: 1)),
+      payload: _payload(completed: 1),
     );
     await repository.putTaskWriteBackground(
       taskKey: taskKey,
       taskId: id,
       status: 'progress-2',
-      payloadJson: downloadTaskJsonToJson(_payload(completed: 2)),
+      payload: _payload(completed: 2),
     );
     await repository.putTaskWriteBackground(
       taskKey: taskKey,

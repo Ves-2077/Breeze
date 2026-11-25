@@ -2,6 +2,7 @@ import 'package:zephyr/database/db.dart';
 import 'package:zephyr/database/db_read.dart';
 import 'package:zephyr/database/row_codec.dart';
 import 'package:zephyr/object_box/model.dart';
+import 'package:zephyr/object_box/model_json_codec.dart';
 
 const _followInsert =
     'INSERT INTO "ComicFollow" '
@@ -122,10 +123,10 @@ class ComicFollowRepository {
       v.comicId,
       v.title,
       v.description,
-      v.cover,
-      v.creator,
-      v.titleMeta,
-      v.metadata,
+      comicImageToField(v.cover),
+      creatorToField(v.creator),
+      comicTitleMetaToField(v.titleMeta),
+      comicMetadataToField(v.metadata),
       v.lastChapterCount,
       v.detectedChapterCount,
       boolToDb(v.hasUpdate),

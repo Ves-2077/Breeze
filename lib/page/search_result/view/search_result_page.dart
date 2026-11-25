@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:auto_route/auto_route.dart';
@@ -9,6 +8,7 @@ import 'package:material_ui/material_ui.dart' hide Thumb;
 import 'package:zephyr/config/global/global_setting.dart';
 import 'package:zephyr/cubit/string_select.dart';
 import 'package:zephyr/i18n/strings.g.dart';
+import 'package:zephyr/model/comic_info_meta.dart';
 import 'package:zephyr/object_box/model.dart';
 import 'package:zephyr/page/comic_list/view/plugin_comic_grid_sliver.dart';
 import 'package:zephyr/page/search/cubit/search_cubit.dart';
@@ -704,7 +704,13 @@ class _SearchResultPageState extends State<_SearchResultPage>
       extern: Map<String, dynamic>.from(states.pluginExtern),
       anchorComicId: pickedId,
       anchorTitle: picked.comic.title,
-      anchorCover: jsonEncode(picked.comic.cover.toJson()),
+      anchorCover: ComicImage(
+        id: picked.comic.cover.id,
+        url: picked.comic.cover.url,
+        name: '',
+        path: picked.comic.cover.cachePath,
+        extern: picked.comic.cover.extern,
+      ),
       anchorPage: picked.buildNumber,
       anchorIndex: pickedIndex - pageStart,
     );

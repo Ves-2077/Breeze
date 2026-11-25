@@ -5,6 +5,7 @@ import 'package:zephyr/config/global/global_setting.dart';
 import 'package:zephyr/database/database.dart';
 import 'package:zephyr/network/sync/sync_device_id.dart';
 import 'package:zephyr/object_box/model.dart';
+import 'package:zephyr/object_box/model_json_codec.dart';
 import 'package:zephyr/util/async/worker_pool.dart';
 import 'package:zephyr/util/rust/rust_loader.dart';
 
@@ -119,7 +120,7 @@ Map<String, dynamic> _withDefaultId(Map<String, dynamic> json) {
 /// 是模型形态：日期为 ISO 字符串、列表为数组、布尔为 bool）。
 ///
 /// 对于 ComicFolder / ComicLink，还会用当前设备的 syncDeviceId 对
-/// versionVectorJson 做一次 bump，避免导入后同步时出现设备 ID 不一致的冲突。
+/// 导入后同步前给版本向量做一次 bump，避免不同设备的计数冲突。
 Future<GlobalSettingState?> _restoreAllData(
   Database db,
   Map<String, dynamic> json, {
@@ -127,12 +128,6 @@ Future<GlobalSettingState?> _restoreAllData(
 }) async {
   final currentDeviceId = syncDeviceId;
   GlobalSettingState? restoredGlobal;
-
-  String bumpVersionVector(String raw) {
-    final map = _parseVersionVector(raw);
-    map[currentDeviceId] = (map[currentDeviceId] ?? 0) + 1;
-    return jsonEncode(map);
-  }
 
   List<Map<String, dynamic>> rowsOf(String key) {
     return (json[key] as List? ?? const <dynamic>[])
@@ -198,7 +193,10 @@ Future<GlobalSettingState?> _restoreAllData(
     'comicFolder',
     (j) {
       final folder = ComicFolder.fromJson(j);
-      folder.versionVectorJson = bumpVersionVector(folder.versionVectorJson);
+      folder.versionVector = bumpVersionVector(
+        folder.versionVector,
+        currentDeviceId,
+      );
       return folder;
     },
     db.folders.putMany,
@@ -210,7 +208,10 @@ Future<GlobalSettingState?> _restoreAllData(
     'comicLink',
     (j) {
       final link = ComicLink.fromJson(j);
-      link.versionVectorJson = bumpVersionVector(link.versionVectorJson);
+      link.versionVector = bumpVersionVector(
+        link.versionVector,
+        currentDeviceId,
+      );
       return link;
     },
     db.links.putMany,
@@ -280,14 +281,4 @@ Future<GlobalSettingState?> _restoreUserSetting(
 
   await db.userSettings.put(next);
   return hasBackupGlobal ? backup.globalSetting : null;
-}
-
-Map<String, int> _parseVersionVector(String raw) {
-  if (raw.trim().isEmpty) return <String, int>{};
-  try {
-    final map = jsonDecode(raw) as Map<String, dynamic>;
-    return map.map((k, v) => MapEntry(k, (v as num).toInt()));
-  } catch (_) {
-    return <String, int>{};
-  }
 }

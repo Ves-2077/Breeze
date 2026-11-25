@@ -1,8 +1,4 @@
-// To parse this JSON data, do
-//
-//     final downloadTaskJson = downloadTaskJsonFromJson(jsonString);
-
-import 'dart:convert';
+// To parse this JSON data, use `DownloadTaskJson.fromJson` / `toJson`.
 
 import 'package:freezed_annotation/freezed_annotation.dart';
 
@@ -42,12 +38,6 @@ String downloadChapterKeyOfRef(DownloadChapterTaskRef ref) {
   }
   return ref.order.toString();
 }
-
-DownloadTaskJson downloadTaskJsonFromJson(String str) =>
-    DownloadTaskJson.fromJson(json.decode(str));
-
-String downloadTaskJsonToJson(DownloadTaskJson data) =>
-    json.encode(data.toJson());
 
 @freezed
 abstract class DownloadChapterTaskRef with _$DownloadChapterTaskRef {

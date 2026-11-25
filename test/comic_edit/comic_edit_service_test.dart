@@ -5,6 +5,7 @@ import 'package:archive/archive.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:zephyr/main.dart';
+import 'package:zephyr/model/comic_info_meta.dart';
 import 'package:zephyr/object_box/model.dart';
 import 'package:zephyr/page/comic_edit/method/comic_edit_service.dart';
 import 'package:zephyr/service/download/download_asset_store.dart';
@@ -13,6 +14,7 @@ import 'package:zephyr/type/enum.dart';
 import 'package:zephyr/util/storage/get_path.dart';
 import 'package:zephyr/util/rust/rust_loader.dart';
 
+import '../support/comic_fixtures.dart';
 import '../test_helper.dart';
 
 const _pngBase64 =
@@ -104,7 +106,7 @@ Future<UnifiedComicDownload> _insertRecord({
     ..chapters = jsonEncode(_chapters())
     ..detailJson = jsonEncode(_detail());
   if (cover != null) {
-    record.cover = jsonEncode(cover);
+    record.cover = ComicImage.fromJson(cover);
   }
   await database.downloads.put(record);
   return record;
@@ -539,10 +541,10 @@ void main() {
     await _insertRecord();
     final history = createTestHistory('test:c1')
       ..title = 'Old'
-      ..cover = 'old';
+      ..cover = emptyComicImage;
     final favorite = createTestFavorite('test:c1')
       ..title = 'Old'
-      ..cover = 'old';
+      ..cover = emptyComicImage;
     await database.histories.put(history);
     await database.favorites.put(favorite);
 
@@ -585,11 +587,11 @@ void main() {
     );
 
     final record = await _readRecord();
-    final cover = jsonDecode(record.cover) as Map;
-    expect(cover['path'], startsWith('cover_'));
+    final cover = record.cover;
+    expect(cover.path, startsWith('cover_'));
     final coverStore = DownloadAssetStore(
       from: 'test',
-      path: cover['path'] as String,
+      path: cover.path,
       cartoonId: 'c1',
       chapterId: '',
       storageChapterId: '',
@@ -645,19 +647,16 @@ void main() {
     await service.updateCover(from: 'test', comicId: 'c1', source: source);
 
     final record = await _readRecord();
-    final cover = jsonDecode(record.cover) as Map;
-    expect(cover['path'], startsWith('cover_'));
-    expect(cover['url'], '');
+    final cover = record.cover;
+    expect(cover.path, startsWith('cover_'));
+    expect(cover.url, '');
     expect(record.coverOverride, isNotNull);
     final detail = jsonDecode(record.detailJson) as Map;
-    expect(
-      ((detail['comicInfo'] as Map)['cover'] as Map)['path'],
-      cover['path'],
-    );
+    expect(((detail['comicInfo'] as Map)['cover'] as Map)['path'], cover.path);
 
     final store = DownloadAssetStore(
       from: 'test',
-      path: cover['path'] as String,
+      path: cover.path,
       cartoonId: 'c1',
       chapterId: '',
       storageChapterId: '',

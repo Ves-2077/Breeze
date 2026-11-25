@@ -1,10 +1,11 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
 import 'package:uuid/uuid.dart';
 import 'package:zephyr/main.dart';
+import 'package:zephyr/model/comic_info_meta.dart';
 import 'package:zephyr/object_box/model.dart';
+import 'package:zephyr/object_box/model_json_codec.dart';
 import 'package:zephyr/page/bookshelf/method/local_comic_import.dart';
 import 'package:zephyr/page/bookshelf/method/local_comic_scanner.dart';
 import 'package:zephyr/page/comic_edit/method/comic_edit_document.dart';
@@ -164,7 +165,7 @@ class ComicEditService {
 
     final next = doc.setCover(cover);
     try {
-      await _persist(record, next, coverOverride: jsonEncode(cover));
+      await _persist(record, next, coverOverride: comicImageFromField(cover));
     } catch (_) {
       await _deleteIfExists(File(targetPath));
       rethrow;
@@ -583,7 +584,7 @@ class ComicEditService {
     UnifiedComicDownload record,
     ComicEditDocument doc, {
     String? titleOverride,
-    String? coverOverride,
+    ComicImage? coverOverride,
   }) async {
     record
       ..chapters = doc.toChaptersJson()
@@ -596,7 +597,7 @@ class ComicEditService {
     }
     if (coverOverride != null) {
       record
-        ..cover = jsonEncode(doc.cover)
+        ..cover = comicImageFromField(doc.cover)
         ..coverOverride = coverOverride;
     }
     await database.downloads.put(record);
@@ -612,7 +613,7 @@ class ComicEditService {
   ) async {
     final now = DateTime.now().toUtc();
     final title = doc.title;
-    final cover = jsonEncode(doc.cover);
+    final cover = comicImageFromField(doc.cover);
 
     final history = await database.histories.getByKey(record.uniqueKey);
     if (history != null && !history.deleted) {

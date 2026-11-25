@@ -4,9 +4,16 @@ import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:zephyr/config/bika/bika_setting.dart';
 import 'package:zephyr/config/global/global_setting.dart';
 import 'package:zephyr/config/jm/jm_setting.dart';
+import 'package:zephyr/model/comic_info_meta.dart';
+import 'package:zephyr/object_box/model_json_codec.dart';
 import 'package:zephyr/service/download/models/download_task_json.dart';
 
 part 'model.g.dart';
+
+// SQLite 只把 JSON 列当 TEXT 存，模型侧不再需要为了 2048 长度限制把结构压成
+// 字符串：cover/creator/titleMeta/metadata 等字段用 [ComicImage]/[Creator]/
+// 列表表示，由 `model_json_codec.dart` 在读写边界与旧 JSON 字符串互转。
+// `toJson()` 仍输出旧字符串格式，保证备份与云同步的向后兼容。
 
 /// 旧版本数据/同步 payload 可能缺少后加的字段。日期统一回退到 epoch，
 /// 其余字段用各实体 [fromJson] 里的默认 map 补齐；null 视为缺失。
@@ -457,10 +464,14 @@ class UnifiedComicFavorite {
   String comicId;
   String title;
   String description;
-  String cover;
-  String creator;
-  String titleMeta;
-  String metadata;
+  @JsonKey(fromJson: comicImageFromField, toJson: comicImageToField)
+  ComicImage cover;
+  @JsonKey(fromJson: creatorFromField, toJson: creatorToField)
+  Creator creator;
+  @JsonKey(fromJson: comicTitleMetaFromField, toJson: comicTitleMetaToField)
+  List<ComicInfoActionItem> titleMeta;
+  @JsonKey(fromJson: comicMetadataFromField, toJson: comicMetadataToField)
+  List<ComicInfoMetadata> metadata;
   DateTime createdAt;
   DateTime updatedAt;
   bool deleted;
@@ -521,10 +532,14 @@ class UnifiedComicHistory {
   String comicId;
   String title;
   String description;
-  String cover;
-  String creator;
-  String titleMeta;
-  String metadata;
+  @JsonKey(fromJson: comicImageFromField, toJson: comicImageToField)
+  ComicImage cover;
+  @JsonKey(fromJson: creatorFromField, toJson: creatorToField)
+  Creator creator;
+  @JsonKey(fromJson: comicTitleMetaFromField, toJson: comicTitleMetaToField)
+  List<ComicInfoActionItem> titleMeta;
+  @JsonKey(fromJson: comicMetadataFromField, toJson: comicMetadataToField)
+  List<ComicInfoMetadata> metadata;
   String chapterId;
   String chapterTitle;
   int chapterOrder;
@@ -600,10 +615,14 @@ class UnifiedComicDownload {
   String comicId;
   String title;
   String description;
-  String cover;
-  String creator;
-  String titleMeta;
-  String metadata;
+  @JsonKey(fromJson: comicImageFromField, toJson: comicImageToField)
+  ComicImage cover;
+  @JsonKey(fromJson: creatorFromField, toJson: creatorToField)
+  Creator creator;
+  @JsonKey(fromJson: comicTitleMetaFromField, toJson: comicTitleMetaToField)
+  List<ComicInfoActionItem> titleMeta;
+  @JsonKey(fromJson: comicMetadataFromField, toJson: comicMetadataToField)
+  List<ComicInfoMetadata> metadata;
   int totalViews;
   int totalLikes;
   int totalComments;
@@ -629,7 +648,8 @@ class UnifiedComicDownload {
   String? titleOverride;
 
   /// 用户自定义封面（`ComicImage` JSON）；null/空表示未修改。
-  String? coverOverride;
+  @JsonKey(fromJson: comicImageOrNullFromField, toJson: comicImageOrNullToField)
+  ComicImage? coverOverride;
 
   UnifiedComicDownload({
     this.id = 0,
@@ -792,29 +812,16 @@ class DownloadTask {
 
   String status = "";
 
-  String? dbTaskInfoStr;
-
-  DownloadTaskJson? _taskInfo;
-
-  DownloadTaskJson? get taskInfo {
-    if (_taskInfo == null &&
-        dbTaskInfoStr != null &&
-        dbTaskInfoStr!.isNotEmpty) {
-      _taskInfo = DownloadTaskJson.fromJson(
-        jsonDecode(dbTaskInfoStr!) as Map<String, dynamic>,
-      );
-    }
-    return _taskInfo;
-  }
-
-  set taskInfo(DownloadTaskJson? value) {
-    // fromJson 会先赋值 dbTaskInfoStr、再赋值 taskInfo；SQLite 行里没有
-    // taskInfo 键（只有 dbTaskInfoStr 列），这里必须忽略 null，否则每次
-    // 读库都会把已存的 payload 抹掉。代码里没有“置空 payload”的用法。
-    if (value == null) return;
-    _taskInfo = value;
-    dbTaskInfoStr = jsonEncode(value.toJson());
-  }
+  /// 版本化任务 payload（检查点、章节引用等）。
+  ///
+  /// SQLite 列与旧备份仍使用 `dbTaskInfoStr` 的 JSON 字符串格式，
+  /// 由 codec 在读写边界转换。
+  @JsonKey(
+    name: 'dbTaskInfoStr',
+    fromJson: downloadTaskInfoFromField,
+    toJson: downloadTaskInfoToField,
+  )
+  DownloadTaskJson? taskInfo;
 
   Map<String, dynamic> toJson() => _$DownloadTaskToJson(this);
 
@@ -945,10 +952,14 @@ class ComicFollow {
   String comicId;
   String title;
   String description;
-  String cover;
-  String creator;
-  String titleMeta;
-  String metadata;
+  @JsonKey(fromJson: comicImageFromField, toJson: comicImageToField)
+  ComicImage cover;
+  @JsonKey(fromJson: creatorFromField, toJson: creatorToField)
+  Creator creator;
+  @JsonKey(fromJson: comicTitleMetaFromField, toJson: comicTitleMetaToField)
+  List<ComicInfoActionItem> titleMeta;
+  @JsonKey(fromJson: comicMetadataFromField, toJson: comicMetadataToField)
+  List<ComicInfoMetadata> metadata;
 
   /// 上次进入漫画 / 加入追更时的章节数
   int lastChapterCount;
@@ -1006,10 +1017,10 @@ class ComicFollow {
     String? comicId,
     String? title,
     String? description,
-    String? cover,
-    String? creator,
-    String? titleMeta,
-    String? metadata,
+    ComicImage? cover,
+    Creator? creator,
+    List<ComicInfoActionItem>? titleMeta,
+    List<ComicInfoMetadata>? metadata,
     int? lastChapterCount,
     int? detectedChapterCount,
     String? detectedChapterTitle,
@@ -1106,8 +1117,13 @@ class ComicFolder {
 
   set type(ComicFolderType value) => typeData = value.name;
 
-  /// 版本向量 JSON 字符串
-  String versionVectorJson;
+  /// 版本向量：`{deviceId: counter}`，用于并发冲突裁决。
+  @JsonKey(
+    name: 'versionVectorJson',
+    fromJson: versionVectorFromField,
+    toJson: versionVectorToField,
+  )
+  Map<String, int> versionVector;
 
   /// 软删除时间戳（毫秒），null 表示未删除
   int? deletedAt;
@@ -1125,7 +1141,7 @@ class ComicFolder {
     required this.uniqueKey,
     required this.name,
     required this.typeData,
-    required this.versionVectorJson,
+    required this.versionVector,
     this.deletedAt,
     required this.createdAt,
     required this.updatedAt,
@@ -1174,8 +1190,13 @@ class ComicLink {
 
   set type(ComicFolderType value) => typeData = value.name;
 
-  /// 版本向量 JSON 字符串
-  String versionVectorJson;
+  /// 版本向量：`{deviceId: counter}`，用于并发冲突裁决。
+  @JsonKey(
+    name: 'versionVectorJson',
+    fromJson: versionVectorFromField,
+    toJson: versionVectorToField,
+  )
+  Map<String, int> versionVector;
 
   /// 软删除时间戳（毫秒），null 表示未删除
   int? deletedAt;
@@ -1192,7 +1213,7 @@ class ComicLink {
     required this.comicUniqueKey,
     this.folderSyncId,
     required this.typeData,
-    required this.versionVectorJson,
+    required this.versionVector,
     this.deletedAt,
     required this.createdAt,
     required this.updatedAt,
@@ -1220,7 +1241,7 @@ class ComicLink {
 
 /// 单本漫画独立阅读设置（稀疏 patch，与全局共用一套 JSON 结构）。
 ///
-/// [overridesJson] 只存用户显式改过的键（如 `{"readMode":2}`），键名与
+/// [overrides] 只存用户显式改过的键（如 `{"readMode":2}`），键名与
 /// `ReadSettingState.toJson()` 对齐；没有 key = 没设置 = 跟随全局。
 /// 有记录且 [deleted] 为 false 表示启用了本漫特定设置；
 /// 删除时清空 patch 并立 [deleted] 墓碑，靠 LWW 同步到其它设备。
@@ -1235,14 +1256,22 @@ class ComicReadPreference {
   String source;
   String comicId;
 
-  /// 稀疏覆盖 JSON：只含显式设置的 `ReadSettingState` 键。
-  String overridesJson;
-
-  /// v12 前的单字段存储，已被 [overridesJson] 取代。
+  /// 本漫独立设置：与全局共用一套 `ReadSettingState` 结构。
   ///
-  /// 保留该列仅用于 v11→v12 存量迁移读取，读写一律走 [overridesJson]；
+  /// 列里只存用户显式改过的键（稀疏，如 `{"readMode":2}`）；
+  /// 返回 null 表示没有覆盖 = 跟随全局（含墓碑行）。
+  @JsonKey(
+    name: 'overridesJson',
+    fromJson: jsonObjectFromField,
+    toJson: jsonObjectToField,
+  )
+  Map<String, dynamic> overrides;
+
+  /// v12 前的单字段存储，已被 [overrides] 取代。
+  ///
+  /// 保留该列仅用于 v11→v12 存量迁移读取，读写一律走 [overrides]；
   /// 存量转完后的版本可删除此列。
-  @Deprecated('由 overridesJson 取代，仅迁移读取使用')
+  @Deprecated('由 overrides 取代，仅迁移读取使用')
   @JsonKey(includeToJson: false)
   int readMode;
 
@@ -1255,8 +1284,8 @@ class ComicReadPreference {
     required this.uniqueKey,
     required this.source,
     required this.comicId,
-    this.overridesJson = '{}',
-    @Deprecated('由 overridesJson 取代，仅迁移读取使用') this.readMode = 0,
+    this.overrides = const <String, dynamic>{},
+    @Deprecated('由 overrides 取代，仅迁移读取使用') this.readMode = 0,
     required this.updatedAt,
     this.deleted = false,
   });
@@ -1303,24 +1332,13 @@ class ComicReadPreference {
     if (delta.isEmpty) return const {};
     final patch = Map<String, dynamic>.of(_readOverridePatch())
       ..addAll(_sanitizeOverridePatch(delta));
-    overridesJson = jsonEncode(patch);
+    overrides = patch;
     return delta.keys.toSet();
   }
 
   /// 解析并清洗后的 patch（内部用）。
-  Map<String, dynamic> _readOverridePatch() {
-    try {
-      final decoded = jsonDecode(overridesJson);
-      final map = decoded is Map<String, dynamic>
-          ? decoded
-          : decoded is Map
-          ? Map<String, dynamic>.from(decoded)
-          : const <String, dynamic>{};
-      return _sanitizeOverridePatch(map);
-    } catch (_) {
-      return const {};
-    }
-  }
+  Map<String, dynamic> _readOverridePatch() =>
+      _sanitizeOverridePatch(overrides);
 
   Map<String, dynamic> toJson() => _$ComicReadPreferenceToJson(this);
 
@@ -1369,8 +1387,13 @@ class SearchBookmark {
   /// 搜索关键词（trim 后）。
   String keyword;
 
-  /// 记录时的完整搜索 extern JSON（含分类筛选等，排序也在里面）。
-  String externJson;
+  /// 记录时的完整搜索 extern（含分类筛选等，排序也在里面）。
+  @JsonKey(
+    name: 'externJson',
+    fromJson: searchBookmarkExternFromField,
+    toJson: searchBookmarkExternToField,
+  )
+  Map<String, dynamic> extern;
 
   /// 锚点漫画 id。
   String anchorComicId;
@@ -1378,8 +1401,12 @@ class SearchBookmark {
   /// 锚点漫画标题（列表展示用）。
   String anchorTitle;
 
-  /// 锚点漫画封面 JSON（UnifiedComicCover.toJson，可空）。
-  String anchorCover;
+  /// 锚点漫画封面（ComicImage JSON，可空）。
+  @JsonKey(
+    fromJson: comicImageOrNullFromField,
+    toJson: searchBookmarkCoverToField,
+  )
+  ComicImage? anchorCover;
 
   /// 记录时锚点所在的页码（跳转目标）。
   int anchorPage;
@@ -1398,26 +1425,15 @@ class SearchBookmark {
     required this.uniqueKey,
     required this.source,
     required this.keyword,
-    required this.externJson,
+    this.extern = const <String, dynamic>{},
     required this.anchorComicId,
     required this.anchorTitle,
-    required this.anchorCover,
+    this.anchorCover,
     required this.anchorPage,
     this.anchorIndex = 0,
     required this.createdAt,
     required this.updatedAt,
   });
-
-  /// 记录时的完整搜索 extern（解析失败回退空 map）。
-  @JsonKey(includeFromJson: false, includeToJson: false)
-  Map<String, dynamic> get extern {
-    try {
-      final decoded = jsonDecode(externJson);
-      if (decoded is Map<String, dynamic>) return decoded;
-      if (decoded is Map) return Map<String, dynamic>.from(decoded);
-    } catch (_) {}
-    return const <String, dynamic>{};
-  }
 
   Map<String, dynamic> toJson() => _$SearchBookmarkToJson(this);
 

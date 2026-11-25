@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import 'package:auto_route/auto_route.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:material_ui/material_ui.dart';
@@ -22,25 +20,16 @@ import 'package:zephyr/widgets/toast.dart';
 const double _bookmarkCoverWidth = 84;
 const double _bookmarkCoverHeight = 112;
 
-/// 解析锚点封面，脏数据回退为空占位（用 anchorComicId 兜底）。
+/// 解析锚点封面，缺失时用 anchorComicId 兜底 id。
 UnifiedComicCover _resolveBookmarkCover(SearchBookmark item) {
-  try {
-    final raw = item.anchorCover.trim();
-    if (raw.isNotEmpty) {
-      final decoded = jsonDecode(raw);
-      final map = decoded is Map<String, dynamic>
-          ? decoded
-          : decoded is Map
-          ? Map<String, dynamic>.from(decoded)
-          : const <String, dynamic>{};
-      if (map.isNotEmpty) return UnifiedComicCover.fromJson(map);
-    }
-  } catch (_) {}
+  final cover = item.anchorCover;
   return UnifiedComicCover(
-    id: item.anchorComicId,
-    url: '',
-    path: '',
-    extern: const <String, dynamic>{},
+    id: cover != null && cover.id.trim().isNotEmpty
+        ? cover.id
+        : item.anchorComicId,
+    url: cover?.url ?? '',
+    path: cover?.path ?? '',
+    extern: cover?.extern ?? const <String, dynamic>{},
   );
 }
 

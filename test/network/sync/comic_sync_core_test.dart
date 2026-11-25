@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -8,6 +7,8 @@ import 'package:zephyr/network/sync/sync_device_id.dart';
 import 'package:zephyr/object_box/model.dart';
 import 'package:path/path.dart' as p;
 import 'package:zephyr/database/database.dart';
+
+import '../../support/comic_fixtures.dart';
 
 void main() {
   late Directory tempDir;
@@ -301,8 +302,7 @@ void main() {
         await runMerge(database, data);
 
         final merged = (await database.folders.getAll()).single;
-        final vector =
-            jsonDecode(merged.versionVectorJson) as Map<String, dynamic>;
+        final vector = merged.versionVector;
         // 冲突合并后按本机 ID 提升；占位值 device_default 只应在未初始化时出现。
         expect(vector, {'device_local': 2, 'device_cloud': 1});
         expect(vector.containsKey('device_default'), isFalse);
@@ -456,7 +456,7 @@ void main() {
         uniqueKey: '/parent/child|favorite',
         name: 'child',
         typeData: ComicFolderType.favorite.name,
-        versionVectorJson: '{"device_cloud": 1}',
+        versionVector: {'device_cloud': 1},
         createdAt: 1,
         updatedAt: 1,
       );
@@ -466,7 +466,7 @@ void main() {
         uniqueKey: '/parent|favorite',
         name: 'parent',
         typeData: ComicFolderType.favorite.name,
-        versionVectorJson: '{"device_cloud": 1}',
+        versionVector: {'device_cloud': 1},
         createdAt: 1,
         updatedAt: 1,
       );
@@ -651,7 +651,7 @@ void main() {
         uniqueKey: '/parent|favorite',
         name: 'parent',
         typeData: ComicFolderType.favorite.name,
-        versionVectorJson: '{"device_cloud": 1}',
+        versionVector: {'device_cloud': 1},
         createdAt: 1,
         updatedAt: 1,
       );
@@ -661,7 +661,7 @@ void main() {
         uniqueKey: '/parent/child|favorite',
         name: 'child',
         typeData: ComicFolderType.favorite.name,
-        versionVectorJson: '{"device_cloud": 1}',
+        versionVector: {'device_cloud': 1},
         createdAt: 1,
         updatedAt: 1,
       );
@@ -670,7 +670,7 @@ void main() {
         comicUniqueKey: 'test:comic1',
         folderSyncId: null,
         typeData: ComicFolderType.favorite.name,
-        versionVectorJson: '{"device_cloud": 1}',
+        versionVector: {'device_cloud': 1},
         createdAt: 1,
         updatedAt: 1,
       );
@@ -696,7 +696,7 @@ void main() {
         comicUniqueKey: 'test:comic1',
         folderSyncId: null,
         typeData: ComicFolderType.favorite.name,
-        versionVectorJson: '{"device_cloud": 1}',
+        versionVector: {'device_cloud': 1},
         createdAt: 1,
         updatedAt: 1,
       );
@@ -829,10 +829,10 @@ UnifiedComicFavorite createFavorite(
     comicId: uniqueKey,
     title: title,
     description: '',
-    cover: '',
-    creator: '',
-    titleMeta: '',
-    metadata: '',
+    cover: emptyComicImage,
+    creator: emptyComicCreator,
+    titleMeta: emptyComicTitleMeta,
+    metadata: emptyComicMetadata,
     createdAt: now,
     updatedAt: now,
     deleted: deleted,
@@ -852,10 +852,10 @@ UnifiedComicHistory createHistory(
     comicId: uniqueKey,
     title: 'Test',
     description: '',
-    cover: '',
-    creator: '',
-    titleMeta: '',
-    metadata: '',
+    cover: emptyComicImage,
+    creator: emptyComicCreator,
+    titleMeta: emptyComicTitleMeta,
+    metadata: emptyComicMetadata,
     chapterId: '',
     chapterTitle: '',
     chapterOrder: 0,
@@ -885,9 +885,7 @@ ComicFolder createFolder(
     uniqueKey: '${parentSyncId ?? ''}|$name|$typeData',
     name: name,
     typeData: typeData,
-    versionVectorJson: versionVector != null
-        ? jsonMap(versionVector)
-        : '{"device_local": 1}',
+    versionVector: versionVector ?? {'device_local': 1},
     deletedAt: deletedAt,
     createdAt: now,
     updatedAt: updatedAt ?? now,
@@ -907,22 +905,8 @@ ComicLink createLink(
     comicUniqueKey: comicUniqueKey,
     folderSyncId: folderSyncId,
     typeData: typeData,
-    versionVectorJson: versionVector != null
-        ? jsonMap(versionVector)
-        : '{"device_local": 1}',
+    versionVector: versionVector ?? {'device_local': 1},
     createdAt: now,
     updatedAt: now,
   );
-}
-
-String jsonMap(Map<String, int> map) {
-  final buffer = StringBuffer('{');
-  var first = true;
-  map.forEach((key, value) {
-    if (!first) buffer.write(',');
-    buffer.write('"$key":$value');
-    first = false;
-  });
-  buffer.write('}');
-  return buffer.toString();
 }

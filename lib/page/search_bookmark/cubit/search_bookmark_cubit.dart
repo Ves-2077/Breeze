@@ -1,7 +1,6 @@
-import 'dart:convert';
-
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:zephyr/main.dart';
+import 'package:zephyr/model/comic_info_meta.dart';
 import 'package:zephyr/object_box/model.dart';
 
 /// 搜索书签无需插件声明：快照只是搜索参数重放，全插件可用。
@@ -121,7 +120,7 @@ class SearchBookmarkCubit extends Cubit<SearchBookmarkState> {
     required Map<String, dynamic> extern,
     required String anchorComicId,
     required String anchorTitle,
-    required String anchorCover,
+    required ComicImage? anchorCover,
     required int anchorPage,
     int anchorIndex = 0,
   }) async {
@@ -133,7 +132,7 @@ class SearchBookmarkCubit extends Cubit<SearchBookmarkState> {
       uniqueKey: uniqueKey,
       source: source.trim(),
       keyword: keyword.trim(),
-      externJson: jsonEncode(extern),
+      extern: extern,
       anchorComicId: anchorComicId.trim(),
       anchorTitle: anchorTitle,
       anchorCover: anchorCover,

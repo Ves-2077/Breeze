@@ -202,7 +202,7 @@ class ComicReadPreferenceService {
       return PerComicUpsertResult(entity.overrideSetting, changedKeys);
     }
     // 有碑先清：墓碑行的 patch 已清空，这里直接复用行对象重记本次变化。
-    if (existing.deleted) existing.overridesJson = '{}';
+    if (existing.deleted) existing.overrides = const <String, dynamic>{};
     final changedKeys = existing.applyChanges(
       current,
       updated,
@@ -252,7 +252,7 @@ class ComicReadPreferenceService {
     final existing = await database.readPreferences.getByKey(key);
     if (existing == null) return;
     existing
-      ..overridesJson = '{}'
+      ..overrides = const <String, dynamic>{}
       ..updatedAt = now
       ..deleted = true;
     await database.readPreferences.put(existing);

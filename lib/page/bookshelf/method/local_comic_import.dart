@@ -5,6 +5,7 @@ import 'package:path/path.dart' as p;
 import 'package:uuid/uuid.dart';
 import 'package:zephyr/main.dart';
 import 'package:zephyr/object_box/model.dart';
+import 'package:zephyr/object_box/model_json_codec.dart';
 import 'package:zephyr/page/bookshelf/method/local_comic_scanner.dart';
 import 'package:zephyr/page/bookshelf/service/comic_link_service.dart';
 import 'package:zephyr/plugin/local_comic_plugin.dart';
@@ -366,10 +367,10 @@ Future<LocalComicImportResult> _persistImportedComic({
     comicId: comicId,
     title: scan.title,
     description: '',
-    cover: jsonEncode(coverJson),
-    creator: jsonEncode(creatorJson),
-    titleMeta: '[]',
-    metadata: '[]',
+    cover: comicImageFromField(coverJson),
+    creator: creatorFromField(creatorJson),
+    titleMeta: const [],
+    metadata: const [],
     totalViews: 0,
     totalLikes: 0,
     totalComments: 0,

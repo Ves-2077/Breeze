@@ -7,6 +7,7 @@ import 'package:zephyr/i18n/strings.g.dart';
 import 'package:zephyr/main.dart';
 import 'package:zephyr/network/http/plugin/qjs_download_runtime.dart';
 import 'package:zephyr/object_box/model.dart';
+import 'package:zephyr/object_box/model_json_codec.dart';
 import 'package:zephyr/page/bookshelf/service/comic_link_service.dart';
 import 'package:zephyr/page/download/models/unified_comic_download.dart';
 import 'package:zephyr/service/download/download_asset_store.dart';
@@ -282,10 +283,10 @@ Future<ComicImportResult> _importComic(
     comicId: comicId,
     title: title,
     description: comicInfo['description']?.toString() ?? '',
-    cover: jsonEncode(comicInfo['cover'] ?? const <String, dynamic>{}),
-    creator: jsonEncode(comicInfo['creator'] ?? const <String, dynamic>{}),
-    titleMeta: jsonEncode(comicInfo['titleMeta'] ?? const <dynamic>[]),
-    metadata: jsonEncode(comicInfo['metadata'] ?? const <dynamic>[]),
+    cover: comicImageFromField(comicInfo['cover']),
+    creator: creatorFromField(comicInfo['creator']),
+    titleMeta: comicTitleMetaFromField(comicInfo['titleMeta']),
+    metadata: comicMetadataFromField(comicInfo['metadata']),
     totalViews: _toInt(comicInfo['totalViews']),
     totalLikes: _toInt(comicInfo['totalLikes']),
     totalComments: _toInt(comicInfo['totalComments']),

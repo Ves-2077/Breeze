@@ -6,6 +6,8 @@ import 'package:path/path.dart' as p;
 import 'package:zephyr/database/database.dart';
 import 'package:zephyr/object_box/model.dart';
 
+import '../support/comic_fixtures.dart';
+
 void main() {
   test(
     'repository writes join the ambient transaction and roll back',
@@ -22,10 +24,10 @@ void main() {
           comicId: 'a',
           title: 'A',
           description: '',
-          cover: '',
-          creator: '',
-          titleMeta: '',
-          metadata: '',
+          cover: emptyComicImage,
+          creator: emptyComicCreator,
+          titleMeta: emptyComicTitleMeta,
+          metadata: emptyComicMetadata,
           createdAt: DateTime.utc(2026),
           updatedAt: DateTime.utc(2026),
           deleted: false,
@@ -74,7 +76,7 @@ void main() {
       'source': 'test',
       'comicId': 'a',
     });
-    expect(preference.overridesJson, '{"readMode":0}');
+    expect(preference.overrides, const {'readMode': 0});
     expect(preference.deleted, isFalse);
   });
 }

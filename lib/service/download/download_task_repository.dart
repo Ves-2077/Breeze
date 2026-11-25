@@ -8,9 +8,9 @@ import 'package:zephyr/util/async/worker_pool.dart';
 
 /// DownloadTask 的唯一读写入口。
 ///
-/// 任务 payload 和检查点都存放在 [DownloadTask.dbTaskInfoStr] 对应的
-/// 版本化 JSON 中。这样旧任务仍可读取，新任务可以在进程退出后恢复章节级
-/// 进度。所有读写都经过 `database.downloadTasks`（异步 SQLite）。
+/// 任务 payload 和检查点都存放在 [DownloadTask.taskInfo] 对应的版本化 JSON 中。
+/// 这样旧任务仍可读取，新任务可以在进程退出后恢复章节级进度。所有读写都经过
+/// `database.downloadTasks`（异步 SQLite）。
 class DownloadTaskRepository {
   const DownloadTaskRepository();
 
@@ -266,7 +266,7 @@ class DownloadTaskRepository {
     String? status,
     bool? isDownloading,
     bool? isCompleted,
-    String? payloadJson,
+    DownloadTaskJson? payload,
   }) {
     final normalizedKey = taskKey.trim();
     final pending = _pendingTaskWriteArgs.putIfAbsent(
@@ -277,7 +277,7 @@ class DownloadTaskRepository {
     if (status != null) pending['status'] = status;
     if (isDownloading != null) pending['isDownloading'] = isDownloading;
     if (isCompleted != null) pending['isCompleted'] = isCompleted;
-    if (payloadJson != null) pending['payloadJson'] = payloadJson;
+    if (payload != null) pending['payload'] = payload;
     return _pendingTaskWrites[normalizedKey] ??
         _scheduleTaskWrite(normalizedKey);
   }
@@ -366,11 +366,9 @@ Future<void> _applyDownloadTaskWrite(Map<String, dynamic> args) async {
   task.status = (args['status'] as String?) ?? task.status;
   task.isDownloading = (args['isDownloading'] as bool?) ?? task.isDownloading;
   task.isCompleted = (args['isCompleted'] as bool?) ?? task.isCompleted;
-  final payloadJson = args['payloadJson'] as String?;
-  if (payloadJson != null) {
-    // payload 已经是编码好的 JSON 串，直接落到列上；实体刚读出、写完即弃，
-    // 不需要再 decode→model→encode 一遍。
-    task.dbTaskInfoStr = payloadJson;
+  final payload = args['payload'] as DownloadTaskJson?;
+  if (payload != null) {
+    task.taskInfo = payload;
   }
   await database.downloadTasks.put(task);
 }

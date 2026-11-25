@@ -1,10 +1,13 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:zephyr/model/comic_info_meta.dart';
 import 'package:zephyr/object_box/model.dart';
 import 'package:zephyr/page/comic_follow/view/follow_display.dart';
 
+import '../support/comic_fixtures.dart';
+
 ComicFollow _follow({
-  String cover = '',
-  String creator = '',
+  ComicImage cover = emptyComicImage,
+  Creator creator = emptyComicCreator,
   int detected = 10,
 }) {
   final now = DateTime.utc(2026, 9, 30, 12);
@@ -16,8 +19,8 @@ ComicFollow _follow({
     description: '',
     cover: cover,
     creator: creator,
-    titleMeta: '[]',
-    metadata: '[]',
+    titleMeta: emptyComicTitleMeta,
+    metadata: emptyComicMetadata,
     lastChapterCount: 0,
     detectedChapterCount: detected,
     detectedChapterTitle: '',
@@ -31,21 +34,16 @@ ComicFollow _follow({
 }
 
 void main() {
-  test('resolveFollowCover falls back on bad json', () {
-    final cover = resolveFollowCover(_follow(cover: 'not-json'));
+  test('resolveFollowCover falls back to comicId', () {
+    final cover = resolveFollowCover(_follow());
     expect(cover.id, '1');
     expect(cover.url, isEmpty);
   });
 
-  test('parseFollowCreatorName reads name and tolerates bad json', () {
-    expect(
-      parseFollowCreatorName(
-        '{"id":"1","name":"  alice ","avatar":{"id":"","url":"","name":""},"extern":{}}',
-      ),
-      'alice',
-    );
-    expect(parseFollowCreatorName('not-json'), isNull);
-    expect(parseFollowCreatorName(''), isNull);
+  test('parseFollowCreatorName reads trimmed name', () {
+    const creator = Creator(id: '1', name: '  alice ', avatar: emptyComicImage);
+    expect(parseFollowCreatorName(creator), 'alice');
+    expect(parseFollowCreatorName(emptyComicCreator), isNull);
   });
 
   test('formatFollowCheckTime shortens same day', () {

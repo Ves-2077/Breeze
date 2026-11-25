@@ -1,7 +1,19 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zephyr/main.dart';
+import 'package:zephyr/model/comic_info_meta.dart';
 
+import '../support/comic_fixtures.dart';
 import '../test_helper.dart';
+
+void _expectComicFieldsCleared(dynamic row) {
+  expect(row.cover.id, isEmpty);
+  expect(row.cover.url, isEmpty);
+  expect(row.cover.path, isEmpty);
+  expect(row.creator.id, isEmpty);
+  expect(row.creator.name, isEmpty);
+  expect(row.titleMeta, isEmpty);
+  expect(row.metadata, isEmpty);
+}
 
 void main() {
   setUpAll(TestDatabaseHelper.setUpTestDatabase);
@@ -13,10 +25,25 @@ void main() {
   test('收藏墓碑只保留必要字段且重复删除不再改动', () async {
     final favorite = createTestFavorite('test:fav', updatedAt: base)
       ..description = 'description'
-      ..cover = 'cover-path'
-      ..creator = '[{"name":"author"}]'
-      ..titleMeta = '[{"name":"title"}]'
-      ..metadata = '[{"name":"tag"}]';
+      ..cover = const ComicImage(
+        id: 'cover',
+        url: '',
+        name: '',
+        path: 'cover-path',
+      )
+      ..creator = const Creator(
+        id: 'author',
+        name: 'author',
+        avatar: emptyComicImage,
+      )
+      ..titleMeta = const [ComicInfoActionItem(name: 'title')]
+      ..metadata = const [
+        ComicInfoMetadata(
+          type: 'tag',
+          name: 'tag',
+          value: [ComicInfoActionItem(name: 'tag')],
+        ),
+      ];
     await database.favorites.put(favorite);
     final before = DateTime.now().toUtc().millisecondsSinceEpoch;
 
@@ -30,10 +57,7 @@ void main() {
     expect(row.source, favorite.source);
     expect(row.comicId, favorite.comicId);
     expect(row.description, isEmpty);
-    expect(row.cover, isEmpty);
-    expect(row.creator, isEmpty);
-    expect(row.titleMeta, isEmpty);
-    expect(row.metadata, isEmpty);
+    _expectComicFieldsCleared(row);
 
     final firstUpdatedAt = row.updatedAt;
     expect(await database.favorites.markDeletedByKey(favorite.uniqueKey), 0);
@@ -67,10 +91,25 @@ void main() {
   test('批量历史墓碑精简展示字段、保留章节定位并跳过已删除记录', () async {
     final first = createTestHistory('test:h1', updatedAt: base)
       ..description = 'description'
-      ..cover = 'cover-path'
-      ..creator = '[{"name":"author"}]'
-      ..titleMeta = '[{"name":"title"}]'
-      ..metadata = '[{"name":"tag"}]'
+      ..cover = const ComicImage(
+        id: 'cover',
+        url: '',
+        name: '',
+        path: 'cover-path',
+      )
+      ..creator = const Creator(
+        id: 'author',
+        name: 'author',
+        avatar: emptyComicImage,
+      )
+      ..titleMeta = const [ComicInfoActionItem(name: 'title')]
+      ..metadata = const [
+        ComicInfoMetadata(
+          type: 'tag',
+          name: 'tag',
+          value: [ComicInfoActionItem(name: 'tag')],
+        ),
+      ]
       ..chapterId = 'ep-1'
       ..chapterOrder = 3;
     final second = createTestHistory('test:h2', updatedAt: base);
@@ -97,10 +136,7 @@ void main() {
     expect(row.chapterId, 'ep-1');
     expect(row.chapterOrder, 3);
     expect(row.description, isEmpty);
-    expect(row.cover, isEmpty);
-    expect(row.creator, isEmpty);
-    expect(row.titleMeta, isEmpty);
-    expect(row.metadata, isEmpty);
+    _expectComicFieldsCleared(row);
 
     final untouched = await database.histories.getByKey(already.uniqueKey);
     expect(untouched!.updatedAt, base);

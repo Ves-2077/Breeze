@@ -1,9 +1,8 @@
-import 'dart:convert';
-
 import 'package:zephyr/database/db.dart';
 import 'package:zephyr/database/db_read.dart';
 import 'package:zephyr/database/row_codec.dart';
 import 'package:zephyr/object_box/model.dart';
+import 'package:zephyr/object_box/model_json_codec.dart';
 
 const _taskInsert =
     'INSERT INTO "DownloadTask" '
@@ -209,7 +208,7 @@ class DownloadTaskRepository {
         await tx.execute(_linkInsert, <Object?>[
           linkUniqueKey,
           ComicFolderType.download.name,
-          jsonEncode(<String, int>{deviceId: 1}),
+          versionVectorToField(<String, int>{deviceId: 1}),
           null,
           nowMs,
           nowMs,
@@ -223,15 +222,12 @@ class DownloadTaskRepository {
             ..deletedAt = null
             ..createdAt = nowMs
             ..updatedAt = nowMs
-            ..versionVectorJson = _bumpLinkVersionVector(
-              link.versionVectorJson,
-              deviceId,
-            );
+            ..versionVector = bumpVersionVector(link.versionVector, deviceId);
           await tx.execute(_linkUpsert, <Object?>[
             link.id,
             link.uniqueKey,
             link.typeData,
-            link.versionVectorJson,
+            versionVectorToField(link.versionVector),
             link.deletedAt,
             link.createdAt,
             link.updatedAt,
@@ -279,7 +275,7 @@ class DownloadTaskRepository {
       v.comicName,
       boolToDb(v.isCompleted),
       v.status,
-      v.dbTaskInfoStr,
+      downloadTaskInfoToField(v.taskInfo),
     ];
   }
 
@@ -309,14 +305,14 @@ class DownloadTaskRepository {
       boolToDb(v.allowLike),
       boolToDb(v.allowFavorite),
       boolToDb(v.allowDownload),
-      v.cover,
-      v.creator,
-      v.titleMeta,
-      v.metadata,
+      comicImageToField(v.cover),
+      creatorToField(v.creator),
+      comicTitleMetaToField(v.titleMeta),
+      comicMetadataToField(v.metadata),
       v.chapters,
       v.detailJson,
       v.titleOverride,
-      v.coverOverride,
+      comicImageOrNullToField(v.coverOverride),
     ];
   }
 
@@ -334,14 +330,4 @@ class DownloadTaskRepository {
 
   static DownloadTask? _decodeFirst(List<Map<String, dynamic>> rows) =>
       rows.isEmpty ? null : _decodeRow(rows.first);
-}
-
-String _bumpLinkVersionVector(String raw, String deviceId) {
-  try {
-    final map = Map<String, dynamic>.from(jsonDecode(raw) as Map);
-    map[deviceId] = ((map[deviceId] as num?) ?? 0).toInt() + 1;
-    return jsonEncode(map);
-  } catch (_) {
-    return jsonEncode(<String, int>{deviceId: 1});
-  }
 }

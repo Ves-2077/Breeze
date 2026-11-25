@@ -1,7 +1,7 @@
+import 'package:zephyr/model/comic_info_meta.dart';
 import 'package:zephyr/object_box/model.dart';
 import 'package:zephyr/page/search_result/models/unified_plugin_search.dart';
 import 'package:zephyr/util/json/json_sanitize.dart';
-import 'package:zephyr/util/json/json_value.dart';
 import 'package:zephyr/util/storage/path_util.dart';
 
 import 'package:zephyr/widgets/comic_entry/models/unified_comic_list_item.dart';
@@ -41,7 +41,7 @@ UnifiedComicListItem unifiedComicFromUnifiedFavorite(
     viewsCount: _viewCountFromTitleMeta(comic.titleMeta),
     updatedAt: comic.updatedAt.toIso8601String(),
     cover: _coverFromStored(comic.source, comic.comicId, comic.cover),
-    metadata: _metadataFromString(comic.metadata),
+    metadata: _metadataFromTyped(comic.metadata),
     raw: _buildFavoriteRaw(comic),
     extern: const <String, dynamic>{},
   );
@@ -58,7 +58,7 @@ UnifiedComicListItem unifiedComicFromUnifiedHistory(UnifiedComicHistory comic) {
     viewsCount: _viewCountFromTitleMeta(comic.titleMeta),
     updatedAt: comic.updatedAt.toIso8601String(),
     cover: _coverFromStored(comic.source, comic.comicId, comic.cover),
-    metadata: _metadataFromString(comic.metadata),
+    metadata: _metadataFromTyped(comic.metadata),
     raw: _buildHistoryRaw(comic),
     extern: const <String, dynamic>{},
   );
@@ -87,7 +87,7 @@ UnifiedComicListItem unifiedComicFromUnifiedDownload(
       path: cover.path,
       extern: extern,
     ),
-    metadata: _metadataFromString(comic.metadata),
+    metadata: _metadataFromTyped(comic.metadata),
     raw: includeRaw ? _buildDownloadRaw(comic) : const <String, dynamic>{},
     extern: const <String, dynamic>{},
   );
@@ -150,10 +150,10 @@ Map<String, dynamic> _buildBaseRaw({
   required String comicId,
   required String title,
   required String description,
-  required String cover,
-  required String creator,
-  required String titleMeta,
-  required String metadata,
+  required ComicImage cover,
+  required Creator creator,
+  required List<ComicInfoActionItem> titleMeta,
+  required List<ComicInfoMetadata> metadata,
   required DateTime updatedAt,
 }) {
   return {
@@ -161,10 +161,12 @@ Map<String, dynamic> _buildBaseRaw({
     'comicId': comicId,
     'title': title,
     'description': description,
-    'cover': sanitizeDynamic(decodeJsonMap(cover)),
-    'creator': sanitizeDynamic(creator),
-    'titleMeta': sanitizeDynamic(titleMeta),
-    'metadata': sanitizeDynamic(_decodeMetadataString(metadata)),
+    'cover': sanitizeDynamic(cover.toJson()),
+    'creator': sanitizeDynamic(creator.toJson()),
+    'titleMeta': sanitizeDynamic(
+      titleMeta.map((item) => item.toJson()).toList(),
+    ),
+    'metadata': sanitizeDynamic(metadata.map((item) => item.toJson()).toList()),
     'updatedAt': updatedAt.toIso8601String(),
   };
 }
@@ -172,21 +174,17 @@ Map<String, dynamic> _buildBaseRaw({
 UnifiedComicCover _coverFromStored(
   String source,
   String comicId,
-  String cover,
+  ComicImage cover,
 ) {
-  final data = decodeJsonMap(cover);
-  final coverId = data['id']?.toString() ?? comicId;
-  final url = data['url']?.toString() ?? '';
-  final coverExtern = asJsonMap(data['extern']);
-  final rawPath = data['path']?.toString().trim() ?? '';
-  final resolvedPath = rawPath.isNotEmpty
-      ? rawPath
-      : _buildFallbackCoverPath(coverId, url);
+  final coverId = cover.id.trim().isNotEmpty ? cover.id : comicId;
+  final resolvedPath = cover.path.trim().isNotEmpty
+      ? cover.path
+      : _buildFallbackCoverPath(coverId, cover.url);
   return UnifiedComicCover(
     id: coverId,
-    url: url,
+    url: cover.url,
     path: resolvedPath,
-    extern: coverExtern,
+    extern: cover.extern,
   );
 }
 
@@ -196,30 +194,19 @@ String _buildFallbackCoverPath(String id, String url) {
   return '$safeId.$extension';
 }
 
-List<UnifiedComicMetadata> _metadataFromString(String metadataJson) {
-  return _metadataFromFlex(decodeJsonListOfMaps(metadataJson));
-}
-
-List<UnifiedComicMetadata> _metadataFromFlex(
-  List<Map<String, dynamic>> metadata,
+List<UnifiedComicMetadata> _metadataFromTyped(
+  List<ComicInfoMetadata> metadata,
 ) {
   return metadata
       .map((item) {
-        final value = asJsonList(item['value'])
-            .map((e) {
-              if (e is Map) {
-                return (e['name'] ?? e.toString()).toString().trim();
-              }
-              return e.toString().trim();
-            })
-            .where((e) => e.isNotEmpty)
+        final value = item.value
+            .map((entry) => entry.name.trim())
+            .where((entry) => entry.isNotEmpty)
             .toList();
-        if (value.isEmpty) {
-          return null;
-        }
+        if (value.isEmpty) return null;
         return UnifiedComicMetadata(
-          type: item['type']?.toString() ?? '',
-          name: item['name']?.toString() ?? '',
+          type: item.type,
+          name: item.name,
           value: value,
         );
       })
@@ -227,13 +214,9 @@ List<UnifiedComicMetadata> _metadataFromFlex(
       .toList();
 }
 
-List<Map<String, dynamic>> _decodeMetadataString(String metadataJson) {
-  return decodeJsonListOfMaps(metadataJson);
-}
-
-int _viewCountFromTitleMeta(String titleMetaJson) {
-  for (final item in decodeJsonListOfMaps(titleMetaJson)) {
-    final name = item['name']?.toString() ?? '';
+int _viewCountFromTitleMeta(List<ComicInfoActionItem> titleMeta) {
+  for (final item in titleMeta) {
+    final name = item.name;
     if (name.startsWith('浏览：')) {
       return int.tryParse(name.substring(3)) ?? 0;
     }

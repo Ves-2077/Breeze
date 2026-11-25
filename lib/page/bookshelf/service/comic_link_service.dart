@@ -1,34 +1,17 @@
-import 'dart:convert';
-
 import 'package:zephyr/database/database.dart';
 import 'package:zephyr/main.dart';
 import 'package:zephyr/network/http/picture/picture.dart';
 import 'package:zephyr/network/sync/sync_device_id.dart';
 import 'package:zephyr/object_box/model.dart';
+import 'package:zephyr/object_box/model_json_codec.dart';
 
 import 'package:zephyr/page/bookshelf/service/comic_folder_service.dart';
 
 class ComicLinkService {
   static String get _deviceId => syncDeviceId;
 
-  static Map<String, int> _parseVersionVector(String json) {
-    if (json.trim().isEmpty) return <String, int>{};
-    try {
-      final map = jsonDecode(json) as Map<String, dynamic>;
-      return map.map((k, v) => MapEntry(k, (v as num).toInt()));
-    } catch (_) {
-      return <String, int>{};
-    }
-  }
-
-  static String _encodeVersionVector(Map<String, int> vector) {
-    return jsonEncode(vector);
-  }
-
-  static String _bumpVersionVector(String json) {
-    final vector = _parseVersionVector(json);
-    vector[_deviceId] = (vector[_deviceId] ?? 0) + 1;
-    return _encodeVersionVector(vector);
+  static Map<String, int> _bumpVersionVector(Map<String, int> vector) {
+    return bumpVersionVector(vector, _deviceId);
   }
 
   static int _now() {
@@ -105,7 +88,7 @@ class ComicLinkService {
           ..deletedAt = null
           ..createdAt = now
           ..updatedAt = now
-          ..versionVectorJson = _bumpVersionVector(existing.versionVectorJson);
+          ..versionVector = _bumpVersionVector(existing.versionVector);
         if (existing.folderSyncId == null && folderSyncId != null) {
           existing.folderSyncId = folderSyncId;
         }
@@ -120,7 +103,7 @@ class ComicLinkService {
       comicUniqueKey: comicUniqueKey,
       folderSyncId: folderSyncId,
       typeData: type.name,
-      versionVectorJson: _encodeVersionVector({_deviceId: 1}),
+      versionVector: {_deviceId: 1},
       createdAt: now,
       updatedAt: now,
     );
@@ -161,7 +144,7 @@ class ComicLinkService {
       link
         ..deletedAt = _now()
         ..updatedAt = _now()
-        ..versionVectorJson = _bumpVersionVector(link.versionVectorJson);
+        ..versionVector = _bumpVersionVector(link.versionVector);
       await database.links.put(link);
     }
 

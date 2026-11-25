@@ -98,10 +98,10 @@ void main() {
     );
     expect(chapterImages.map((image) => image['id']).toSet(), hasLength(2));
 
-    final cover = jsonDecode(record.cover) as Map;
+    final cover = record.cover;
     final coverStore = DownloadAssetStore(
       from: kLocalComicPluginId,
-      path: cover['path'] as String,
+      path: cover.path,
       cartoonId: result.comicId,
       chapterId: '',
       storageChapterId: '',
@@ -203,8 +203,8 @@ void main() {
     final chapters = jsonDecode(record.chapters) as List;
     expect((chapters.single as Map)['name'], 'comic');
     expect(((chapters.single as Map)['images'] as List), hasLength(2));
-    final cover = jsonDecode(record.cover) as Map;
-    expect(cover['path'], startsWith('cover_'));
+    final cover = record.cover;
+    expect(cover.path, startsWith('cover_'));
   });
 
   test('cleanupRoot 在导入结束后删除', () async {

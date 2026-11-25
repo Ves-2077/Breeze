@@ -4,6 +4,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:zephyr/config/global/global_setting.dart';
 import 'package:zephyr/i18n/strings.g.dart';
 import 'package:zephyr/main.dart';
+import 'package:zephyr/model/comic_info_meta.dart';
 import 'package:zephyr/object_box/model.dart';
 import 'package:zephyr/page/bookshelf/cubit/bookshelf_search_cubit.dart';
 import 'package:zephyr/page/bookshelf/models/shelf_page_mode.dart';
@@ -68,8 +69,13 @@ void main() {
   testWidgets('下拉刷新读到主 isolate 更新后的封面', (tester) async {
     const uniqueKey = 'test:comic1';
     final record = createTestDownload(uniqueKey)
-      ..cover =
-          '{"id":"c1","url":"","path":"old.jpg","extern":{"path":"old.jpg"}}';
+      ..cover = const ComicImage(
+        id: 'c1',
+        url: '',
+        name: '',
+        path: 'old.jpg',
+        extern: {'path': 'old.jpg'},
+      );
     await tester.runAsync(() async {
       await database.downloads.put(record);
       await ComicLinkService.addComic(
@@ -83,8 +89,13 @@ void main() {
     await waitForCoverPath(tester, 'old.jpg');
 
     record
-      ..cover =
-          '{"id":"c2","url":"","path":"new.jpg","extern":{"path":"new.jpg"}}'
+      ..cover = const ComicImage(
+        id: 'c2',
+        url: '',
+        name: '',
+        path: 'new.jpg',
+        extern: {'path': 'new.jpg'},
+      )
       ..updatedAt = DateTime.now().toUtc();
     await tester.runAsync(() => database.downloads.put(record));
 
@@ -105,8 +116,13 @@ void main() {
   testWidgets('刷新按钮读到主 isolate 更新后的封面', (tester) async {
     const uniqueKey = 'test:comic1';
     final record = createTestDownload(uniqueKey)
-      ..cover =
-          '{"id":"c1","url":"","path":"old.jpg","extern":{"path":"old.jpg"}}';
+      ..cover = const ComicImage(
+        id: 'c1',
+        url: '',
+        name: '',
+        path: 'old.jpg',
+        extern: {'path': 'old.jpg'},
+      );
     await tester.runAsync(() async {
       await database.downloads.put(record);
       await ComicLinkService.addComic(
@@ -121,8 +137,13 @@ void main() {
 
     // 主 isolate 更新封面（编辑页保存）。
     record
-      ..cover =
-          '{"id":"c2","url":"","path":"new.jpg","extern":{"path":"new.jpg"}}'
+      ..cover = const ComicImage(
+        id: 'c2',
+        url: '',
+        name: '',
+        path: 'new.jpg',
+        extern: {'path': 'new.jpg'},
+      )
       ..updatedAt = DateTime.now().toUtc();
     await tester.runAsync(() => database.downloads.put(record));
 

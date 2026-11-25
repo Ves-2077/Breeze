@@ -1,10 +1,9 @@
-import 'dart:convert';
-
 import 'package:uuid/uuid.dart';
 import 'package:zephyr/database/database.dart';
 import 'package:zephyr/i18n/strings.g.dart';
 import 'package:zephyr/network/sync/sync_device_id.dart';
 import 'package:zephyr/object_box/model.dart';
+import 'package:zephyr/object_box/model_json_codec.dart';
 import 'package:zephyr/main.dart';
 
 const String kComicFolderRootPath = '';
@@ -92,24 +91,8 @@ class ComicFolderService {
     return trimmed.substring(0, index);
   }
 
-  static Map<String, int> _parseVersionVector(String json) {
-    if (json.trim().isEmpty) return <String, int>{};
-    try {
-      final map = jsonDecode(json) as Map<String, dynamic>;
-      return map.map((k, v) => MapEntry(k, (v as num).toInt()));
-    } catch (_) {
-      return <String, int>{};
-    }
-  }
-
-  static String _encodeVersionVector(Map<String, int> vector) {
-    return jsonEncode(vector);
-  }
-
-  static String _bumpVersionVector(String json) {
-    final vector = _parseVersionVector(json);
-    vector[_deviceId] = (vector[_deviceId] ?? 0) + 1;
-    return _encodeVersionVector(vector);
+  static Map<String, int> _bumpVersionVector(Map<String, int> vector) {
+    return bumpVersionVector(vector, _deviceId);
   }
 
   static int _now() {
@@ -178,7 +161,7 @@ class ComicFolderService {
           ..deletedAt = null
           ..createdAt = now
           ..updatedAt = now
-          ..versionVectorJson = _bumpVersionVector(existed.versionVectorJson);
+          ..versionVector = _bumpVersionVector(existed.versionVector);
         await database.folders.put(existed);
         return existed;
       }
@@ -192,7 +175,7 @@ class ComicFolderService {
       uniqueKey: uniqueKey,
       name: safeName,
       typeData: type.name,
-      versionVectorJson: _encodeVersionVector({_deviceId: 1}),
+      versionVector: {_deviceId: 1},
       createdAt: now,
       updatedAt: now,
     );
@@ -213,7 +196,7 @@ class ComicFolderService {
     folder
       ..deletedAt = now
       ..updatedAt = now
-      ..versionVectorJson = _bumpVersionVector(folder.versionVectorJson);
+      ..versionVector = _bumpVersionVector(folder.versionVector);
     await database.folders.put(folder);
 
     // 级联删除子文件夹（软删除）
@@ -230,7 +213,7 @@ class ComicFolderService {
       child
         ..deletedAt = now
         ..updatedAt = now
-        ..versionVectorJson = _bumpVersionVector(child.versionVectorJson);
+        ..versionVector = _bumpVersionVector(child.versionVector);
       changed.add(child);
     }
     if (changed.isNotEmpty) {
@@ -274,7 +257,7 @@ class ComicFolderService {
       ..name = safeName
       ..uniqueKey = newUniqueKey
       ..updatedAt = now
-      ..versionVectorJson = _bumpVersionVector(folder.versionVectorJson);
+      ..versionVector = _bumpVersionVector(folder.versionVector);
     await database.folders.put(folder);
   }
 
@@ -379,7 +362,7 @@ class ComicFolderService {
       ..parentSyncId = newParentSyncId
       ..uniqueKey = newUniqueKey
       ..updatedAt = now
-      ..versionVectorJson = _bumpVersionVector(folder.versionVectorJson);
+      ..versionVector = _bumpVersionVector(folder.versionVector);
     await database.folders.put(folder);
   }
 
@@ -409,7 +392,7 @@ class ComicFolderService {
       uniqueKey: '$parentKey|$targetName|${type.name}',
       name: targetName,
       typeData: type.name,
-      versionVectorJson: _encodeVersionVector({_deviceId: 1}),
+      versionVector: {_deviceId: 1},
       createdAt: now,
       updatedAt: now,
     );
@@ -429,7 +412,7 @@ class ComicFolderService {
             comicUniqueKey: link.comicUniqueKey,
             folderSyncId: targetFolder.syncId,
             typeData: type.name,
-            versionVectorJson: _encodeVersionVector({_deviceId: 1}),
+            versionVector: {_deviceId: 1},
             createdAt: now,
             updatedAt: now,
           ),

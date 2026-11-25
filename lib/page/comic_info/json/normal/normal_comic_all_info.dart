@@ -1,6 +1,9 @@
 import 'dart:convert';
 
 import 'package:freezed_annotation/freezed_annotation.dart';
+import 'package:zephyr/model/comic_info_meta.dart';
+
+export 'package:zephyr/model/comic_info_meta.dart';
 
 part 'normal_comic_all_info.freezed.dart';
 part 'normal_comic_all_info.g.dart';
@@ -42,59 +45,6 @@ abstract class NormalComicAllInfo with _$NormalComicAllInfo {
 
   factory NormalComicAllInfo.fromJson(Map<String, dynamic> json) =>
       _$NormalComicAllInfoFromJson(json);
-}
-
-@freezed
-abstract class ComicInfoActionItem with _$ComicInfoActionItem {
-  const factory ComicInfoActionItem({
-    @JsonKey(name: 'name') required String name,
-    @JsonKey(name: 'onTap') @Default({}) Map<String, dynamic> onTap,
-    @JsonKey(name: 'onLongPress') String? onLongPress,
-    @JsonKey(name: 'extern') @Default({}) Map<String, dynamic> extern,
-  }) = _ComicInfoActionItem;
-
-  factory ComicInfoActionItem.fromJson(Map<String, dynamic> json) =>
-      _$ComicInfoActionItemFromJson(json);
-}
-
-@freezed
-abstract class ComicInfoMetadata with _$ComicInfoMetadata {
-  const factory ComicInfoMetadata({
-    @JsonKey(name: 'type') required String type,
-    @JsonKey(name: 'name') required String name,
-    @JsonKey(name: 'value') required List<ComicInfoActionItem> value,
-  }) = _ComicInfoMetadata;
-
-  factory ComicInfoMetadata.fromJson(Map<String, dynamic> json) =>
-      _$ComicInfoMetadataFromJson(json);
-}
-
-@freezed
-abstract class ComicImage with _$ComicImage {
-  const factory ComicImage({
-    @JsonKey(name: 'id') required String id,
-    @JsonKey(name: 'url') required String url,
-    @JsonKey(name: 'name') required String name,
-    @JsonKey(name: 'path') @Default('') String path,
-    @JsonKey(name: 'extern') @Default({}) Map<String, dynamic> extern,
-  }) = _ComicImage;
-
-  factory ComicImage.fromJson(Map<String, dynamic> json) =>
-      _$ComicImageFromJson(json);
-}
-
-@freezed
-abstract class Creator with _$Creator {
-  const factory Creator({
-    @JsonKey(name: 'id') required String id,
-    @JsonKey(name: 'name') required String name,
-    @JsonKey(name: 'avatar') required ComicImage avatar,
-    @JsonKey(name: 'onTap') @Default({}) Map<String, dynamic> onTap,
-    @JsonKey(name: 'extern') @Default({}) Map<String, dynamic> extern,
-  }) = _Creator;
-
-  factory Creator.fromJson(Map<String, dynamic> json) =>
-      _$CreatorFromJson(json);
 }
 
 @freezed

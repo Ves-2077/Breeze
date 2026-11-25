@@ -2,6 +2,7 @@ import 'package:zephyr/database/db.dart';
 import 'package:zephyr/database/db_read.dart';
 import 'package:zephyr/database/row_codec.dart';
 import 'package:zephyr/object_box/model.dart';
+import 'package:zephyr/object_box/model_json_codec.dart';
 import 'package:zephyr/util/async/worker_pool.dart';
 import 'package:zephyr/util/rust/rust_loader.dart';
 
@@ -191,10 +192,10 @@ class UnifiedComicFavoriteRepository {
       dateToDb(v.updatedAt),
       boolToDb(v.deleted),
       v.schemaVersion,
-      v.cover,
-      v.creator,
-      v.titleMeta,
-      v.metadata,
+      comicImageToField(v.cover),
+      creatorToField(v.creator),
+      comicTitleMetaToField(v.titleMeta),
+      comicMetadataToField(v.metadata),
     ];
   }
 
@@ -437,10 +438,10 @@ class UnifiedComicHistoryRepository {
       v.schemaVersion,
       dateToDb(v.createdAt),
       dateToDb(v.updatedAt),
-      v.cover,
-      v.creator,
-      v.titleMeta,
-      v.metadata,
+      comicImageToField(v.cover),
+      creatorToField(v.creator),
+      comicTitleMetaToField(v.titleMeta),
+      comicMetadataToField(v.metadata),
     ];
   }
 
@@ -692,14 +693,14 @@ class UnifiedComicDownloadRepository {
       boolToDb(v.allowLike),
       boolToDb(v.allowFavorite),
       boolToDb(v.allowDownload),
-      v.cover,
-      v.creator,
-      v.titleMeta,
-      v.metadata,
+      comicImageToField(v.cover),
+      creatorToField(v.creator),
+      comicTitleMetaToField(v.titleMeta),
+      comicMetadataToField(v.metadata),
       v.chapters,
       v.detailJson,
       v.titleOverride,
-      v.coverOverride,
+      comicImageOrNullToField(v.coverOverride),
     ];
   }
 

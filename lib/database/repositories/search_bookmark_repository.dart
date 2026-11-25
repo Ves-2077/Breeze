@@ -2,6 +2,7 @@ import 'package:zephyr/database/db.dart';
 import 'package:zephyr/database/db_read.dart';
 import 'package:zephyr/database/row_codec.dart';
 import 'package:zephyr/object_box/model.dart';
+import 'package:zephyr/object_box/model_json_codec.dart';
 
 const _bookmarkInsert =
     'INSERT INTO "SearchBookmark" '
@@ -90,10 +91,10 @@ class SearchBookmarkRepository {
       v.uniqueKey,
       v.source,
       v.keyword,
-      v.externJson,
+      searchBookmarkExternToField(v.extern),
       v.anchorComicId,
       v.anchorTitle,
-      v.anchorCover,
+      comicImageOrNullToField(v.anchorCover),
       v.anchorPage,
       dateToDb(v.createdAt),
       dateToDb(v.updatedAt),

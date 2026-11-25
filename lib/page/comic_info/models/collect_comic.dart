@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:material_ui/material_ui.dart';
 import 'package:zephyr/page/comic_info/models/favorite_workflow.dart';
@@ -7,7 +6,6 @@ import 'package:zephyr/network/http/plugin/unified_comic_plugin.dart';
 import 'package:zephyr/object_box/model.dart';
 import 'package:zephyr/page/bookshelf/service/comic_link_service.dart';
 import 'package:zephyr/page/bookshelf/service/comic_folder_service.dart';
-import 'package:zephyr/util/json/json_sanitize.dart';
 import 'package:zephyr/util/storage/path_util.dart';
 import 'package:zephyr/page/comic_info/json/normal/normal_comic_all_info.dart';
 import 'package:zephyr/widgets/toast.dart';
@@ -83,18 +81,15 @@ Future<String> _ensureLocalFavoriteRecord({
       ? download.titleOverride?.trim() ?? ''
       : '';
   final coverOverride = download != null && !download.deleted
-      ? download.coverOverride?.trim() ?? ''
-      : '';
+      ? download.coverOverride
+      : null;
   final effectiveTitle = titleOverride.isNotEmpty
       ? download!.title
       : comicInfo.title;
-  final coverMap = _comicImageToMap(comicInfo.cover);
-  final effectiveCover = coverOverride.isNotEmpty
-      ? download!.cover
-      : jsonEncode(coverMap);
+  final effectiveCover = coverOverride ?? _normalizedCover(comicInfo.cover);
 
   if (unified != null && unified.deleted == false) {
-    if (titleOverride.isNotEmpty || coverOverride.isNotEmpty) {
+    if (titleOverride.isNotEmpty || coverOverride != null) {
       unified
         ..title = effectiveTitle
         ..cover = effectiveCover
@@ -115,9 +110,9 @@ Future<String> _ensureLocalFavoriteRecord({
       title: effectiveTitle,
       description: comicInfo.description,
       cover: effectiveCover,
-      creator: jsonEncode(_creatorToMap(comicInfo.creator)),
-      titleMeta: jsonEncode(comicInfo.titleMeta.map(_titleMetaToMap).toList()),
-      metadata: jsonEncode(comicInfo.metadata.map(_metadataToMap).toList()),
+      creator: _normalizedCreator(comicInfo.creator),
+      titleMeta: comicInfo.titleMeta,
+      metadata: comicInfo.metadata,
       createdAt: createdAt,
       updatedAt: now,
       deleted: false,
@@ -219,55 +214,39 @@ Future<bool> setLocalComicFavoriteFolders({
   return true;
 }
 
-Map<String, dynamic> _comicImageToMap(ComicImage image) {
-  return sanitizeDynamic({
-    'id': image.id,
-    'url': image.url,
-    'name': image.name,
-    'path': _resolveImagePath(
-      id: image.id,
-      url: image.url,
-      rawPath: image.path,
-    ),
-    'extern': image.extern,
-  });
+ComicImage _normalizedCover(ComicImage image) {
+  return image.copyWith(
+    path: _resolveImagePath(id: image.id, url: image.url, rawPath: image.path),
+  );
+}
+
+Creator _normalizedCreator(Creator creator) {
+  return creator.copyWith(avatar: _normalizedCover(creator.avatar));
 }
 
 Future<void> _repairFavoriteCoverPathIfNeeded(
   UnifiedComicFavorite favorite,
 ) async {
-  final coverRaw = favorite.cover.trim();
-  if (coverRaw.isEmpty) {
+  final cover = favorite.cover;
+  if (cover.id.trim().isEmpty &&
+      cover.url.trim().isEmpty &&
+      cover.path.trim().isEmpty) {
     return;
   }
-
-  Map<String, dynamic> coverMap;
-  try {
-    final decoded = jsonDecode(coverRaw);
-    if (decoded is! Map) {
-      return;
-    }
-    coverMap = Map<String, dynamic>.from(decoded);
-  } catch (_) {
-    return;
-  }
-
-  final currentPath = coverMap['path']?.toString().trim() ?? '';
-  if (currentPath.isNotEmpty) {
+  if (cover.path.trim().isNotEmpty) {
     return;
   }
 
   final repairedPath = _resolveImagePath(
-    id: coverMap['id']?.toString() ?? favorite.comicId,
-    url: coverMap['url']?.toString() ?? '',
-    rawPath: currentPath,
+    id: cover.id.trim().isEmpty ? favorite.comicId : cover.id,
+    url: cover.url,
+    rawPath: cover.path,
   );
   if (repairedPath.isEmpty) {
     return;
   }
 
-  coverMap['path'] = repairedPath;
-  favorite.cover = jsonEncode(sanitizeDynamic(coverMap));
+  favorite.cover = cover.copyWith(path: repairedPath);
   favorite.updatedAt = DateTime.now().toUtc();
   await database.favorites.put(favorite);
 }
@@ -285,42 +264,6 @@ String _resolveImagePath({
   final safeId = sanitizePathSegment(id.trim().isEmpty ? 'cover' : id);
   final extension = extractImageExtension(url);
   return '$safeId.$extension';
-}
-
-Map<String, dynamic> _creatorToMap(Creator creator) {
-  return sanitizeDynamic({
-    'id': creator.id,
-    'name': creator.name,
-    'avatar': _comicImageToMap(creator.avatar),
-    'onTap': creator.onTap,
-    'extern': creator.extern,
-  });
-}
-
-Map<String, dynamic> _titleMetaToMap(ComicInfoActionItem item) {
-  return sanitizeDynamic({
-    'name': item.name,
-    'onTap': item.onTap,
-    'onLongPress': item.onLongPress,
-    'extern': item.extern,
-  });
-}
-
-Map<String, dynamic> _metadataToMap(ComicInfoMetadata item) {
-  return sanitizeDynamic({
-    'name': item.name,
-    'type': item.type,
-    'value': item.value
-        .map(
-          (entry) => sanitizeDynamic({
-            'name': entry.name,
-            'onTap': entry.onTap,
-            'onLongPress': entry.onLongPress,
-            'extern': entry.extern,
-          }),
-        )
-        .toList(),
-  });
 }
 
 Future<bool> toggleCloudComicFavorite({

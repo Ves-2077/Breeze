@@ -78,7 +78,7 @@ ComicFolder _folder(String syncId, String name, String typeData) {
     uniqueKey: '|$name|$typeData',
     name: name,
     typeData: typeData,
-    versionVectorJson: '{"test":1}',
+    versionVector: {'test': 1},
     createdAt: now,
     updatedAt: now,
   );
@@ -91,7 +91,7 @@ ComicLink _link(String comicKey, String folderSyncId, String typeData) {
     comicUniqueKey: comicKey,
     folderSyncId: folderSyncId,
     typeData: typeData,
-    versionVectorJson: '{"test":1}',
+    versionVector: {'test': 1},
     createdAt: now,
     updatedAt: now,
   );

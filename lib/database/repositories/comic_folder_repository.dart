@@ -2,6 +2,7 @@ import 'package:zephyr/database/db.dart';
 import 'package:zephyr/database/db_read.dart';
 import 'package:zephyr/database/row_codec.dart';
 import 'package:zephyr/object_box/model.dart';
+import 'package:zephyr/object_box/model_json_codec.dart';
 
 const _folderInsert =
     'INSERT INTO "ComicFolder" '
@@ -217,7 +218,7 @@ class ComicFolderRepository {
       v.uniqueKey,
       v.name,
       v.typeData,
-      v.versionVectorJson,
+      versionVectorToField(v.versionVector),
       v.deletedAt,
       v.createdAt,
       v.updatedAt,
@@ -593,7 +594,7 @@ class ComicLinkRepository {
       if (includeId) v.id,
       v.uniqueKey,
       v.typeData,
-      v.versionVectorJson,
+      versionVectorToField(v.versionVector),
       v.deletedAt,
       v.createdAt,
       v.updatedAt,

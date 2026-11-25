@@ -7,6 +7,8 @@ import 'package:zephyr/main.dart';
 import 'package:zephyr/network/sync/sync_device_id.dart';
 import 'package:zephyr/object_box/model.dart';
 
+import 'support/comic_fixtures.dart';
+
 /// 测试辅助类：在独立临时目录创建 SQLite 数据库并设置全局 [database]。
 class TestDatabaseHelper {
   static Directory? _tempDir;
@@ -58,10 +60,10 @@ UnifiedComicFavorite createTestFavorite(
     comicId: uniqueKey,
     title: 'Test Comic $uniqueKey',
     description: '',
-    cover: '',
-    creator: '',
-    titleMeta: '',
-    metadata: '',
+    cover: emptyComicImage,
+    creator: emptyComicCreator,
+    titleMeta: emptyComicTitleMeta,
+    metadata: emptyComicMetadata,
     createdAt: now,
     updatedAt: now,
     deleted: deleted,
@@ -82,10 +84,10 @@ UnifiedComicHistory createTestHistory(
     comicId: uniqueKey,
     title: 'Test Comic $uniqueKey',
     description: '',
-    cover: '',
-    creator: '',
-    titleMeta: '',
-    metadata: '',
+    cover: emptyComicImage,
+    creator: emptyComicCreator,
+    titleMeta: emptyComicTitleMeta,
+    metadata: emptyComicMetadata,
     chapterId: '',
     chapterTitle: '',
     chapterOrder: 0,
@@ -112,10 +114,10 @@ UnifiedComicDownload createTestDownload(
     comicId: uniqueKey,
     title: 'Test Comic $uniqueKey',
     description: '',
-    cover: '',
-    creator: '',
-    titleMeta: '',
-    metadata: '',
+    cover: emptyComicImage,
+    creator: emptyComicCreator,
+    titleMeta: emptyComicTitleMeta,
+    metadata: emptyComicMetadata,
     totalViews: 0,
     totalLikes: 0,
     totalComments: 0,

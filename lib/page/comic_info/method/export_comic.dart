@@ -332,11 +332,10 @@ Future<String?> _tryDownloadCover(
   String comicId, {
   required String from,
 }) async {
-  final cover = _decodeMap(download.cover);
-  final ext = Map<String, dynamic>.from(cover['extern'] as Map? ?? const {});
-  final url = cover['url']?.toString() ?? '';
-  final externPath = ext['path']?.toString().trim() ?? '';
-  final coverPath = cover['path']?.toString().trim() ?? '';
+  final cover = download.cover;
+  final externPath = cover.extern['path']?.toString().trim() ?? '';
+  final url = cover.url;
+  final coverPath = cover.path.trim();
   final path = externPath.isNotEmpty
       ? externPath
       : (coverPath.isNotEmpty ? coverPath : '$comicId.jpg');
@@ -655,22 +654,6 @@ String _uniqueFolderName(
     }
     index++;
   }
-}
-
-Map<String, dynamic> _decodeMap(String raw) {
-  if (raw.trim().isEmpty) {
-    return const <String, dynamic>{};
-  }
-  try {
-    final decoded = jsonDecode(raw);
-    if (decoded is Map<String, dynamic>) {
-      return decoded;
-    }
-    if (decoded is Map) {
-      return decoded.map((key, value) => MapEntry(key.toString(), value));
-    }
-  } catch (_) {}
-  return const <String, dynamic>{};
 }
 
 class _ExportChapterEntry {

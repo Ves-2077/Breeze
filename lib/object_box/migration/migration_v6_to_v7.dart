@@ -4,119 +4,76 @@ import 'package:zephyr/database/database.dart';
 import 'package:zephyr/main.dart';
 import 'package:zephyr/object_box/model.dart';
 
-/// v6 -> v7: 把 JSON 字段中残留的 `extension` 深度重命名为 `extern`。
-Future<void> migrateV6ToV7(Database database) async {
-  var favoriteChanged = 0;
-  var historyChanged = 0;
-  var downloadChanged = 0;
+const _comicJsonFields = <String>['cover', 'creator', 'titleMeta', 'metadata'];
+const _downloadJsonFields = <String>[
+  ..._comicJsonFields,
+  'chapters',
+  'detailJson',
+];
 
+Future<void> migrateV6ToV7(Database database) async {
   final favorites = await database.favorites.getAll();
   final nextFavorites = <UnifiedComicFavorite>[];
   for (final item in favorites) {
-    var changed = false;
-    final newCover = _renameExtensionToExternDeep(item.cover);
-    final newCreator = _renameExtensionToExternDeep(item.creator);
-    final newTitleMeta = _renameExtensionToExternDeep(item.titleMeta);
-    final newMetadata = _renameExtensionToExternDeep(item.metadata);
-    if (newCover != null) {
-      item.cover = newCover;
-      changed = true;
-    }
-    if (newCreator != null) {
-      item.creator = newCreator;
-      changed = true;
-    }
-    if (newTitleMeta != null) {
-      item.titleMeta = newTitleMeta;
-      changed = true;
-    }
-    if (newMetadata != null) {
-      item.metadata = newMetadata;
-      changed = true;
-    }
-    if (changed) {
-      nextFavorites.add(item);
-      favoriteChanged++;
-    }
+    final migrated = _migrateFavorite(item);
+    if (migrated != null) nextFavorites.add(migrated);
   }
   await database.favorites.putMany(nextFavorites);
 
   final histories = await database.histories.getAll();
   final nextHistories = <UnifiedComicHistory>[];
   for (final item in histories) {
-    var changed = false;
-    final newCover = _renameExtensionToExternDeep(item.cover);
-    final newCreator = _renameExtensionToExternDeep(item.creator);
-    final newTitleMeta = _renameExtensionToExternDeep(item.titleMeta);
-    final newMetadata = _renameExtensionToExternDeep(item.metadata);
-    if (newCover != null) {
-      item.cover = newCover;
-      changed = true;
-    }
-    if (newCreator != null) {
-      item.creator = newCreator;
-      changed = true;
-    }
-    if (newTitleMeta != null) {
-      item.titleMeta = newTitleMeta;
-      changed = true;
-    }
-    if (newMetadata != null) {
-      item.metadata = newMetadata;
-      changed = true;
-    }
-    if (changed) {
-      nextHistories.add(item);
-      historyChanged++;
-    }
+    final migrated = _migrateHistory(item);
+    if (migrated != null) nextHistories.add(migrated);
   }
   await database.histories.putMany(nextHistories);
 
   final downloads = await database.downloads.getAll();
   final nextDownloads = <UnifiedComicDownload>[];
   for (final item in downloads) {
-    var changed = false;
-    final newCover = _renameExtensionToExternDeep(item.cover);
-    final newCreator = _renameExtensionToExternDeep(item.creator);
-    final newTitleMeta = _renameExtensionToExternDeep(item.titleMeta);
-    final newMetadata = _renameExtensionToExternDeep(item.metadata);
-    final newChapters = _renameExtensionToExternDeep(item.chapters);
-    final newDetailJson = _renameExtensionToExternDeep(item.detailJson);
-    if (newCover != null) {
-      item.cover = newCover;
-      changed = true;
-    }
-    if (newCreator != null) {
-      item.creator = newCreator;
-      changed = true;
-    }
-    if (newTitleMeta != null) {
-      item.titleMeta = newTitleMeta;
-      changed = true;
-    }
-    if (newMetadata != null) {
-      item.metadata = newMetadata;
-      changed = true;
-    }
-    if (newChapters != null) {
-      item.chapters = newChapters;
-      changed = true;
-    }
-    if (newDetailJson != null) {
-      item.detailJson = newDetailJson;
-      changed = true;
-    }
-    if (changed) {
-      nextDownloads.add(item);
-      downloadChanged++;
-    }
+    final migrated = _migrateDownload(item);
+    if (migrated != null) nextDownloads.add(migrated);
   }
   await database.downloads.putMany(nextDownloads);
 
   logger.d(
     '[migration_v6_to_v7] '
-    'favorite=$favoriteChanged, history=$historyChanged, download=$downloadChanged',
+    'favorite=${nextFavorites.length}, '
+    'history=${nextHistories.length}, '
+    'download=${nextDownloads.length}',
   );
+}
+
+UnifiedComicFavorite? _migrateFavorite(UnifiedComicFavorite item) {
+  final json = item.toJson();
+  if (!_renameFields(json, _comicJsonFields)) return null;
+  return UnifiedComicFavorite.fromJson(json);
+}
+
+UnifiedComicHistory? _migrateHistory(UnifiedComicHistory item) {
+  final json = item.toJson();
+  if (!_renameFields(json, _comicJsonFields)) return null;
+  return UnifiedComicHistory.fromJson(json);
+}
+
+UnifiedComicDownload? _migrateDownload(UnifiedComicDownload item) {
+  final json = item.toJson();
+  if (!_renameFields(json, _downloadJsonFields)) return null;
+  return UnifiedComicDownload.fromJson(json);
+}
+
+bool _renameFields(Map<String, dynamic> json, List<String> fields) {
+  var changed = false;
+  for (final key in fields) {
+    final raw = json[key];
+    if (raw is! String) continue;
+    final renamed = _renameExtensionToExternDeep(raw);
+    if (renamed != null) {
+      json[key] = renamed;
+      changed = true;
+    }
+  }
+  return changed;
 }
 
 String? _renameExtensionToExternDeep(String jsonStr) {

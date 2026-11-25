@@ -6,6 +6,7 @@ import 'package:zephyr/config/global/global.dart';
 import 'package:zephyr/main.dart';
 import 'package:zephyr/network/http/plugin/qjs_download_runtime.dart';
 import 'package:zephyr/object_box/model.dart';
+import 'package:zephyr/object_box/model_json_codec.dart';
 import 'package:zephyr/page/comic_info/json/normal/normal_comic_all_info.dart'
     as normal;
 import 'package:zephyr/page/comic_info/method/get_plugin_detail.dart';
@@ -93,7 +94,7 @@ Future<void> unifiedDownloadTask(
       taskKey: taskKey,
       taskId: dbTask.id,
       status: status,
-      payloadJson: downloadTaskJsonToJson(next),
+      payload: next,
     );
   }
 
@@ -449,11 +450,11 @@ Future<void> _saveUnifiedDownloadChapter({
     'existing': existing == null
         ? null
         : {
-            'cover': existing.cover,
+            'cover': comicImageToField(existing.cover),
             'chapters': existing.chapters,
             'detailJson': existing.detailJson,
             'titleOverride': existing.titleOverride,
-            'coverOverride': existing.coverOverride,
+            'coverOverride': comicImageOrNullToField(existing.coverOverride),
           },
     'selected': {
       'id': selectedChapter.id,
@@ -483,12 +484,12 @@ Future<void> _saveUnifiedDownloadChapter({
     comicId: comicId,
     title: built['title'] as String,
     description: built['description'] as String,
-    cover: built['cover'] as String,
+    cover: comicImageFromField(built['cover']),
     titleOverride: built['titleOverride'] as String?,
-    coverOverride: built['coverOverride'] as String?,
-    creator: built['creator'] as String,
-    titleMeta: built['titleMeta'] as String,
-    metadata: built['metadata'] as String,
+    coverOverride: comicImageOrNullFromField(built['coverOverride']),
+    creator: creatorFromField(built['creator']),
+    titleMeta: comicTitleMetaFromField(built['titleMeta']),
+    metadata: comicMetadataFromField(built['metadata']),
     totalViews: built['totalViews'] as int,
     totalLikes: built['totalLikes'] as int,
     totalComments: built['totalComments'] as int,
@@ -627,9 +628,9 @@ Map<String, dynamic> _buildDownloadRecordJson(Map<String, dynamic> args) {
   final effectiveTitle = titleOverride.isNotEmpty
       ? titleOverride
       : detail.comicInfo.title;
-  final effectiveCover = coverOverride.isNotEmpty
-      ? coverOverride
-      : jsonEncode(coverMap);
+  final effectiveCover = comicImageFromField(
+    coverOverride.isNotEmpty ? coverOverride : coverMap,
+  ).toJson();
 
   return <String, dynamic>{
     'title': effectiveTitle,
@@ -637,8 +638,8 @@ Map<String, dynamic> _buildDownloadRecordJson(Map<String, dynamic> args) {
     'cover': effectiveCover,
     'titleOverride': titleOverride.isEmpty ? null : titleOverride,
     'coverOverride': coverOverride.isEmpty ? null : coverOverride,
-    'creator': jsonEncode(creatorMap),
-    'titleMeta': jsonEncode(titleMeta),
+    'creator': creatorMap,
+    'titleMeta': titleMeta,
     'metadata': metadata,
     'totalViews': detail.totalViews,
     'totalLikes': detail.totalLikes,
@@ -743,7 +744,9 @@ List<Map<String, dynamic>> _deepCopyMapList(Object value) {
   return decoded.map((item) => Map<String, dynamic>.from(item as Map)).toList();
 }
 
-String _normalizeMetadataForStorage(List<normal.ComicInfoMetadata> metadata) {
+List<Map<String, dynamic>> _normalizeMetadataForStorage(
+  List<normal.ComicInfoMetadata> metadata,
+) {
   final normalized = <Map<String, dynamic>>[];
   for (final item in metadata) {
     final values = item.value
@@ -756,7 +759,7 @@ String _normalizeMetadataForStorage(List<normal.ComicInfoMetadata> metadata) {
     }
     normalized.add({'type': item.type, 'name': item.name, 'value': values});
   }
-  return jsonEncode(normalized);
+  return normalized;
 }
 
 String _fallbackImageId(UnifiedPluginChapterDoc doc, String chapterId) {

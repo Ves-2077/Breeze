@@ -388,12 +388,12 @@ class ComicSyncCore {
       localFolders,
       cloudFolders,
       keyOf: (item) => item.syncId,
-      vectorJsonOf: (item) => item.versionVectorJson,
+      vectorOf: (item) => item.versionVector,
       updatedAtMsOf: (item) => item.updatedAt,
       deterministicTieBreakerOf: (item) =>
           jsonEncode(_stripLocalId(item.toJson())),
       updateOf: (item, vector, updatedAt) {
-        item.versionVectorJson = vector;
+        item.versionVector = vector;
         item.updatedAt = updatedAt;
       },
     );
@@ -421,12 +421,12 @@ class ComicSyncCore {
       cloudLinks,
       keyOf: (item) =>
           '${item.comicUniqueKey}|${item.folderSyncId ?? ''}|${item.typeData}',
-      vectorJsonOf: (item) => item.versionVectorJson,
+      vectorOf: (item) => item.versionVector,
       updatedAtMsOf: (item) => item.updatedAt,
       deterministicTieBreakerOf: (item) =>
           jsonEncode(_stripLocalId(item.toJson())),
       updateOf: (item, vector, updatedAt) {
-        item.versionVectorJson = vector;
+        item.versionVector = vector;
         item.updatedAt = updatedAt;
       },
     );
@@ -584,10 +584,14 @@ class ComicSyncCore {
     List<T> local,
     List<T> cloud, {
     required String Function(T item) keyOf,
-    required String Function(T item) vectorJsonOf,
+    required Map<String, int> Function(T item) vectorOf,
     required int Function(T item) updatedAtMsOf,
     required String Function(T item) deterministicTieBreakerOf,
-    required void Function(T item, String newVectorJson, int newUpdatedAtMs)
+    required void Function(
+      T item,
+      Map<String, int> newVector,
+      int newUpdatedAtMs,
+    )
     updateOf,
   }) {
     final localMap = {for (final item in local) keyOf(item): item};
@@ -607,8 +611,8 @@ class ComicSyncCore {
         continue;
       }
 
-      final localVector = _parseVersionVector(vectorJsonOf(localItem));
-      final cloudVector = _parseVersionVector(vectorJsonOf(cloudItem));
+      final localVector = vectorOf(localItem);
+      final cloudVector = vectorOf(cloudItem);
       final relation = _compareVersionVectors(localVector, cloudVector);
 
       switch (relation) {
@@ -632,11 +636,11 @@ class ComicSyncCore {
             deterministicTieBreakerOf: deterministicTieBreakerOf,
           );
           final loser = identical(winner, localItem) ? cloudItem : localItem;
-          final winnerVector = _parseVersionVector(vectorJsonOf(winner));
-          final loserVector = _parseVersionVector(vectorJsonOf(loser));
+          final winnerVector = vectorOf(winner);
+          final loserVector = vectorOf(loser);
           final mergedVector = _mergeVectors(winnerVector, loserVector);
           final bumpedVector = _bumpVector(mergedVector);
-          updateOf(winner, _encodeVersionVector(bumpedVector), now);
+          updateOf(winner, bumpedVector, now);
           merged.add(winner);
         case _VectorRelation.leftDominates:
           merged.add(localItem);
@@ -654,11 +658,11 @@ class ComicSyncCore {
             winner = localUpdatedAt > cloudUpdatedAt ? localItem : cloudItem;
           }
           final loser = identical(winner, localItem) ? cloudItem : localItem;
-          final winnerVector = _parseVersionVector(vectorJsonOf(winner));
-          final loserVector = _parseVersionVector(vectorJsonOf(loser));
+          final winnerVector = vectorOf(winner);
+          final loserVector = vectorOf(loser);
           final mergedVector = _mergeVectors(winnerVector, loserVector);
           final bumpedVector = _bumpVector(mergedVector);
-          updateOf(winner, _encodeVersionVector(bumpedVector), now);
+          updateOf(winner, bumpedVector, now);
           merged.add(winner);
       }
     }
@@ -680,20 +684,6 @@ class ComicSyncCore {
     final localTie = deterministicTieBreakerOf(localItem);
     final cloudTie = deterministicTieBreakerOf(cloudItem);
     return localTie.compareTo(cloudTie) >= 0 ? localItem : cloudItem;
-  }
-
-  static Map<String, int> _parseVersionVector(String json) {
-    if (json.trim().isEmpty) return <String, int>{};
-    try {
-      final map = jsonDecode(json) as Map<String, dynamic>;
-      return map.map((k, v) => MapEntry(k, (v as num).toInt()));
-    } catch (_) {
-      return <String, int>{};
-    }
-  }
-
-  static String _encodeVersionVector(Map<String, int> vector) {
-    return jsonEncode(vector);
   }
 
   static _VectorRelation _compareVersionVectors(
@@ -873,8 +863,8 @@ class ComicSyncCore {
   }
 
   static ComicFolder _resolveFolderConflict(ComicFolder a, ComicFolder b) {
-    final aVector = _parseVersionVector(a.versionVectorJson);
-    final bVector = _parseVersionVector(b.versionVectorJson);
+    final aVector = a.versionVector;
+    final bVector = b.versionVector;
     final relation = _compareVersionVectors(aVector, bVector);
     return switch (relation) {
       _VectorRelation.leftDominates => a,
@@ -898,13 +888,8 @@ class ComicSyncCore {
     int now,
   ) {
     winner
-      ..versionVectorJson = _encodeVersionVector(
-        _bumpVector(
-          _mergeVectors(
-            _parseVersionVector(winner.versionVectorJson),
-            _parseVersionVector(loser.versionVectorJson),
-          ),
-        ),
+      ..versionVector = _bumpVector(
+        _mergeVectors(winner.versionVector, loser.versionVector),
       )
       ..updatedAt = now;
 
@@ -948,9 +933,7 @@ class ComicSyncCore {
           ..folderSyncId = winner.syncId
           ..uniqueKey =
               '${link.comicUniqueKey}|${winner.syncId}|${link.typeData}'
-          ..versionVectorJson = _encodeVersionVector(
-            _bumpVector(_parseVersionVector(link.versionVectorJson)),
-          )
+          ..versionVector = _bumpVector(link.versionVector)
           ..updatedAt = now;
       }
     }
@@ -962,8 +945,8 @@ class ComicSyncCore {
   /// 向量相等或冲突且 updatedAt 相同时，使用内容 JSON 的确定性序作为
   /// tie-breaker，保证不同客户端对同一对记录能选出同一个 winner。
   static ComicLink _resolveLinkConflict(ComicLink a, ComicLink b, int now) {
-    final aVector = _parseVersionVector(a.versionVectorJson);
-    final bVector = _parseVersionVector(b.versionVectorJson);
+    final aVector = a.versionVector;
+    final bVector = b.versionVector;
     final relation = _compareVersionVectors(aVector, bVector);
 
     final ComicLink winner;
@@ -988,11 +971,11 @@ class ComicSyncCore {
     }
 
     final mergedVector = _mergeVectors(
-      _parseVersionVector(winner.versionVectorJson),
-      _parseVersionVector(loser.versionVectorJson),
+      winner.versionVector,
+      loser.versionVector,
     );
     winner
-      ..versionVectorJson = _encodeVersionVector(_bumpVector(mergedVector))
+      ..versionVector = _bumpVector(mergedVector)
       ..updatedAt = now;
     return winner;
   }
@@ -1014,9 +997,7 @@ class ComicSyncCore {
       folder
         ..deletedAt = now
         ..updatedAt = now
-        ..versionVectorJson = _encodeVersionVector(
-          _bumpVector(_parseVersionVector(folder.versionVectorJson)),
-        );
+        ..versionVector = _bumpVector(folder.versionVector);
     }
 
     for (final link in links) {
@@ -1027,9 +1008,7 @@ class ComicSyncCore {
         link
           ..deletedAt = now
           ..updatedAt = now
-          ..versionVectorJson = _encodeVersionVector(
-            _bumpVector(_parseVersionVector(link.versionVectorJson)),
-          );
+          ..versionVector = _bumpVector(link.versionVector);
       }
     }
   }
@@ -1063,9 +1042,7 @@ class ComicSyncCore {
           folder
             ..deletedAt = now
             ..updatedAt = now
-            ..versionVectorJson = _encodeVersionVector(
-              _bumpVector(_parseVersionVector(folder.versionVectorJson)),
-            );
+            ..versionVector = _bumpVector(folder.versionVector);
           activeBySyncId.remove(folder.syncId);
           newlyTombstoned.add(folder.syncId);
           changed = true;
@@ -1085,9 +1062,7 @@ class ComicSyncCore {
           link
             ..deletedAt = now
             ..updatedAt = now
-            ..versionVectorJson = _encodeVersionVector(
-              _bumpVector(_parseVersionVector(link.versionVectorJson)),
-            );
+            ..versionVector = _bumpVector(link.versionVector);
         }
       }
     }
@@ -1119,8 +1094,8 @@ class ComicSyncCore {
         final folder = folderBySyncId[folderSyncId];
         if (folder != null) {
           if (folder.deletedAt != null) {
-            final linkVector = _parseVersionVector(link.versionVectorJson);
-            final folderVector = _parseVersionVector(folder.versionVectorJson);
+            final linkVector = link.versionVector;
+            final folderVector = folder.versionVector;
             final relation = _compareVersionVectors(linkVector, folderVector);
             final shouldResurrect = switch (relation) {
               _VectorRelation.leftDominates => true,
@@ -1131,15 +1106,15 @@ class ComicSyncCore {
             if (shouldResurrect) {
               folder
                 ..deletedAt = null
-                ..versionVectorJson = _encodeVersionVector(
-                  _bumpVector(_mergeVectors(linkVector, folderVector)),
+                ..versionVector = _bumpVector(
+                  _mergeVectors(linkVector, folderVector),
                 )
                 ..updatedAt = now;
             } else {
               link
                 ..deletedAt = now
-                ..versionVectorJson = _encodeVersionVector(
-                  _bumpVector(_mergeVectors(linkVector, folderVector)),
+                ..versionVector = _bumpVector(
+                  _mergeVectors(linkVector, folderVector),
                 )
                 ..updatedAt = now;
               continue;
@@ -1182,7 +1157,7 @@ class ComicSyncCore {
         );
 
         if (folder == null) {
-          final linkVector = _parseVersionVector(link.versionVectorJson);
+          final linkVector = link.versionVector;
           final newSyncId = const Uuid().v4();
           folder = ComicFolder(
             syncId: newSyncId,
@@ -1190,7 +1165,7 @@ class ComicSyncCore {
             uniqueKey: '${currentParentSyncId ?? ''}|$segment|${link.typeData}',
             name: segment,
             typeData: link.typeData,
-            versionVectorJson: _encodeVersionVector(_bumpVector(linkVector)),
+            versionVector: _bumpVector(linkVector),
             createdAt: now,
             updatedAt: now,
           );
@@ -1200,8 +1175,8 @@ class ComicSyncCore {
               .putIfAbsent(currentParentSyncId ?? '', () => [])
               .add(folder);
         } else if (folder.deletedAt != null) {
-          final linkVector = _parseVersionVector(link.versionVectorJson);
-          final folderVector = _parseVersionVector(folder.versionVectorJson);
+          final linkVector = link.versionVector;
+          final folderVector = folder.versionVector;
           final relation = _compareVersionVectors(linkVector, folderVector);
           final shouldResurrect = switch (relation) {
             _VectorRelation.leftDominates => true,
@@ -1212,15 +1187,15 @@ class ComicSyncCore {
           if (shouldResurrect) {
             folder
               ..deletedAt = null
-              ..versionVectorJson = _encodeVersionVector(
-                _bumpVector(_mergeVectors(linkVector, folderVector)),
+              ..versionVector = _bumpVector(
+                _mergeVectors(linkVector, folderVector),
               )
               ..updatedAt = now;
           } else {
             link
               ..deletedAt = now
-              ..versionVectorJson = _encodeVersionVector(
-                _bumpVector(_mergeVectors(linkVector, folderVector)),
+              ..versionVector = _bumpVector(
+                _mergeVectors(linkVector, folderVector),
               )
               ..updatedAt = now;
             break;

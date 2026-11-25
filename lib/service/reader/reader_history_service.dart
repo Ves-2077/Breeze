@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:zephyr/database/database.dart';
 import 'package:zephyr/main.dart';
+import 'package:zephyr/model/comic_info_meta.dart';
 import 'package:zephyr/object_box/model.dart';
 import 'package:zephyr/util/async/worker_pool.dart';
 import 'package:zephyr/util/rust/rust_loader.dart';
@@ -47,12 +48,16 @@ class ReaderHistoryService {
   HistorySnapshot Function()? _snapshotProvider;
   String? _markedChapterId;
 
-  String _cachedCoverJson = '';
-  String _cachedCreatorJson = '';
-  String _cachedTitleMetaJson = '';
-  String _cachedMetadataJson = '';
+  ComicImage _cachedCover = const ComicImage(id: '', url: '', name: '');
+  Creator _cachedCreator = const Creator(
+    id: '',
+    name: '',
+    avatar: ComicImage(id: '', url: '', name: ''),
+  );
+  List<ComicInfoActionItem> _cachedTitleMeta = const [];
+  List<ComicInfoMetadata> _cachedMetadata = const [];
   String _downloadTitle = '';
-  String _downloadCover = '';
+  ComicImage? _downloadCover;
   bool _hasTitleOverride = false;
   bool _hasCoverOverride = false;
   DateTime? _lastOverrideRefresh;
@@ -77,10 +82,10 @@ class ReaderHistoryService {
 
     final info = _comicInfo;
     if (info != null) {
-      _cachedCoverJson = _normalizeWorkerFlexMapString(info.cover);
-      _cachedCreatorJson = _normalizeWorkerFlexMapString(info.creator);
-      _cachedTitleMetaJson = _normalizeWorkerFlexListString(info.titleMeta);
-      _cachedMetadataJson = _normalizeWorkerMetadataString(info.metadata);
+      _cachedCover = info.cover;
+      _cachedCreator = info.creator;
+      _cachedTitleMeta = info.titleMeta;
+      _cachedMetadata = info.metadata;
     }
     await _refreshDownloadOverrides();
     _lastOverrideRefresh = DateTime.now();
@@ -95,11 +100,11 @@ class ReaderHistoryService {
     final download = rows.isEmpty ? null : rows.first;
     final active = download != null && !download.deleted;
     final titleOverride = active ? (download.titleOverride?.trim() ?? '') : '';
-    final coverOverride = active ? (download.coverOverride?.trim() ?? '') : '';
+    final coverOverride = active ? download.coverOverride : null;
     _hasTitleOverride = titleOverride.isNotEmpty;
-    _hasCoverOverride = coverOverride.isNotEmpty;
+    _hasCoverOverride = coverOverride != null;
     _downloadTitle = _hasTitleOverride ? download!.title : '';
-    _downloadCover = _hasCoverOverride ? download!.cover : '';
+    _downloadCover = _hasCoverOverride ? download!.cover : null;
   }
 
   /// 上次加载到的历史页码，未加载或为 null 时返回 0。
@@ -189,9 +194,7 @@ class ReaderHistoryService {
       final info = _comicInfo!;
       final existing = _history;
       final title = _hasTitleOverride ? _downloadTitle : info.title;
-      final effectiveCover = _hasCoverOverride
-          ? _downloadCover
-          : _cachedCoverJson;
+      final effectiveCover = _hasCoverOverride ? _downloadCover! : _cachedCover;
       final nextCover = existing != null && _isLocalCover(existing.cover)
           ? existing.cover
           : effectiveCover;
@@ -204,9 +207,9 @@ class ReaderHistoryService {
             title: title,
             description: info.description,
             cover: nextCover,
-            creator: _cachedCreatorJson,
-            titleMeta: _cachedTitleMetaJson,
-            metadata: _cachedMetadataJson,
+            creator: _cachedCreator,
+            titleMeta: _cachedTitleMeta,
+            metadata: _cachedMetadata,
             chapterId: snapshot.epInfo.epId,
             chapterTitle: snapshot.epInfo.epName,
             chapterOrder: snapshot.chapterOrder,
@@ -222,9 +225,9 @@ class ReaderHistoryService {
         ..title = title
         ..description = info.description
         ..cover = nextCover
-        ..creator = _cachedCreatorJson
-        ..titleMeta = _cachedTitleMetaJson
-        ..metadata = _cachedMetadataJson
+        ..creator = _cachedCreator
+        ..titleMeta = _cachedTitleMeta
+        ..metadata = _cachedMetadata
         ..chapterId = snapshot.epInfo.epId
         ..chapterTitle = snapshot.epInfo.epName
         ..chapterOrder = snapshot.chapterOrder
@@ -324,47 +327,4 @@ Future<normal.ComicInfo?> _resolveDownloadComicInfoInWorker(
   return normal.NormalComicAllInfo.fromJson(detail).comicInfo;
 }
 
-bool _isLocalCover(String raw) {
-  try {
-    final decoded = jsonDecode(raw);
-    if (decoded is Map) {
-      final extern = decoded['extern'];
-      return extern is Map && extern['local'] == true;
-    }
-  } catch (_) {}
-  return false;
-}
-
-Map<String, dynamic> _normalizeWorkerFlexMap(dynamic value) {
-  final encoded = jsonEncode(value);
-  final decoded = jsonDecode(encoded);
-  if (decoded is Map) {
-    return Map<String, dynamic>.from(decoded);
-  }
-  return <String, dynamic>{};
-}
-
-List<Map<String, dynamic>> _normalizeWorkerFlexList(List<dynamic> value) {
-  final encoded = jsonEncode(value);
-  final decoded = jsonDecode(encoded);
-  if (decoded is List) {
-    return decoded
-        .whereType<Map>()
-        .map((item) => Map<String, dynamic>.from(item))
-        .toList();
-  }
-  return <Map<String, dynamic>>[];
-}
-
-String _normalizeWorkerFlexMapString(dynamic value) {
-  return jsonEncode(_normalizeWorkerFlexMap(value));
-}
-
-String _normalizeWorkerFlexListString(List<dynamic> value) {
-  return jsonEncode(_normalizeWorkerFlexList(value));
-}
-
-String _normalizeWorkerMetadataString(List<dynamic> value) {
-  final normalized = _normalizeWorkerFlexList(value);
-  return jsonEncode(normalized);
-}
+bool _isLocalCover(ComicImage cover) => cover.extern['local'] == true;

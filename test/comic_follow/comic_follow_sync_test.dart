@@ -3,6 +3,8 @@ import 'package:zephyr/object_box/model.dart';
 import 'package:zephyr/page/comic_follow/cubit/comic_follow_state.dart';
 import 'package:zephyr/page/comic_follow/cubit/comic_follow_sync.dart';
 
+import '../support/comic_fixtures.dart';
+
 ComicFollow _follow({
   String uniqueKey = 'src:1',
   int last = 10,
@@ -17,10 +19,10 @@ ComicFollow _follow({
     comicId: '1',
     title: 't',
     description: '',
-    cover: '',
-    creator: '',
-    titleMeta: '',
-    metadata: '',
+    cover: emptyComicImage,
+    creator: emptyComicCreator,
+    titleMeta: emptyComicTitleMeta,
+    metadata: emptyComicMetadata,
     lastChapterCount: last,
     detectedChapterCount: detected,
     hasUpdate: hasUpdate,
@@ -40,10 +42,10 @@ UnifiedComicHistory _history(String uniqueKey, int order) {
     comicId: '1',
     title: 't',
     description: '',
-    cover: '',
-    creator: '',
-    titleMeta: '',
-    metadata: '',
+    cover: emptyComicImage,
+    creator: emptyComicCreator,
+    titleMeta: emptyComicTitleMeta,
+    metadata: emptyComicMetadata,
     chapterId: '',
     chapterTitle: '',
     chapterOrder: order,
