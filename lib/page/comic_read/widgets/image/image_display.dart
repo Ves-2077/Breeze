@@ -230,6 +230,9 @@ class _ImageDisplayState extends State<ImageDisplay> {
         final width = constraints.maxWidth;
         // cacheWidth 的单位是物理像素；这里手动乘 devicePixelRatio，
         // 等价于 Flutter 3.50 的 useLogicalCacheSize（OHOS fork 3.47 没有该参数）。
+        // 条漫模式不做重采样解码：按显示宽缩放后的位图高是独立取整的整数像素，
+        // 与槽位高度（宽高比 × 显示宽）对不齐，图片在槽位内居中后会在接缝处
+        // 露出一条背景色的抗锯齿细线。按原图尺寸解码时两者同源同值，可无缝拼接。
         final decodeWidth = !isColumn && width.isFinite && width >= 1
             ? (width * MediaQuery.devicePixelRatioOf(context)).ceil()
             : null;
@@ -259,37 +262,65 @@ class _ImageDisplayState extends State<ImageDisplay> {
           );
         }
 
-        return Align(
+        final image = Image.file(
+          File(widget.imagePath),
+          width: width,
+          // 条漫模式把图片高度钉死为宽高比 × 显示宽，与槽位高度同源计算，
+          // 再向下多画 1px 盖住接缝（见下方 OverflowBox 说明）。
+          height:
+              isColumn &&
+                  _aspectRatio != null &&
+                  width.isFinite &&
+                  width >= 1
+              ? width * _aspectRatio! + 1
+              : null,
+          // 按屏幕物理像素解码，避免高 DPI 设备上按逻辑宽度解码后放大发虚；
+          // ResizeImage 默认 allowUpscaling=false，小图不会被放大，超大扫描图
+          // 也只解码到屏幕像素宽度，不会整张原图进 ImageCache。
+          cacheWidth: decodeWidth,
+          fit: isColumn ? BoxFit.fill : BoxFit.contain,
           alignment: widget.imageAlignment,
-          child: Image.file(
-            File(widget.imagePath),
-                        width: width,
-            height: isColumn && _aspectRatio != null && width.isFinite && width >= 1 ? width * _aspectRatio! : null,
-            // 按屏幕物理像素解码，避免高 DPI 设备上按逻辑宽度解码后放大发虚；
-            // ResizeImage 默认 allowUpscaling=false，小图不会被放大，超大扫描图
-            // 也只解码到屏幕像素宽度，不会整张原图进 ImageCache。
-            cacheWidth: decodeWidth,
-            fit: isColumn ? BoxFit.fill : BoxFit.contain,
-            alignment: widget.imageAlignment,
-            gaplessPlayback: true,
-            frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
-              if (wasSynchronouslyLoaded || frame != null) {
-                if (!isColumn &&
-                    canUseEinkMask &&
-                    isActiveRowImage &&
-                    !_einkDelayFinished) {
-                  return Container(width: width, color: Colors.white);
-                }
-                return child;
-              }
-
-              if (canUseEinkMask && isActiveRowImage && !_einkDelayFinished) {
+          gaplessPlayback: true,
+          frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+            if (wasSynchronouslyLoaded || frame != null) {
+              if (!isColumn &&
+                  canUseEinkMask &&
+                  isActiveRowImage &&
+                  !_einkDelayFinished) {
                 return Container(width: width, color: Colors.white);
               }
-              return loadingPlaceholder();
-            },
-          ),
+              return child;
+            }
+
+            if (canUseEinkMask && isActiveRowImage && !_einkDelayFinished) {
+              return Container(width: width, color: Colors.white);
+            }
+            return loadingPlaceholder();
+          },
         );
+
+        if (isColumn &&
+            _aspectRatio != null &&
+            width.isFinite &&
+            width >= 1) {
+          // 条漫无缝：槽位高度不变，图片向下多画 1px 盖住接缝行。
+          // OverflowBox 允许图片画出槽位下边缘，下一张上沿随后盖住这 1px，
+          // 接缝两侧都是图片内容，背景无从露出。
+          return OverflowBox(
+            alignment: Alignment.topCenter,
+            minWidth: 0,
+            maxWidth: double.infinity,
+            minHeight: 0,
+            maxHeight: double.infinity,
+            child: SizedBox(
+              width: width,
+              height: width * _aspectRatio! + 1,
+              child: image,
+            ),
+          );
+        }
+
+        return Align(alignment: widget.imageAlignment, child: image);
       },
     );
   }
